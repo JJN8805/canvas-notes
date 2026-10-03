@@ -1,0 +1,630 @@
+import { memo, useMemo, useRef, useState } from 'react';
+import type { Filter, Group, Page } from '../../types';
+import { blockText, colorVar, timeAgo } from '../../lib/util';
+import { navigate } from '../../lib/route';
+import {
+  createExamplePage,
+  createGroup,
+  createPage,
+  deleteGroup,
+  moveGroup,
+  toggleCollapsed,
+  deletePage,
+  duplicatePage,
+  mutatePage,
+  setFilter,
+  setPageGroup,
+  setQuery,
+  setSort,
+  updateGroup,
+  useNotes,
+} from '../../store/notes';
+import { ask, confirmDanger, openMenu, toast, type MenuItem } from '../../store/ui';
+import { groupPath, groupTree, validParents, withDescendants } from '../../lib/groups';
+import { Icon } from '../ui/Icon';
+import { Thumbnail } from './Thumbnail';
+import { SyncButton } from '../sync/SyncPanel';
+import { EXPORT_ITEMS } from '../../export/export';
+
+const PAGE_MIME = 'application/x-canvas-page';
+const GROUP_MIME = 'application/x-canvas-group';
+/** Touch screens: no drag-to-group (long-press opens the menu instead). */
+const COARSE = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+
+function filterTitle(f: Filter, groups: Group[]): string {
+  if (f.kind === 'group') return groupPath(groups, f.id).join(' / ') || 'Group';
+  if (f.kind === 'ungrouped') return 'Ungrouped';
+  if (f.kind === 'tag') return '#' + f.tag;
+  return 'All pages';
+}
+
+function openNewPage() {
+  const p = createPage();
+  navigate({ name: 'page', id: p.id });
+}
+
+export function Library() {
+  const pages = useNotes((s) => s.pages);
+  const groups = useNotes((s) => s.groups);
+  const filter = useNotes((s) => s.filter);
+  const query = useNotes((s) => s.query);
+  const sort = useNotes((s) => s.sort);
+
+  const all = useMemo(() => Object.values(pages), [pages]);
+  const groupIds = useMemo(() => new Set(groups.map((g) => g.id)), [groups]);
+
+  const inGroup = useMemo(() => (filter.kind === 'group' ? withDescendants(groups, filter.id) : null), [filter, groups]);
+
+  const list = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const out = all.filter((p) => {
+      if (inGroup && !(p.groupId && inGroup.has(p.groupId))) return false;
+      if (filter.kind === 'ungrouped' && p.groupId && groupIds.has(p.groupId)) return false;
+      if (filter.kind === 'tag' && !p.tags.includes(filter.tag)) return false;
+      if (q) {
+        const hay = [p.title, p.tags.join(' '), ...p.blocks.map(blockText)].join(' ').toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+    if (sort === 'title') out.sort((a, b) => (a.title || 'Untitled').localeCompare(b.title || 'Untitled'));
+    else if (sort === 'created') out.sort((a, b) => b.created - a.created);
+    else out.sort((a, b) => b.updated - a.updated);
+    return out;
+  }, [all, filter, query, sort, groupIds, inGroup]);
+
+  const groupById = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups]);
+
+  return (
+    <div className="library">
+      <Sidebar pages={all} groups={groups} filter={filter} />
+      <main className="main">
+        <div className="main-head">
+          <div className="main-title">
+            <h1>{filterTitle(filter, groups)}</h1>
+            <p>
+              {list.length} page{list.length === 1 ? '' : 's'}
+              {query ? ` matching “${query}”` : ''}
+            </p>
+          </div>
+          <div className="controls">
+            <label className="search-wrap">
+              <Icon name="search" size={16} />
+              <input
+                className="field search"
+                type="search"
+                placeholder="Search pages"
+                aria-label="Search pages"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </label>
+            <select className="field" aria-label="Sort pages" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
+              <option value="updated">Last edited</option>
+              <option value="created">Newest</option>
+              <option value="title">Title A–Z</option>
+            </select>
+            <SyncButton />
+            <button className="btn primary" onClick={openNewPage}>
+              <Icon name="plus" size={16} />
+              New page
+            </button>
+          </div>
+        </div>
+
+        {list.length ? (
+          <div className="cards">
+            {list.map((p) => (
+              <PageCard key={p.id} page={p} group={p.groupId ? groupById.get(p.groupId) ?? null : null} />
+            ))}
+          </div>
+        ) : (
+          <EmptyState total={all.length} filter={filter} query={query} />
+        )}
+      </main>
+    </div>
+  );
+}
+
+function EmptyState({ total, filter, query }: { total: number; filter: Filter; query: string }) {
+  if (!total) {
+    return (
+      <div className="empty">
+        <h2>No pages yet</h2>
+        <p>Create a page, then place text, images, checklists, code and tables anywhere on it.</p>
+        <div className="row">
+          <button className="btn primary" onClick={openNewPage}>New page</button>
+          <button
+            className="btn"
+            onClick={() => {
+              const p = createExamplePage();
+              navigate({ name: 'page', id: p.id });
+            }}
+          >
+            Open an example page
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="empty">
+      <h2>{query ? 'No pages match your search' : 'Nothing here yet'}</h2>
+      <p>
+        {query
+          ? 'Try a different word, or clear the search.'
+          : filter.kind === 'group'
+            ? 'Create a page here, or drag a card onto this group in the sidebar.'
+            : 'Create a page to get started.'}
+      </p>
+      <div className="row">
+        <button className="btn primary" onClick={openNewPage}>New page</button>
+        {(query || filter.kind !== 'all') && (
+          <button
+            className="btn"
+            onClick={() => {
+              setQuery('');
+              setFilter({ kind: 'all' });
+            }}
+          >
+            Show all pages
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Sidebar ---------------- */
+
+function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Group[]; filter: Filter }) {
+  /** null = not adding; '' = new top-level group; an id = new subgroup inside it */
+  const [adding, setAdding] = useState<string | null>(null);
+  const [overTop, setOverTop] = useState(false);
+  const storageKind = useNotes((s) => s.storageKind);
+  const storageLocation = useNotes((s) => s.storageLocation);
+  const collapsedList = useNotes((s) => s.collapsed);
+  const collapsed = useMemo(() => new Set(collapsedList), [collapsedList]);
+
+  const tags = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of pages) for (const t of p.tags) m.set(t, (m.get(t) ?? 0) + 1);
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [pages]);
+  const groupIds = new Set(groups.map((g) => g.id));
+  const ungrouped = pages.filter((p) => !p.groupId || !groupIds.has(p.groupId)).length;
+  const rows = useMemo(() => groupTree(groups, collapsed), [groups, collapsed]);
+  // Counts include pages in subgroups.
+  const counts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const g of groups) {
+      const inside = withDescendants(groups, g.id);
+      m.set(g.id, pages.filter((p) => p.groupId && inside.has(p.groupId)).length);
+    }
+    return m;
+  }, [groups, pages]);
+
+  return (
+    <nav className="sidebar" aria-label="Pages and groups">
+      <div className="brand">
+        <span className="brand-mark" />
+        Canvas Notes
+      </div>
+
+      <div className="side-section">
+        <NavItem label="All pages" count={pages.length} active={filter.kind === 'all'} onClick={() => setFilter({ kind: 'all' })} />
+        <NavItem
+          label="Ungrouped"
+          count={ungrouped}
+          active={filter.kind === 'ungrouped'}
+          onClick={() => setFilter({ kind: 'ungrouped' })}
+          dropGroup={null}
+        />
+      </div>
+
+      <div className="side-section" role="tree" aria-label="Groups">
+        <div
+          className={'side-head' + (overTop ? ' drop-ok' : '')}
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes(GROUP_MIME)) {
+              e.preventDefault();
+              setOverTop(true);
+            }
+          }}
+          onDragLeave={() => setOverTop(false)}
+          onDrop={(e) => {
+            setOverTop(false);
+            const id = e.dataTransfer.getData(GROUP_MIME);
+            if (id) {
+              e.preventDefault();
+              moveGroup(id, null);
+            }
+          }}
+        >
+          Groups
+          <button className="icon-btn" aria-label="New group" title="New group" onClick={() => setAdding('')}>
+            <Icon name="plus" size={16} />
+          </button>
+        </div>
+        {adding === '' && <NewGroupInput parentId={null} depth={0} onDone={() => setAdding(null)} />}
+        {rows.map(({ group: g, depth, hasChildren }) => (
+          <div key={g.id} role="none">
+            <NavItem
+              label={g.name}
+              color={g.color}
+              count={counts.get(g.id) ?? 0}
+              active={filter.kind === 'group' && filter.id === g.id}
+              onClick={() => setFilter({ kind: 'group', id: g.id })}
+              dropGroup={g.id}
+              group={g}
+              groups={groups}
+              depth={depth}
+              hasChildren={hasChildren}
+              collapsed={collapsed.has(g.id)}
+              onAddSubgroup={() => setAdding(g.id)}
+            />
+            {adding === g.id && <NewGroupInput parentId={g.id} depth={depth + 1} onDone={() => setAdding(null)} />}
+          </div>
+        ))}
+        {!groups.length && adding === null && (
+          <button className="nav-item muted" onClick={() => setAdding('')}>
+            <span className="lbl">Create a group</span>
+          </button>
+        )}
+      </div>
+
+      <div className="side-section">
+        <div className="side-head">Tags</div>
+        {!tags.length && <div className="side-note">Tags you add to pages show up here.</div>}
+        {tags.map(([t, n]) => {
+          const active = filter.kind === 'tag' && filter.tag === t;
+          return (
+            <NavItem
+              key={t}
+              label={'#' + t}
+              count={n}
+              active={active}
+              onClick={() => setFilter(active ? { kind: 'all' } : { kind: 'tag', tag: t })}
+            />
+          );
+        })}
+      </div>
+
+      <div className="side-foot" title={storageLocation}>
+        {storageKind === 'desktop' ? `Stored on this computer in ${storageLocation}` : 'Development mode: stored in this browser only.'}
+      </div>
+    </nav>
+  );
+}
+
+/** Menu entries for choosing a group, indented to show nesting. */
+function groupChoices(groups: Group[], current: string | null, pick: (id: string) => void, only?: Set<string>): MenuItem[] {
+  return groupTree(groups)
+    .filter(({ group }) => !only || only.has(group.id))
+    .map(({ group, depth }) => ({
+      label: '\u2002'.repeat(depth * 2) + group.name,
+      dot: group.color,
+      check: current === group.id,
+      action: () => pick(group.id),
+    }));
+}
+
+function NavItem(props: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+  color?: Group['color'];
+  dropGroup?: string | null;
+  group?: Group;
+  groups?: Group[];
+  depth?: number;
+  hasChildren?: boolean;
+  collapsed?: boolean;
+  onAddSubgroup?: () => void;
+}) {
+  const [over, setOver] = useState(false);
+  const moreRef = useRef<HTMLSpanElement>(null);
+  const droppable = props.dropGroup !== undefined;
+  const g = props.group;
+  const depth = props.depth ?? 0;
+
+  const groupMenu = () => {
+    if (!g || !moreRef.current) return;
+    const all = props.groups ?? [];
+    const allowed = new Set(validParents(all, g.id).map((x) => x.id));
+    const subCount = withDescendants(all, g.id).size - 1;
+    openMenu(moreRef.current, [
+      { label: 'New subgroup…', action: () => props.onAddSubgroup?.() },
+      {
+        label: 'Rename…',
+        action: async () => {
+          const v = await ask({ title: 'Rename group', initial: g.name, okLabel: 'Rename' });
+          if (v?.trim()) updateGroup(g.id, { name: v.trim().slice(0, 60) });
+        },
+      },
+      { swatches: true, current: g.color, pick: (c) => updateGroup(g.id, { color: c }) },
+      { separator: true },
+      { heading: 'Move into' },
+      { label: 'Top level (no parent)', check: !g.parentId, action: () => void moveGroup(g.id, null) },
+      ...groupChoices(all, g.parentId, (id) => void moveGroup(g.id, id), allowed),
+      { separator: true },
+      {
+        label: 'Delete group…',
+        danger: true,
+        action: async () => {
+          const parentName = g.parentId ? all.find((x) => x.id === g.parentId)?.name : null;
+          const where = parentName ? `“${parentName}”` : 'the top level';
+          const parts = [
+            props.count ? `its ${props.count} page${props.count > 1 ? 's' : ''}` : '',
+            subCount ? `${subCount} subgroup${subCount > 1 ? 's' : ''}` : '',
+          ].filter(Boolean);
+          const ok = await confirmDanger(
+            `Delete “${g.name}”?`,
+            parts.length
+              ? `Only the group itself is removed. ${parts.join(' and ').replace(/^./, (c) => c.toUpperCase())} will move up to ${where}. No pages are deleted.`
+              : 'This group is empty.',
+            'Delete group',
+          );
+          if (ok) deleteGroup(g.id);
+        },
+      },
+    ]);
+  };
+
+  return (
+    <button
+      className={'nav-item' + (over ? ' drop-ok' : '') + (depth ? ' sub' : '')}
+      style={depth ? ({ '--depth': depth } as React.CSSProperties) : undefined}
+      role={g ? 'treeitem' : undefined}
+      aria-level={g ? depth + 1 : undefined}
+      aria-expanded={g && props.hasChildren ? !props.collapsed : undefined}
+      aria-current={props.active ? 'true' : undefined}
+      onClick={props.onClick}
+      draggable={!!g && !COARSE}
+      onDragStart={
+        g
+          ? (e) => {
+              e.dataTransfer.setData(GROUP_MIME, g.id);
+              e.dataTransfer.effectAllowed = 'move';
+            }
+          : undefined
+      }
+      onDragOver={
+        droppable
+          ? (e) => {
+              const types = e.dataTransfer.types;
+              if (types.includes(PAGE_MIME) || (g && types.includes(GROUP_MIME))) {
+                e.preventDefault();
+                setOver(true);
+              }
+            }
+          : undefined
+      }
+      onDragLeave={droppable ? () => setOver(false) : undefined}
+      onDrop={
+        droppable
+          ? (e) => {
+              e.preventDefault();
+              setOver(false);
+              const pageId = e.dataTransfer.getData(PAGE_MIME);
+              const groupId = e.dataTransfer.getData(GROUP_MIME);
+              if (pageId) {
+                setPageGroup(pageId, props.dropGroup ?? null);
+                toast(props.dropGroup ? `Moved to ${props.label}` : 'Moved to Ungrouped');
+              } else if (groupId && g && groupId !== g.id) {
+                if (moveGroup(groupId, g.id)) toast(`Moved into ${g.name}`);
+                else toast('A group can’t go inside one of its own subgroups.');
+              }
+            }
+          : undefined
+      }
+    >
+      {g && (
+        <span
+          className={'caret' + (props.hasChildren ? '' : ' none') + (props.collapsed ? ' closed' : '')}
+          role={props.hasChildren ? 'button' : undefined}
+          aria-label={props.hasChildren ? (props.collapsed ? `Show subgroups of ${g.name}` : `Hide subgroups of ${g.name}`) : undefined}
+          onClick={(e) => {
+            if (!props.hasChildren) return;
+            e.stopPropagation();
+            toggleCollapsed(g.id);
+          }}
+        >
+          {props.hasChildren && (
+            <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
+              <path d="M3 4.5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </span>
+      )}
+      {props.color && <span className="dot" style={{ background: colorVar(props.color) }} />}
+      <span className="lbl" title={props.label}>{props.label}</span>
+      <span className="cnt">{props.count}</span>
+      {g && (
+        <span
+          ref={moreRef}
+          className="icon-btn gm"
+          role="button"
+          tabIndex={0}
+          aria-label={`Options for ${g.name}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            groupMenu();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              e.stopPropagation();
+              groupMenu();
+            }
+          }}
+        >
+          <Icon name="more" size={16} />
+        </span>
+      )}
+    </button>
+  );
+}
+
+function NewGroupInput({ parentId, depth, onDone }: { parentId: string | null; depth: number; onDone: () => void }) {
+  const [v, setV] = useState('');
+  const done = useRef(false);
+  const finish = (save: boolean) => {
+    if (done.current) return;
+    done.current = true;
+    if (save && v.trim()) {
+      const g = createGroup(v, parentId);
+      setFilter({ kind: 'group', id: g.id });
+    }
+    onDone();
+  };
+  return (
+    <div className="new-group" style={{ '--depth': depth } as React.CSSProperties}>
+      <input
+        className="field"
+        autoFocus
+        placeholder={parentId ? 'Subgroup name' : 'Group name'}
+        aria-label={parentId ? 'Subgroup name' : 'Group name'}
+        maxLength={60}
+        value={v}
+        onChange={(e) => setV(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') finish(true);
+          if (e.key === 'Escape') finish(false);
+        }}
+        onBlur={() => finish(true)}
+      />
+    </div>
+  );
+}
+
+/* ---------------- Card ---------------- */
+
+const PageCard = memo(function PageCard({ page, group }: { page: Page; group: Group | null }) {
+  const menuRef = useRef<HTMLButtonElement>(null);
+  const groups = useNotes((s) => s.groups);
+  const [dragging, setDragging] = useState(false);
+  const pressMenuShown = useRef(false);
+  const cancelPress = useRef<(() => void) | null>(null);
+  const open = () => {
+    if (pressMenuShown.current) {
+      pressMenuShown.current = false;
+      return;
+    }
+    navigate({ name: 'page', id: page.id });
+  };
+
+  const showMenu = () => {
+    if (!menuRef.current) return;
+    openMenu(menuRef.current, [
+      { label: 'Open', action: open },
+      {
+        label: 'Rename…',
+        action: async () => {
+          const v = await ask({ title: 'Rename page', initial: page.title, okLabel: 'Rename', placeholder: 'Untitled' });
+          if (v !== null) {
+            mutatePage(page.id, (p) => {
+              p.title = v.trim();
+            }, { history: 'none' });
+          }
+        },
+      },
+      { label: 'Duplicate', action: () => duplicatePage(page.id) },
+      { separator: true },
+      { heading: 'Export as' },
+      ...EXPORT_ITEMS(page.id),
+      { separator: true },
+      { heading: 'Move to group' },
+      { label: 'Ungrouped', check: !group, action: () => setPageGroup(page.id, null) },
+      ...groupChoices(groups, group?.id ?? null, (id) => setPageGroup(page.id, id)),
+      {
+        label: 'New group…',
+        action: async () => {
+          const v = await ask({ title: 'New group', okLabel: 'Create group', placeholder: 'Group name' });
+          if (v?.trim()) setPageGroup(page.id, createGroup(v).id);
+        },
+      },
+      { separator: true },
+      { label: 'Delete page', danger: true, action: () => void deletePage(page.id) },
+    ]);
+  };
+
+  return (
+    <article
+      className={'card' + (group ? ' grouped' : '') + (dragging ? ' dragging' : '')}
+      style={group ? ({ '--gc': colorVar(group.color) } as React.CSSProperties) : undefined}
+      tabIndex={0}
+      draggable={!COARSE}
+      aria-label={`Open ${page.title || 'Untitled'}`}
+      onClick={open}
+      onPointerDown={(e) => {
+        if (e.pointerType !== 'touch') return;
+        // Long-press on a phone opens the card's menu.
+        cancelPress.current?.();
+        pressMenuShown.current = false;
+        const x0 = e.clientX, y0 = e.clientY;
+        const timer = window.setTimeout(() => {
+          cancelPress.current?.();
+          pressMenuShown.current = true;
+          navigator.vibrate?.(12);
+          showMenu();
+        }, 450);
+        const onMove = (ev: PointerEvent) => {
+          if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 10) cancelPress.current?.();
+        };
+        const stop = () => cancelPress.current?.();
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', stop);
+        window.addEventListener('pointercancel', stop);
+        cancelPress.current = () => {
+          clearTimeout(timer);
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', stop);
+          window.removeEventListener('pointercancel', stop);
+          cancelPress.current = null;
+        };
+      }}
+      onContextMenu={(e) => {
+        // Right-click on a laptop. On phones the long-press above already opened it.
+        e.preventDefault();
+        if (!pressMenuShown.current) showMenu();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && e.target === e.currentTarget) open();
+      }}
+      onDragStart={(e) => {
+        e.dataTransfer.setData(PAGE_MIME, page.id);
+        e.dataTransfer.effectAllowed = 'move';
+        setDragging(true);
+      }}
+      onDragEnd={() => setDragging(false)}
+    >
+      {group && <div className="tab">{group.name}</div>}
+      <Thumbnail blocks={page.blocks} />
+      <button
+        ref={menuRef}
+        className="icon-btn card-menu"
+        aria-label={`Options for ${page.title || 'Untitled'}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          showMenu();
+        }}
+      >
+        <Icon name="more" />
+      </button>
+      <div className="card-body">
+        <div className={'card-title' + (page.title ? '' : ' untitled')}>{page.title || 'Untitled'}</div>
+        <div className="card-meta">{timeAgo(page.updated)}</div>
+        {page.tags.length > 0 && (
+          <div className="chips">
+            {page.tags.slice(0, 4).map((t) => (
+              <span key={t} className="chip">#{t}</span>
+            ))}
+            {page.tags.length > 4 && <span className="chip">+{page.tags.length - 4}</span>}
+          </div>
+        )}
+      </div>
+    </article>
+  );
+});
