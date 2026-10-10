@@ -1,7 +1,8 @@
 import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Arrow, Block } from '../../types';
-import { blockHeight, sanitizeHtml } from '../../lib/util';
+import { blockHeight, colorVar, sanitizeHtml } from '../../lib/util';
 import { routeBetween } from '../../lib/arrows';
+import { hiddenBlockIds, paintOrder } from '../../lib/frames';
 import { useImageUrl } from '../../lib/useImageUrl';
 
 const PAD = 36;
@@ -20,10 +21,15 @@ export const Thumbnail = memo(function Thumbnail({ blocks, arrows = EMPTY_ARROWS
     return () => ro.disconnect();
   }, []);
 
+  const visible = useMemo(() => {
+    const hidden = hiddenBlockIds(blocks);
+    return blocks.filter((b) => !hidden.has(b.id));
+  }, [blocks]);
+
   const layout = useMemo(() => {
-    if (!blocks.length) return null;
+    if (!visible.length) return null;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const b of blocks) {
+    for (const b of visible) {
       minX = Math.min(minX, b.x);
       minY = Math.min(minY, b.y);
       maxX = Math.max(maxX, b.x + b.w);
@@ -33,9 +39,9 @@ export const Thumbnail = memo(function Thumbnail({ blocks, arrows = EMPTY_ARROWS
       minX, minY,
       w: maxX - minX + PAD * 2,
       h: maxY - minY + PAD * 2,
-      sorted: [...blocks].sort((a, b) => (a.z || 0) - (b.z || 0)),
+      sorted: paintOrder(visible),
     };
-  }, [blocks]);
+  }, [visible]);
 
   let transform = 'scale(0)';
   if (layout && box.w) {
@@ -59,7 +65,7 @@ export const Thumbnail = memo(function Thumbnail({ blocks, arrows = EMPTY_ARROWS
                 left: b.x - layout.minX + PAD,
                 top: b.y - layout.minY + PAD,
                 width: b.w,
-                ...(b.type === 'image' ? { height: b.h } : { minHeight: b.h }),
+                ...(b.type === 'image' || b.type === 'frame' ? { height: blockHeight(b) } : { minHeight: b.h }),
               }}
             >
               <StaticBody block={b} />
@@ -68,8 +74,8 @@ export const Thumbnail = memo(function Thumbnail({ blocks, arrows = EMPTY_ARROWS
           {arrows.length > 0 && (
             <svg className="mini-arrows" aria-hidden="true">
               {arrows.map((a) => {
-                const fromB = blocks.find((b) => b.id === a.from);
-                const toB = blocks.find((b) => b.id === a.to);
+                const fromB = visible.find((b) => b.id === a.from);
+                const toB = visible.find((b) => b.id === a.to);
                 if (!fromB || !toB) return null;
                 const route = routeBetween(
                   { x: fromB.x, y: fromB.y, w: fromB.w, h: blockHeight(fromB) },
@@ -128,6 +134,15 @@ export function StaticBody({ block: b }: { block: Block }) {
       );
     case 'image':
       return <StaticImage imageId={b.imageId} />;
+    case 'frame':
+      return (
+        <>
+          <div className="frame-body" style={{ background: `color-mix(in srgb, ${colorVar(b.color)} 12%, transparent)`, borderColor: colorVar(b.color) }} />
+          <div className="frame-head" style={{ background: colorVar(b.color) }}>
+            <span className="frame-title-static">{b.title || 'Frame'}</span>
+          </div>
+        </>
+      );
   }
 }
 

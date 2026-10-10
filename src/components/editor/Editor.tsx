@@ -219,6 +219,7 @@ const TOOLS: { type: BlockType; label: string }[] = [
   { type: 'checklist', label: 'List' },
   { type: 'code', label: 'Code' },
   { type: 'table', label: 'Table' },
+  { type: 'frame', label: 'Frame' },
 ];
 
 function AddToolbar({ pageId }: { pageId: string }) {
@@ -230,12 +231,13 @@ function AddToolbar({ pageId }: { pageId: string }) {
       fileRef.current?.click();
       return;
     }
+    const spot = type === 'frame' ? api.visibleSpot(360, 240) : api.visibleSpot(type === 'code' ? 432 : 300, 80);
     let id = '';
     flushSync(() => {
-      id = addBlock(pageId, type, api.visibleSpot(type === 'code' ? 432 : 300, 80));
+      id = addBlock(pageId, type, spot);
       setSelected([id]);
     });
-    api.focusBlock(id);
+    if (type !== 'frame') api.focusBlock(id);
   };
   const selectMode = useCanvas((s) => s.selectMode);
   return (

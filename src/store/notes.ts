@@ -7,6 +7,7 @@ import { deepClone, newId } from '../lib/util';
 import { isTauri, openStorage, type NotesStorage } from '../storage';
 import { history } from './history';
 import { effectiveParents, validParents } from '../lib/groups';
+import { containingFrame, ungroupedAfterDelete } from '../lib/frames';
 import { toast } from './ui';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -380,6 +381,7 @@ export const BLOCK_DEFAULTS: Record<Exclude<BlockType, 'image'>, () => NewBlockF
       ['', '', ''],
     ],
   }),
+  frame: () => ({ w: 360, h: 240, title: 'Frame', color: 'slate', collapsed: false }),
 };
 
 export const maxZ = (blocks: Block[]) => blocks.reduce((m, b) => Math.max(m, b.z || 0), 0);
@@ -398,6 +400,11 @@ export function addBlock(pageId: string, type: BlockType, pos: { x: number; y: n
     y: Math.max(0, Math.round(pos.y)),
     z: maxZ(page.blocks) + 1,
   } as Block;
+  // A box created on top of a frame joins it automatically, same as dropping one in.
+  if (type !== 'frame') {
+    const dest = containingFrame(page.blocks, block, new Set());
+    if (dest) block.frameId = dest.id;
+  }
   mutatePage(pageId, (p) => {
     p.blocks.push(block as Draft<Block>);
   });
@@ -405,9 +412,15 @@ export function addBlock(pageId: string, type: BlockType, pos: { x: number; y: n
 }
 
 export function deleteBlocks(pageId: string, ids: string[]) {
+  const page = get().pages[pageId];
+  if (!page) return;
   const drop = new Set(ids);
+  // Deleting a frame ungroups its contents instead of orphaning them: anything whose
+  // frameId chain leads to a deleted frame is reparented to the nearest surviving ancestor.
+  const reparent = ungroupedAfterDelete(page.blocks, drop);
   mutatePage(pageId, (p) => {
     p.blocks = p.blocks.filter((b) => !drop.has(b.id));
+    for (const b of p.blocks) if (reparent.has(b.id)) b.frameId = reparent.get(b.id) ?? null;
     p.arrows = p.arrows.filter((a) => !drop.has(a.from) && !drop.has(a.to));
   });
 }
@@ -416,34 +429,56 @@ export function duplicateBlocks(pageId: string, ids: string[]): string[] {
   const page = get().pages[pageId];
   if (!page) return [];
   let z = maxZ(page.blocks);
-  const copies = page.blocks
-    .filter((b) => ids.includes(b.id))
-    .map((b) => {
-      const c = deepClone(b) as Block;
-      c.id = newId();
-      c.x = b.x + 24;
-      c.y = b.y + 24;
-      c.z = ++z;
-      if (c.type === 'checklist') c.items.forEach((i) => (i.id = newId()));
-      return c;
-    });
+  const selected = page.blocks.filter((b) => ids.includes(b.id));
+  const idMap = new Map(selected.map((b) => [b.id, newId()]));
+  const copies = selected.map((b) => {
+    const c = deepClone(b) as Block;
+    c.id = idMap.get(b.id)!;
+    c.x = b.x + 24;
+    c.y = b.y + 24;
+    c.z = ++z;
+    // Keep pointing at the original frame if it wasn't duplicated too; re-point at the
+    // new copy if it was, so a duplicated frame+contents stay grouped together.
+    if (c.frameId) c.frameId = idMap.get(c.frameId) ?? c.frameId;
+    if (c.type === 'checklist') c.items.forEach((i) => (i.id = newId()));
+    return c;
+  });
   mutatePage(pageId, (p) => {
     p.blocks.push(...(copies as Draft<Block>[]));
   });
   return copies.map((c) => c.id);
 }
 
-/** Raise the given blocks above everything else. Not an undo step. */
+/** Groups ids by the frameId of the block they currently belong to. */
+function byParent(blocks: Block[], ids: string[]): Map<string | null, string[]> {
+  const groups = new Map<string | null, string[]>();
+  for (const id of ids) {
+    const parent = blocks.find((b) => b.id === id)?.frameId ?? null;
+    if (!groups.has(parent)) groups.set(parent, []);
+    groups.get(parent)!.push(id);
+  }
+  return groups;
+}
+
+/** Raise the given blocks above their siblings (within the same frame, if any). Not an undo step. */
 export function bringToFront(pageId: string, ids: string[]) {
   const page = get().pages[pageId];
   if (!page || !ids.length) return;
-  const topIds = [...page.blocks].sort((a, b) => (b.z || 0) - (a.z || 0)).slice(0, ids.length).map((b) => b.id);
-  if (ids.every((id) => topIds.includes(id))) return;
-  let z = maxZ(page.blocks);
+  const groups = byParent(page.blocks, ids);
+  const needsChange = [...groups].some(([parent, group]) => {
+    const siblings = page.blocks.filter((b) => (b.frameId ?? null) === parent);
+    const topIds = [...siblings].sort((a, b) => (b.z || 0) - (a.z || 0)).slice(0, group.length).map((b) => b.id);
+    return !group.every((id) => topIds.includes(id));
+  });
+  if (!needsChange) return;
   mutatePage(
     pageId,
     (p) => {
-      for (const b of p.blocks) if (ids.includes(b.id)) b.z = ++z;
+      for (const [parent, group] of groups) {
+        const siblings = p.blocks.filter((b) => (b.frameId ?? null) === parent);
+        let z = siblings.reduce((m, b) => Math.max(m, b.z || 0), 0);
+        for (const b of p.blocks) if (group.includes(b.id)) b.z = ++z;
+      }
     },
     { history: 'none', touch: false },
   );
@@ -452,9 +487,13 @@ export function bringToFront(pageId: string, ids: string[]) {
 export function sendToBack(pageId: string, ids: string[]) {
   const page = get().pages[pageId];
   if (!page) return;
-  let z = page.blocks.reduce((m, b) => Math.min(m, b.z || 0), Infinity) - ids.length;
+  const groups = byParent(page.blocks, ids);
   mutatePage(pageId, (p) => {
-    for (const b of p.blocks) if (ids.includes(b.id)) b.z = ++z;
+    for (const [parent, group] of groups) {
+      const siblings = p.blocks.filter((b) => (b.frameId ?? null) === parent);
+      let z = siblings.reduce((m, b) => Math.min(m, b.z || 0), Infinity) - group.length;
+      for (const b of p.blocks) if (group.includes(b.id)) b.z = ++z;
+    }
   });
 }
 
@@ -524,11 +563,10 @@ export function duplicatePage(id: string): Page | null {
   const src = get().pages[id];
   if (!src) return null;
   const c = deepClone(src);
-  const idMap = new Map<string, string>();
+  const idMap = new Map(c.blocks.map((b) => [b.id, newId()]));
   c.blocks.forEach((b) => {
-    const newBlockId = newId();
-    idMap.set(b.id, newBlockId);
-    b.id = newBlockId;
+    b.id = idMap.get(b.id)!;
+    if (b.frameId) b.frameId = idMap.get(b.frameId) ?? null;
     if (b.type === 'checklist') b.items.forEach((i) => (i.id = newId()));
   });
   c.arrows = c.arrows

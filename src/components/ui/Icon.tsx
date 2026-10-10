@@ -54,6 +54,8 @@ const PATHS = {
       <path d="M13 13l3.5 3.5" />
     </>
   ),
+  frame: <rect x="3" y="3" width="14" height="14" rx="1.5" strokeDasharray="2.5 2" />,
+  chevron: <path d="M6 8l4 4 4-4" />,
 } as const;
 
 export type IconName = keyof typeof PATHS | 'more' | 'grip';

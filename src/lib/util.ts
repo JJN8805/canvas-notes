@@ -82,7 +82,14 @@ export function textToHtml(text: string): string {
     .join('');
 }
 
-export const BLOCK_LABEL: Record<Block['type'], string> = { text: 'Text', image: 'Image', checklist: 'List', code: 'Code', table: 'Table' };
+export const BLOCK_LABEL: Record<Block['type'], string> = {
+  text: 'Text',
+  image: 'Image',
+  checklist: 'List',
+  code: 'Code',
+  table: 'Table',
+  frame: 'Frame',
+};
 
 export function blockText(b: Block): string {
   switch (b.type) {
@@ -99,7 +106,11 @@ export function blockText(b: Block): string {
   }
 }
 
+/** Height of a frame's always-visible title bar; a collapsed frame shrinks to just this. */
+export const FRAME_HEAD_H = 32;
+
 export function blockHeight(b: Block): number {
+  if (b.type === 'frame') return b.collapsed ? FRAME_HEAD_H : b.h;
   return b.type === 'image' ? b.h : Math.max(b.h, b.ah ?? 0);
 }
 

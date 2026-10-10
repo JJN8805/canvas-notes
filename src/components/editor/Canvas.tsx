@@ -21,7 +21,9 @@ import { canvasApi, editorRegistry, setSelectMode, setSelected, setSelectedArrow
 import { useUi } from '../../store/ui';
 import { blockHeight, clamp, isEditableTarget, modKey, sanitizeHtml, snap, textToHtml } from '../../lib/util';
 import { BlockFrame } from './BlockFrame';
+import { FrameChrome } from './FrameChrome';
 import { boundsOf, guideLines, nearestShift, type Guide, type Rect as BoxRect } from '../../lib/guides';
+import { containingFrame, frameDescendants, hiddenBlockIds, paintOrder } from '../../lib/frames';
 import { sidePoint, type Side } from '../../lib/arrows';
 import { ArrowLayer, type ConnectingLine } from './ArrowLayer';
 import { CanvasCtx, type CanvasCtxValue } from './context';
@@ -182,11 +184,18 @@ export function Canvas({ pageId }: { pageId: string }) {
         setSelected(sel);
       }
       blurInside();
-      bringToFront(pageId, sel);
 
       const page = useNotes.getState().pages[pageId];
       if (!page) return;
-      const starts = new Map(page.blocks.filter((b) => sel.includes(b.id)).map((b) => [b.id, { x: b.x, y: b.y }]));
+      // Dragging a frame also drags everything nested inside it.
+      const dragIds = new Set(sel);
+      for (const sid of sel) {
+        const b = page.blocks.find((x) => x.id === sid);
+        if (b?.type === 'frame') for (const d of frameDescendants(page.blocks, sid)) dragIds.add(d);
+      }
+      bringToFront(pageId, [...dragIds]);
+
+      const starts = new Map(page.blocks.filter((b) => dragIds.has(b.id)).map((b) => [b.id, { x: b.x, y: b.y }]));
       const anchor = starts.get(id)!;
       const minX = Math.min(...[...starts.values()].map((p) => p.x));
       const minY = Math.min(...[...starts.values()].map((p) => p.y));
@@ -277,6 +286,32 @@ export function Canvas({ pageId }: { pageId: string }) {
         }
         frame?.classList.remove('dragging');
         setGuides([]);
+        if (moved) {
+          // Re-test which frame (if any) each originally-dragged item now sits inside,
+          // so dropping a box into/out of a frame updates its membership. A moved frame
+          // can't be dropped into itself or one of its own descendants.
+          const latest = useNotes.getState().pages[pageId];
+          if (latest) {
+            const updates = new Map<string, string | null>();
+            for (const sid of sel) {
+              const b = latest.blocks.find((x) => x.id === sid);
+              if (!b) continue;
+              const rect: BoxRect = { x: b.x, y: b.y, w: b.w, h: heights.current.get(b.id) ?? blockHeight(b) };
+              const dest = containingFrame(latest.blocks, rect, dragIds);
+              const next = dest?.id ?? null;
+              if (next !== (b.frameId ?? null)) updates.set(sid, next);
+            }
+            if (updates.size) {
+              mutatePage(
+                pageId,
+                (p) => {
+                  for (const b of p.blocks) if (updates.has(b.id)) b.frameId = updates.get(b.id) ?? null;
+                },
+                { history: 'none', touch: false },
+              );
+            }
+          }
+        }
         endGesture(pageId);
         if (!moved) opts.onTap?.();
       };
@@ -539,8 +574,9 @@ export function Canvas({ pageId }: { pageId: string }) {
       if (!started && r.w < 4 && r.h < 4) return;
       started = true;
       setMarquee(r);
+      const hidden = hiddenBlockIds(blocksRef.current);
       const hits = blocksRef.current
-        .filter((b) => b.x < r.x + r.w && b.x + b.w > r.x && b.y < r.y + r.h && b.y + heightOf(b) > r.y)
+        .filter((b) => !hidden.has(b.id) && b.x < r.x + r.w && b.x + b.w > r.x && b.y < r.y + r.h && b.y + heightOf(b) > r.y)
         .map((b) => b.id);
       setSelected([...new Set([...base, ...hits])]);
     };
@@ -668,7 +704,8 @@ export function Canvas({ pageId }: { pageId: string }) {
       }
       if (mod && key === 'a') {
         e.preventDefault();
-        setSelected(blocksRef.current.map((b) => b.id));
+        const hidden = hiddenBlockIds(blocksRef.current);
+        setSelected(blocksRef.current.filter((b) => !hidden.has(b.id)).map((b) => b.id));
         return;
       }
 
@@ -701,11 +738,17 @@ export function Canvas({ pageId }: { pageId: string }) {
         const step = e.shiftKey ? 1 : 8;
         const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
         const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+        // Nudging a frame also nudges everything nested inside it.
+        const nudgeIds = new Set(sel);
+        for (const sid of sel) {
+          const b = blocksRef.current.find((x) => x.id === sid);
+          if (b?.type === 'frame') for (const d of frameDescendants(blocksRef.current, sid)) nudgeIds.add(d);
+        }
         mutatePage(
           pageId,
           (p) => {
             for (const b of p.blocks) {
-              if (!sel.includes(b.id)) continue;
+              if (!nudgeIds.has(b.id)) continue;
               b.x = Math.max(0, b.x + dx);
               b.y = Math.max(0, b.y + dy);
             }
@@ -765,6 +808,9 @@ export function Canvas({ pageId }: { pageId: string }) {
 
   const selSet = useMemo(() => new Set(selected), [selected]);
   const single = selected.length === 1;
+  const hidden = useMemo(() => hiddenBlockIds(blocks), [blocks]);
+  const ordered = useMemo(() => paintOrder(blocks).filter((b) => !hidden.has(b.id)), [blocks, hidden]);
+  const visibleBlocks = useMemo(() => blocks.filter((b) => !hidden.has(b.id)), [blocks, hidden]);
 
   return (
     <CanvasCtx.Provider value={ctx}>
@@ -808,10 +854,14 @@ export function Canvas({ pageId }: { pageId: string }) {
       >
         <div ref={sizerRef} className="sizer">
           <div ref={worldRef} className="world">
-            {blocks.map((b) => (
-              <BlockFrame key={b.id} block={b} selected={selSet.has(b.id)} single={single && selSet.has(b.id)} />
-            ))}
-            <ArrowLayer pageId={pageId} blocks={blocks} heights={heights} connecting={connecting} />
+            {ordered.map((b) =>
+              b.type === 'frame' ? (
+                <FrameChrome key={b.id} block={b} selected={selSet.has(b.id)} single={single && selSet.has(b.id)} />
+              ) : (
+                <BlockFrame key={b.id} block={b} selected={selSet.has(b.id)} single={single && selSet.has(b.id)} />
+              ),
+            )}
+            <ArrowLayer pageId={pageId} blocks={visibleBlocks} heights={heights} connecting={connecting} />
             {guides.map((g, i) =>
               g.axis === 'x' ? (
                 <div key={i} className="guide" style={{ left: g.pos, top: g.from, height: g.to - g.from, borderLeftWidth: 1 / zoom }} />

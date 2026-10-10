@@ -403,6 +403,37 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .b-image img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 4px; user-select: none; -webkit-user-drag: none; pointer-events: none; }
 .b-image .missing { width: 100%; height: 100%; display: grid; place-items: center; background: var(--sheet); border: 1px dashed var(--rule); color: var(--graphite); font-size: 13px; border-radius: 4px; }
 
+/* Frames: a labelled container that sits behind its boxes. The body ignores pointer
+   events so clicks/drags over its open interior fall through to the canvas (marquee
+   select, or whatever box is on top); only the title bar and resize handle are live. */
+.block.b-frame { pointer-events: none; border-radius: 8px; }
+.block.b-frame .resize { pointer-events: auto; }
+.world .block.b-frame.sel { outline: 2px solid var(--accent); outline-offset: 2px; }
+.frame-body { position: absolute; inset: 32px 0 0 0; border: 1px solid; border-top: none; border-radius: 0 0 8px 8px; }
+.frame-head {
+  position: absolute; top: 0; left: 0; right: 0; height: 32px; pointer-events: auto;
+  display: flex; align-items: center; gap: 2px; padding: 0 4px 0 6px; border-radius: 8px 8px 0 0;
+  color: #fff; cursor: grab; touch-action: none; font-size: 13px; font-weight: 600; overflow: hidden;
+}
+.block.b-frame.collapsed .frame-head { border-radius: 8px; }
+.frame-head:active { cursor: grabbing; }
+.frame-head button {
+  border: 0; background: transparent; color: inherit; height: 22px; min-width: 22px; padding: 0 4px;
+  border-radius: 5px; cursor: pointer; display: inline-grid; place-items: center; flex: none;
+}
+.frame-head button:hover { background: rgba(255, 255, 255, 0.22); }
+.frame-collapse svg { transition: transform 0.15s; }
+.block.b-frame.collapsed .frame-collapse svg { transform: rotate(-90deg); }
+.frame-title, .frame-title-static {
+  flex: 1; min-width: 0; border: 0; background: transparent; color: inherit; font-size: 13px; font-weight: 600;
+  padding: 0 2px; outline: none;
+}
+.frame-title::placeholder { color: rgba(255, 255, 255, 0.75); }
+.frame-title-static { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: block; }
+.frame-color-btn {
+  width: 13px; height: 13px; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, 0.85); padding: 0; flex: none; cursor: pointer;
+}
+
 /* ------------------------------------------------------------------
    Menus, dialogs, toasts
    ------------------------------------------------------------------ */

@@ -1,5 +1,5 @@
 import { memo, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
-import type { Block, TableBlock, TextBlock } from '../../types';
+import type { Block, FrameBlock, TableBlock, TextBlock } from '../../types';
 import { deleteBlocks, duplicateBlocks, sendToBack, updateBlock } from '../../store/notes';
 import { setSelected } from '../../store/canvas';
 import { BLOCK_LABEL, newId } from '../../lib/util';
@@ -10,12 +10,15 @@ import { useCanvasCtx } from './context';
 
 const LABEL = BLOCK_LABEL;
 
+/** Every block type except frames, which render through FrameChrome instead. */
+type NonFrameBlock = Exclude<Block, FrameBlock>;
+
 export const BlockFrame = memo(function BlockFrame({
   block,
   selected,
   single,
 }: {
-  block: Block;
+  block: NonFrameBlock;
   selected: boolean;
   /** True when this is the only selected block (shows the resize handle). */
   single: boolean;
@@ -34,7 +37,6 @@ export const BlockFrame = memo(function BlockFrame({
     left: block.x,
     top: block.y,
     width: block.w,
-    zIndex: block.z,
     ...(block.type === 'image' ? { height: block.h } : { minHeight: block.h }),
   };
 
@@ -63,7 +65,7 @@ export const BlockFrame = memo(function BlockFrame({
   );
 });
 
-function Body({ block }: { block: Block }) {
+function Body({ block }: { block: NonFrameBlock }) {
   switch (block.type) {
     case 'text':
       return <TextBody block={block} />;
@@ -78,7 +80,7 @@ function Body({ block }: { block: Block }) {
   }
 }
 
-function BlockBar({ block }: { block: Block }) {
+function BlockBar({ block }: { block: NonFrameBlock }) {
   const { pageId, startMove } = useCanvasCtx();
   const btn = (label: string, content: ReactNode, run: () => void) => (
     <button

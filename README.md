@@ -25,8 +25,9 @@ It runs on your laptop (Linux, also Windows and macOS) and on Android. The two k
   - A deleted page can be restored from the "Undo" toast.
 - **Snap guides.** While you drag or resize, a box's edges and centre snap to other boxes' edges and centres, and a pink line shows the match. Hold Alt to move freely.
 - **Connector arrows.** Hover a box to show four connection dots; drag from a dot onto another box to draw an arrow between them (dropping on empty space cancels). Arrows always take the shortest side-to-side route and stay attached as either box moves or resizes. Click an arrow to select it, then use its menu to set a label, choose arrowheads (none / one end / both) or switch between a solid and dashed line. Delete removes the selected arrow; deleting a box removes its arrows too, as one undo step.
+- **Frames.** Add a labelled, coloured area from the toolbar to group boxes together. Drag a frame by its title bar to move everything inside it; resizing a frame leaves its contents where they are. Frames can be nested inside other frames. Rename a frame inline, pick its colour from its title bar, and collapse it to a title bar only, hiding its boxes (and their arrows) until you expand it again. Deleting a frame keeps its boxes — they just stop belonging to it. Frames always sit behind boxes, and work with snap guides, undo/redo, sync, thumbnails and exports like any other box.
 - **Export** any page from its header (**Export**) or from its card's menu:
-  - **Markdown:** text, checklists, code and tables in reading order, with arrows listed under a **Connections** heading. Pages with pictures become a `.zip` holding the `.md` file and an `images/` folder.
+  - **Markdown:** text, checklists, code and tables in reading order, with arrows listed under a **Connections** heading and each frame's contents nested under a heading named after it. Pages with pictures become a `.zip` holding the `.md` file and an `images/` folder.
   - **PDF:** one page, sized to your content and drawn exactly as on the canvas. It's a picture of the page, so its text isn't selectable. Use Markdown when you need the text.
   - **PNG:** a sharp image of the page at twice screen resolution.
 - **Wi-Fi sync** between your phone and laptop. See below.
@@ -196,6 +197,7 @@ src/
   lib/guides.ts            snap-guide maths
   lib/arrows.ts            connector routing maths (shortest side-to-side route)
   lib/groups.ts            group tree (nesting, loop protection)
+  lib/frames.ts            frame containment tree (nesting, paint order, collapse)
   sync/
     engine.ts              what to send, fetch, or keep as a conflicted copy
     controller.ts          laptop service, phone connection, automatic syncing
@@ -222,6 +224,11 @@ Each page is one row; its `blocks` column is JSON:
 A page's `arrows` column is likewise JSON: each entry references two block ids (`from`/`to`)
 rather than storing its own position, so its route is always recomputed from the current
 blocks. Missing from a record written by an older app version, it's just treated as `[]`.
+
+A frame is just another entry in `blocks` (`"type": "frame"`, with its own `title`, `color`
+and `collapsed`), and a block names the frame it's inside via `frameId` — so frames need no
+schema changes, migration, or sync-engine code; undo/redo, sync and storage all already work
+generically off `blocks`.
 
 Pages and groups also carry three sync fields:
 - `etag`: changes on every save.

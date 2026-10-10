@@ -4,6 +4,7 @@ import TurndownService from 'turndown';
 import { zipSync } from 'fflate';
 import type { Arrow, Block, ChecklistBlock, CodeBlock, ImageBlock, Page, TableBlock, TextBlock } from '../types';
 import { BLOCK_LABEL, blockHeight, blockText } from '../lib/util';
+import { hiddenBlockIds, paintOrder } from '../lib/frames';
 import { routeBetween, type Rect as ArrowRect } from '../lib/arrows';
 import { getStorage, useNotes } from '../store/notes';
 import { toast } from '../store/ui';
@@ -37,7 +38,10 @@ function bounds(blocks: Block[]) {
  */
 export async function renderPage(page: Page, maxScale = 2): Promise<{ canvas: HTMLCanvasElement; width: number; height: number }> {
   const { toCanvas, getFontEmbedCSS } = await import('html-to-image');
-  const box = bounds(page.blocks);
+  // Boxes hidden behind a collapsed frame (and their arrows, below) are left out of exports too.
+  const hidden = hiddenBlockIds(page.blocks);
+  const visible = page.blocks.filter((b) => !hidden.has(b.id));
+  const box = bounds(visible);
   const host = document.createElement('div');
   host.className = 'export-root';
   host.style.cssText = `position:fixed;left:-100000px;top:0;width:${box.w}px;height:${box.h}px;`;
@@ -47,29 +51,27 @@ export async function renderPage(page: Page, maxScale = 2): Promise<{ canvas: HT
     flushSync(() =>
       root.render(
         <div className="export-page" style={{ width: box.w, height: box.h }}>
-          {[...page.blocks]
-            .sort((a, b) => (a.z || 0) - (b.z || 0))
-            .map((b) => (
-              <div
-                key={b.id}
-                className={`block b-${b.type}${b.type === 'text' && b.fill ? ' fill' : ''}`}
-                style={{
-                  left: b.x - box.x,
-                  top: b.y - box.y,
-                  width: b.w,
-                  ...(b.type === 'image' ? { height: b.h } : { minHeight: b.h }),
-                }}
-              >
-                <StaticBody block={b} />
-              </div>
-            ))}
+          {paintOrder(visible).map((b) => (
+            <div
+              key={b.id}
+              className={`block b-${b.type}${b.type === 'text' && b.fill ? ' fill' : ''}`}
+              style={{
+                left: b.x - box.x,
+                top: b.y - box.y,
+                width: b.w,
+                ...(b.type === 'image' || b.type === 'frame' ? { height: blockHeight(b) } : { minHeight: b.h }),
+              }}
+            >
+              <StaticBody block={b} />
+            </div>
+          ))}
         </div>,
       ),
     );
 
     // Wait for fonts and for every image to arrive and decode.
     await document.fonts.ready;
-    const expected = page.blocks.filter((b) => b.type === 'image').length;
+    const expected = visible.filter((b) => b.type === 'image').length;
     const deadline = Date.now() + 8000;
     while (host.querySelectorAll('img').length < expected && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
     await Promise.all(Array.from(host.querySelectorAll('img')).map((img) => img.decode().catch(() => undefined)));
@@ -110,8 +112,8 @@ export async function renderPage(page: Page, maxScale = 2): Promise<{ canvas: HT
       }
     }
     for (const a of page.arrows) {
-      const fromB = page.blocks.find((bl) => bl.id === a.from);
-      const toB = page.blocks.find((bl) => bl.id === a.to);
+      const fromB = visible.find((bl) => bl.id === a.from);
+      const toB = visible.find((bl) => bl.id === a.to);
       if (fromB && toB) drawArrow(ctx, a, fromB, toB, box);
     }
     return { canvas, width: box.w, height: box.h };
@@ -276,10 +278,17 @@ export function readingOrder(blocks: Block[]): Block[] {
   return rows.flatMap((r) => r.sort((a, b) => a.x - b.x));
 }
 
-export function pageToMarkdown(page: Page, imagePath: (b: ImageBlock) => string): string {
-  const out: string[] = [`# ${page.title || 'Untitled'}`];
-  if (page.tags.length) out.push(page.tags.map((t) => `#${t}`).join(' '));
-  for (const b of readingOrder(page.blocks)) {
+/** Emits one level of the containment tree: a frame becomes a heading (nesting depth
+ *  maps to heading depth) followed by its own contents, recursively; other blocks go
+ *  through the normal per-type rendering. `all` is the full (visible) block list, used
+ *  to look up each frame's direct children. */
+function blocksToMarkdown(blocks: Block[], all: Block[], imagePath: (b: ImageBlock) => string, headingDepth: number, out: string[]) {
+  for (const b of readingOrder(blocks)) {
+    if (b.type === 'frame') {
+      out.push(`${'#'.repeat(Math.min(headingDepth, 6))} ${b.title || 'Frame'}`);
+      blocksToMarkdown(all.filter((x) => x.frameId === b.id), all, imagePath, headingDepth + 1, out);
+      continue;
+    }
     switch (b.type) {
       case 'text': {
         const md = htmlToMarkdown((b as TextBlock).html);
@@ -311,7 +320,18 @@ export function pageToMarkdown(page: Page, imagePath: (b: ImageBlock) => string)
       }
     }
   }
-  if (page.arrows.length) {
+}
+
+export function pageToMarkdown(page: Page, imagePath: (b: ImageBlock) => string): string {
+  const out: string[] = [`# ${page.title || 'Untitled'}`];
+  if (page.tags.length) out.push(page.tags.map((t) => `#${t}`).join(' '));
+  // Boxes hidden behind a collapsed frame (and their arrows, below) are left out of exports too.
+  const hidden = hiddenBlockIds(page.blocks);
+  const visible = page.blocks.filter((b) => !hidden.has(b.id));
+  blocksToMarkdown(visible.filter((b) => !b.frameId), visible, imagePath, 2, out);
+  const visibleIds = new Set(visible.map((b) => b.id));
+  const arrows = page.arrows.filter((a) => visibleIds.has(a.from) && visibleIds.has(a.to));
+  if (arrows.length) {
     const labelOf = (id: string): string => {
       const b = page.blocks.find((x) => x.id === id);
       if (!b) return 'Deleted block';
@@ -321,7 +341,7 @@ export function pageToMarkdown(page: Page, imagePath: (b: ImageBlock) => string)
     };
     out.push(
       '## Connections\n\n' +
-        page.arrows
+        arrows
           .map((a) => {
             const glyph = a.heads === 'none' ? '—' : a.heads === 'both' ? '↔' : '→';
             const label = a.label ? ` (${a.label})` : '';
@@ -337,7 +357,8 @@ const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', '
 
 /** Markdown file, or a zip with the Markdown and an images/ folder when the page has pictures. */
 async function markdownExport(page: Page): Promise<{ bytes: Uint8Array<ArrayBuffer>; ext: 'md' | 'zip' }> {
-  const imageBlocks = page.blocks.filter((b): b is ImageBlock => b.type === 'image');
+  const hidden = hiddenBlockIds(page.blocks);
+  const imageBlocks = page.blocks.filter((b): b is ImageBlock => b.type === 'image' && !hidden.has(b.id));
   const enc = new TextEncoder();
   if (!imageBlocks.length) return { bytes: toArrayBufferBytes(enc.encode(pageToMarkdown(page, () => ''))), ext: 'md' };
 

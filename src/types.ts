@@ -1,4 +1,4 @@
-export type BlockType = 'text' | 'image' | 'checklist' | 'code' | 'table';
+export type BlockType = 'text' | 'image' | 'checklist' | 'code' | 'table' | 'frame';
 
 interface BlockBase {
   id: string;
@@ -12,6 +12,9 @@ interface BlockBase {
   z: number;
   /** Last measured rendered height, used for thumbnails and hit-testing. */
   ah?: number;
+  /** Id of the frame directly containing this block, if any. Shared by every
+   *  block type (including frames) so frames can nest inside frames. */
+  frameId?: string | null;
 }
 
 export interface TextBlock extends BlockBase {
@@ -42,7 +45,13 @@ export interface TableBlock extends BlockBase {
   type: 'table';
   rows: string[][];
 }
-export type Block = TextBlock | ImageBlock | ChecklistBlock | CodeBlock | TableBlock;
+export interface FrameBlock extends BlockBase {
+  type: 'frame';
+  title: string;
+  color: GroupColor;
+  collapsed: boolean;
+}
+export type Block = TextBlock | ImageBlock | ChecklistBlock | CodeBlock | TableBlock | FrameBlock;
 
 export type ArrowheadMode = 'none' | 'one' | 'both';
 export type LineStyle = 'solid' | 'dashed';
