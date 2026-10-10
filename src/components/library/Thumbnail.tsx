@@ -1,13 +1,15 @@
 import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { Block } from '../../types';
+import type { Arrow, Block } from '../../types';
 import { blockHeight, sanitizeHtml } from '../../lib/util';
+import { routeBetween } from '../../lib/arrows';
 import { useImageUrl } from '../../lib/useImageUrl';
 
 const PAD = 36;
 const MAX_SCALE = 0.42;
+const EMPTY_ARROWS: Arrow[] = [];
 
 /** A miniature of the page: the real blocks, laid out the same way, scaled to fit the card. */
-export const Thumbnail = memo(function Thumbnail({ blocks }: { blocks: Block[] }) {
+export const Thumbnail = memo(function Thumbnail({ blocks, arrows = EMPTY_ARROWS }: { blocks: Block[]; arrows?: Arrow[] }) {
   const ref = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
 
@@ -63,6 +65,24 @@ export const Thumbnail = memo(function Thumbnail({ blocks }: { blocks: Block[] }
               <StaticBody block={b} />
             </div>
           ))}
+          {arrows.length > 0 && (
+            <svg className="mini-arrows" aria-hidden="true">
+              {arrows.map((a) => {
+                const fromB = blocks.find((b) => b.id === a.from);
+                const toB = blocks.find((b) => b.id === a.to);
+                if (!fromB || !toB) return null;
+                const route = routeBetween(
+                  { x: fromB.x, y: fromB.y, w: fromB.w, h: blockHeight(fromB) },
+                  { x: toB.x, y: toB.y, w: toB.w, h: blockHeight(toB) },
+                );
+                const x1 = route.from.x - layout.minX + PAD, y1 = route.from.y - layout.minY + PAD;
+                const x2 = route.to.x - layout.minX + PAD, y2 = route.to.y - layout.minY + PAD;
+                return (
+                  <line key={a.id} x1={x1} y1={y1} x2={x2} y2={y2} strokeDasharray={a.style === 'dashed' ? '4 3' : undefined} />
+                );
+              })}
+            </svg>
+          )}
         </div>
       )}
     </div>

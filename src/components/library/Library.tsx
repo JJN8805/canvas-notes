@@ -601,7 +601,7 @@ const PageCard = memo(function PageCard({ page, group }: { page: Page; group: Gr
       onDragEnd={() => setDragging(false)}
     >
       {group && <div className="tab">{group.name}</div>}
-      <Thumbnail blocks={page.blocks} />
+      <Thumbnail blocks={page.blocks} arrows={page.arrows} />
       <button
         ref={menuRef}
         className="icon-btn card-menu"

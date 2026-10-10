@@ -82,6 +82,8 @@ export function textToHtml(text: string): string {
     .join('');
 }
 
+export const BLOCK_LABEL: Record<Block['type'], string> = { text: 'Text', image: 'Image', checklist: 'List', code: 'Code', table: 'Table' };
+
 export function blockText(b: Block): string {
   switch (b.type) {
     case 'text':

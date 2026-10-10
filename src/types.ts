@@ -44,12 +44,30 @@ export interface TableBlock extends BlockBase {
 }
 export type Block = TextBlock | ImageBlock | ChecklistBlock | CodeBlock | TableBlock;
 
+export type ArrowheadMode = 'none' | 'one' | 'both';
+export type LineStyle = 'solid' | 'dashed';
+
+/** A connector between two blocks. Endpoints are not stored: the route is always the
+ *  current shortest side-to-side path between the two blocks (see lib/arrows.ts), so
+ *  moving or resizing either block keeps the arrow attached automatically. */
+export interface Arrow {
+  id: string;
+  from: string;
+  to: string;
+  label?: string;
+  /** 'one' = head at `to` only. */
+  heads: ArrowheadMode;
+  style: LineStyle;
+  z: number;
+}
+
 export interface Page {
   id: string;
   title: string;
   groupId: string | null;
   tags: string[];
   blocks: Block[];
+  arrows: Arrow[];
   created: number;
   updated: number;
   /** Revision stored on disk. 0 means never saved. Used to detect edits from another window. */

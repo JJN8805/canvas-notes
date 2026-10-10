@@ -24,8 +24,9 @@ It runs on your laptop (Linux, also Windows and macOS) and on Android. The two k
   - On the laptop, you can drag a card onto a group in the sidebar.
   - A deleted page can be restored from the "Undo" toast.
 - **Snap guides.** While you drag or resize, a box's edges and centre snap to other boxes' edges and centres, and a pink line shows the match. Hold Alt to move freely.
+- **Connector arrows.** Hover a box to show four connection dots; drag from a dot onto another box to draw an arrow between them (dropping on empty space cancels). Arrows always take the shortest side-to-side route and stay attached as either box moves or resizes. Click an arrow to select it, then use its menu to set a label, choose arrowheads (none / one end / both) or switch between a solid and dashed line. Delete removes the selected arrow; deleting a box removes its arrows too, as one undo step.
 - **Export** any page from its header (**Export**) or from its card's menu:
-  - **Markdown:** text, checklists, code and tables in reading order. Pages with pictures become a `.zip` holding the `.md` file and an `images/` folder.
+  - **Markdown:** text, checklists, code and tables in reading order, with arrows listed under a **Connections** heading. Pages with pictures become a `.zip` holding the `.md` file and an `images/` folder.
   - **PDF:** one page, sized to your content and drawn exactly as on the canvas. It's a picture of the page, so its text isn't selectable. Use Markdown when you need the text.
   - **PNG:** a sharp image of the page at twice screen resolution.
 - **Wi-Fi sync** between your phone and laptop. See below.
@@ -44,6 +45,7 @@ It runs on your laptop (Linux, also Windows and macOS) and on Android. The two k
 | Ctrl + scroll, Ctrl + = / − / 0 | Zoom |
 | Alt while dragging | Turn off snapping (guides and the 8 px grid) |
 | Right-click a page card | Page menu (rename, export, move, delete) |
+| Delete, with an arrow selected | Remove the selected connector |
 
 **On a phone:**
 - **Double-tap empty space** for a new text box, and **tap a box** to edit it.
@@ -192,6 +194,7 @@ src/
     web.ts                 IndexedDB fallback for `npm run dev`
   export/export.tsx        PNG/PDF rendering, a tiny PDF writer, Markdown conversion, saving
   lib/guides.ts            snap-guide maths
+  lib/arrows.ts            connector routing maths (shortest side-to-side route)
   lib/groups.ts            group tree (nesting, loop protection)
   sync/
     engine.ts              what to send, fetch, or keep as a conflicted copy
@@ -215,6 +218,10 @@ Each page is one row; its `blocks` column is JSON:
 ```json
 { "id": "…", "type": "text", "x": 136, "y": 64, "w": 432, "h": 40, "z": 1, "html": "<p>…</p>" }
 ```
+
+A page's `arrows` column is likewise JSON: each entry references two block ids (`from`/`to`)
+rather than storing its own position, so its route is always recomputed from the current
+blocks. Missing from a record written by an older app version, it's just treated as `[]`.
 
 Pages and groups also carry three sync fields:
 - `etag`: changes on every save.

@@ -30,6 +30,7 @@ type PageRow = {
   group_id: string | null;
   tags: string;
   blocks: string;
+  arrows: string;
   created: number;
   updated: number;
   rev: number;
@@ -82,6 +83,8 @@ const MIGRATIONS: string[][] = [
   ],
   // v3: subgroups
   [`ALTER TABLE page_groups ADD COLUMN parent_id TEXT`],
+  // v4: connector arrows
+  [`ALTER TABLE pages ADD COLUMN arrows TEXT NOT NULL DEFAULT '[]'`],
 ];
 
 async function migrate(db: Database) {
@@ -116,6 +119,7 @@ function rowToPage(r: PageRow): Page {
     groupId: r.group_id,
     tags: parseJson(r.tags, []),
     blocks: parseJson(r.blocks, []),
+    arrows: parseJson(r.arrows, []),
     created: r.created,
     updated: r.updated,
     rev: r.rev,
@@ -131,6 +135,7 @@ function rowToPageRecord(r: PageRow): PageRecord {
     groupId: r.group_id,
     tags: parseJson(r.tags, []),
     blocks: parseJson(r.blocks, []),
+    arrows: parseJson(r.arrows, []),
     created: r.created,
     updated: r.updated,
   };
@@ -174,7 +179,10 @@ export async function createTauriStorage(): Promise<NotesStorage> {
   }
 
   /** Values in the order used by the page INSERT/UPDATE statements below. */
-  const pageValues = (r: PageRecord) => [r.id, r.title, r.groupId, JSON.stringify(r.tags), JSON.stringify(r.blocks), r.created, r.updated, r.etag, r.deleted ? 1 : 0];
+  const pageValues = (r: PageRecord) => [
+    r.id, r.title, r.groupId, JSON.stringify(r.tags), JSON.stringify(r.blocks), JSON.stringify(r.arrows ?? []),
+    r.created, r.updated, r.etag, r.deleted ? 1 : 0,
+  ];
   const groupValues = (r: GroupRecord) => [r.id, r.name, r.color, r.position, r.etag, r.deleted ? 1 : 0, r.parentId ?? null];
 
   const sync: SyncStore = {
@@ -197,10 +205,10 @@ export async function createTauriStorage(): Promise<NotesStorage> {
     async applyRemote(kind, rec) {
       if (kind === 'page') {
         await db.execute(
-          `INSERT INTO pages (id, title, group_id, tags, blocks, created, updated, etag, deleted, rev, synced)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, $8)
+          `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, etag, deleted, rev, synced)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1, $9)
            ON CONFLICT(id) DO UPDATE SET
-             title = excluded.title, group_id = excluded.group_id, tags = excluded.tags, blocks = excluded.blocks,
+             title = excluded.title, group_id = excluded.group_id, tags = excluded.tags, blocks = excluded.blocks, arrows = excluded.arrows,
              created = excluded.created, updated = excluded.updated, etag = excluded.etag, deleted = excluded.deleted,
              synced = excluded.etag, rev = pages.rev + 1`,
           pageValues(rec as PageRecord),
@@ -223,8 +231,8 @@ export async function createTauriStorage(): Promise<NotesStorage> {
         if (kind === 'page') {
           affected = (
             await db.execute(
-              `INSERT INTO pages (id, title, group_id, tags, blocks, created, updated, etag, deleted, rev, synced)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, $8) ON CONFLICT(id) DO NOTHING`,
+              `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, etag, deleted, rev, synced)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1, $9) ON CONFLICT(id) DO NOTHING`,
               pageValues(rec as PageRecord),
             )
           ).rowsAffected;
@@ -240,9 +248,9 @@ export async function createTauriStorage(): Promise<NotesStorage> {
       } else if (kind === 'page') {
         affected = (
           await db.execute(
-            `UPDATE pages SET title = $2, group_id = $3, tags = $4, blocks = $5, created = $6, updated = $7,
-               etag = $8, deleted = $9, synced = $8, rev = rev + 1
-             WHERE id = $1 AND etag = $10`,
+            `UPDATE pages SET title = $2, group_id = $3, tags = $4, blocks = $5, arrows = $6, created = $7, updated = $8,
+               etag = $9, deleted = $10, synced = $9, rev = rev + 1
+             WHERE id = $1 AND etag = $11`,
             [...pageValues(rec as PageRecord), base],
           )
         ).rowsAffected;
@@ -265,9 +273,9 @@ export async function createTauriStorage(): Promise<NotesStorage> {
 
     async insertLocalPage(r) {
       await db.execute(
-        `INSERT INTO pages (id, title, group_id, tags, blocks, created, updated, etag, deleted, rev, synced)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, 1, NULL)`,
-        [r.id, r.title, r.groupId, JSON.stringify(r.tags), JSON.stringify(r.blocks), r.created, r.updated, newEtag()],
+        `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, etag, deleted, rev, synced)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, 1, NULL)`,
+        [r.id, r.title, r.groupId, JSON.stringify(r.tags), JSON.stringify(r.blocks), JSON.stringify(r.arrows ?? []), r.created, r.updated, newEtag()],
       );
     },
 
@@ -320,11 +328,12 @@ export async function createTauriStorage(): Promise<NotesStorage> {
     async savePage(page): Promise<SaveResult> {
       const tags = JSON.stringify(page.tags);
       const blocks = JSON.stringify(page.blocks);
+      const arrows = JSON.stringify(page.arrows);
       const etag = newEtag();
       const upd = await db.execute(
-        `UPDATE pages SET title = $1, group_id = $2, tags = $3, blocks = $4, updated = $5, etag = $8, rev = rev + 1
-         WHERE id = $6 AND rev = $7 AND deleted = 0`,
-        [page.title, page.groupId, tags, blocks, page.updated, page.id, page.rev, etag],
+        `UPDATE pages SET title = $1, group_id = $2, tags = $3, blocks = $4, arrows = $5, updated = $6, etag = $9, rev = rev + 1
+         WHERE id = $7 AND rev = $8 AND deleted = 0`,
+        [page.title, page.groupId, tags, blocks, arrows, page.updated, page.id, page.rev, etag],
       );
       if (upd.rowsAffected > 0) return { ok: true, rev: page.rev + 1 };
 
@@ -333,17 +342,17 @@ export async function createTauriStorage(): Promise<NotesStorage> {
       if (existing.length) {
         // Deleted here or on the other device, but edited again: the edit brings the page back.
         await db.execute(
-          `UPDATE pages SET title = $1, group_id = $2, tags = $3, blocks = $4, updated = $5, etag = $6, deleted = 0, rev = rev + 1
-           WHERE id = $7`,
-          [page.title, page.groupId, tags, blocks, page.updated, etag, page.id],
+          `UPDATE pages SET title = $1, group_id = $2, tags = $3, blocks = $4, arrows = $5, updated = $6, etag = $7, deleted = 0, rev = rev + 1
+           WHERE id = $8`,
+          [page.title, page.groupId, tags, blocks, arrows, page.updated, etag, page.id],
         );
         const r = await db.select<{ rev: number }[]>('SELECT rev FROM pages WHERE id = $1', [page.id]);
         return { ok: true, rev: r[0]?.rev ?? existing[0].rev + 1 };
       }
       await db.execute(
-        `INSERT INTO pages (id, title, group_id, tags, blocks, created, updated, rev, etag, synced, deleted)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, NULL, 0)`,
-        [page.id, page.title, page.groupId, tags, blocks, page.created, page.updated, etag],
+        `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, rev, etag, synced, deleted)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, NULL, 0)`,
+        [page.id, page.title, page.groupId, tags, blocks, arrows, page.created, page.updated, etag],
       );
       return { ok: true, rev: 1 };
     },

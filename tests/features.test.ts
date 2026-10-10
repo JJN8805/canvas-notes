@@ -45,6 +45,7 @@ describe('snap guides', () => {
 
 const page: Page = {
   id: 'p', title: 'Groundwater model', groupId: null, tags: ['research', 'ml'], created: 1, updated: 1, rev: 1,
+  arrows: [],
   blocks: [
     { id: 'c', type: 'code', x: 400, y: 300, w: 300, h: 50, z: 1, code: 'print("hi")' },
     { id: 't', type: 'text', x: 0, y: 0, w: 300, h: 40, z: 1, html: '<h2>Goals</h2><p>Predict <strong>levels</strong> with <s>LSTM</s> GBMs.</p><ul><li><p>One</p></li></ul>' },
@@ -72,6 +73,18 @@ describe('Markdown export', () => {
         '| Model | RMSE |\n| --- | --- |\n| GBM | 0.41 |\n| a\\|b |   |',
       ].join('\n\n') + '\n',
     );
+  });
+
+  it('lists connectors as a Connections section, falling back to block type when a block has no text', () => {
+    const withArrows: Page = {
+      ...page,
+      arrows: [
+        { id: 'a1', from: 't', to: 'c', heads: 'one', style: 'solid', z: 1 },
+        { id: 'a2', from: 'i', to: 'tb', heads: 'both', style: 'dashed', label: 'depends on', z: 2 },
+      ],
+    };
+    const md = pageToMarkdown(withArrows, (b) => `images/${b.imageId}.png`);
+    expect(md).toContain('## Connections\n\n- Goals → print("hi")\n- Image ↔ Model RMSE GBM 0.41 a|b (depends on)');
   });
 });
 

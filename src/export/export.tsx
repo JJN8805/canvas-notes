@@ -2,8 +2,9 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import TurndownService from 'turndown';
 import { zipSync } from 'fflate';
-import type { Block, ChecklistBlock, CodeBlock, ImageBlock, Page, TableBlock, TextBlock } from '../types';
-import { blockHeight } from '../lib/util';
+import type { Arrow, Block, ChecklistBlock, CodeBlock, ImageBlock, Page, TableBlock, TextBlock } from '../types';
+import { BLOCK_LABEL, blockHeight, blockText } from '../lib/util';
+import { routeBetween, type Rect as ArrowRect } from '../lib/arrows';
 import { getStorage, useNotes } from '../store/notes';
 import { toast } from '../store/ui';
 import { isTauri } from '../storage';
@@ -108,11 +109,66 @@ export async function renderPage(page: Page, maxScale = 2): Promise<{ canvas: HT
         el.style.cssText = saved;
       }
     }
+    for (const a of page.arrows) {
+      const fromB = page.blocks.find((bl) => bl.id === a.from);
+      const toB = page.blocks.find((bl) => bl.id === a.to);
+      if (fromB && toB) drawArrow(ctx, a, fromB, toB, box);
+    }
     return { canvas, width: box.w, height: box.h };
   } finally {
     root.unmount();
     host.remove();
   }
+}
+
+function rectOfBlock(b: Block): ArrowRect {
+  return { x: b.x, y: b.y, w: b.w, h: blockHeight(b) };
+}
+
+function drawArrowhead(ctx: CanvasRenderingContext2D, tip: { x: number; y: number }, ux: number, uy: number) {
+  const size = 9;
+  const backX = tip.x - ux * size, backY = tip.y - uy * size;
+  const px = -uy, py = ux, w = size * 0.42;
+  ctx.beginPath();
+  ctx.moveTo(tip.x, tip.y);
+  ctx.lineTo(backX + px * w, backY + py * w);
+  ctx.lineTo(backX - px * w, backY - py * w);
+  ctx.closePath();
+  ctx.fill();
+}
+
+/** Draws one connector: a line between the two blocks' nearest sides, its arrowhead(s) and label. */
+function drawArrow(ctx: CanvasRenderingContext2D, a: Arrow, fromB: Block, toB: Block, box: { x: number; y: number }) {
+  const route = routeBetween(rectOfBlock(fromB), rectOfBlock(toB));
+  const p1 = { x: route.from.x - box.x, y: route.from.y - box.y };
+  const p2 = { x: route.to.x - box.x, y: route.to.y - box.y };
+  const dx = p2.x - p1.x, dy = p2.y - p1.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  ctx.save();
+  ctx.strokeStyle = '#17202a';
+  ctx.fillStyle = '#17202a';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash(a.style === 'dashed' ? [6, 4] : []);
+  ctx.beginPath();
+  ctx.moveTo(p1.x, p1.y);
+  ctx.lineTo(p2.x, p2.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  if (a.heads === 'one' || a.heads === 'both') drawArrowhead(ctx, p2, ux, uy);
+  if (a.heads === 'both') drawArrowhead(ctx, p1, -ux, -uy);
+  if (a.label) {
+    const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+    ctx.font = '13px sans-serif';
+    const w = ctx.measureText(a.label).width;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(mid.x - w / 2 - 4, mid.y - 9, w + 8, 18);
+    ctx.fillStyle = '#17202a';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(a.label, mid.x, mid.y);
+  }
+  ctx.restore();
 }
 
 /** Like CSS object-fit: cover, with rounded corners. */
@@ -254,6 +310,25 @@ export function pageToMarkdown(page: Page, imagePath: (b: ImageBlock) => string)
         break;
       }
     }
+  }
+  if (page.arrows.length) {
+    const labelOf = (id: string): string => {
+      const b = page.blocks.find((x) => x.id === id);
+      if (!b) return 'Deleted block';
+      const text = blockText(b).split('\n').map((l) => l.trim()).find((l) => l);
+      if (text) return text.length > 40 ? text.slice(0, 40) + '…' : text;
+      return BLOCK_LABEL[b.type];
+    };
+    out.push(
+      '## Connections\n\n' +
+        page.arrows
+          .map((a) => {
+            const glyph = a.heads === 'none' ? '—' : a.heads === 'both' ? '↔' : '→';
+            const label = a.label ? ` (${a.label})` : '';
+            return `- ${labelOf(a.from)} ${glyph} ${labelOf(a.to)}${label}`;
+          })
+          .join('\n'),
+    );
   }
   return out.join('\n\n') + '\n';
 }

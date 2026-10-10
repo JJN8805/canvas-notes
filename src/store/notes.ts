@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { Draft } from 'immer';
-import type { Block, BlockType, Filter, Group, GroupColor, Page, SortKey } from '../types';
+import type { Arrow, Block, BlockType, Filter, Group, GroupColor, Page, SortKey } from '../types';
 import { GROUP_COLORS } from '../types';
 import { deepClone, newId } from '../lib/util';
 import { isTauri, openStorage, type NotesStorage } from '../storage';
@@ -295,8 +295,8 @@ export function mutatePage(
   });
   const after = get().pages[id];
   if (!after || after === before) return;
-  if (mode !== 'none' && after.blocks !== before.blocks) {
-    history.record(id, before.blocks, typeof mode === 'object' ? mode.key : null);
+  if (mode !== 'none' && (after.blocks !== before.blocks || after.arrows !== before.arrows)) {
+    history.record(id, { blocks: before.blocks, arrows: before.arrows }, typeof mode === 'object' ? mode.key : null);
     bumpHistory();
   }
   markDirty(id);
@@ -320,12 +320,12 @@ export function updateBlock<T extends Block>(
 
 export function beginGesture(pageId: string) {
   const p = get().pages[pageId];
-  if (p) history.beginGesture(pageId, p.blocks);
+  if (p) history.beginGesture(pageId, { blocks: p.blocks, arrows: p.arrows });
 }
 export function endGesture(pageId: string) {
   const p = get().pages[pageId];
   if (!p) return;
-  if (history.endGesture(pageId, p.blocks)) {
+  if (history.endGesture(pageId, { blocks: p.blocks, arrows: p.arrows })) {
     bumpHistory();
     mutatePage(pageId, () => {}, { history: 'none' });
   }
@@ -334,10 +334,11 @@ export function endGesture(pageId: string) {
 export function undo(pageId: string): boolean {
   const cur = get().pages[pageId];
   if (!cur) return false;
-  const prev = history.undo(pageId, cur.blocks);
+  const prev = history.undo(pageId, { blocks: cur.blocks, arrows: cur.arrows });
   if (!prev) return false;
   set((s) => {
-    s.pages[pageId].blocks = prev as Draft<Block>[];
+    s.pages[pageId].blocks = prev.blocks as Draft<Block>[];
+    s.pages[pageId].arrows = prev.arrows as Draft<Arrow>[];
     s.pages[pageId].updated = Date.now();
   });
   bumpHistory();
@@ -348,10 +349,11 @@ export function undo(pageId: string): boolean {
 export function redo(pageId: string): boolean {
   const cur = get().pages[pageId];
   if (!cur) return false;
-  const next = history.redo(pageId, cur.blocks);
+  const next = history.redo(pageId, { blocks: cur.blocks, arrows: cur.arrows });
   if (!next) return false;
   set((s) => {
-    s.pages[pageId].blocks = next as Draft<Block>[];
+    s.pages[pageId].blocks = next.blocks as Draft<Block>[];
+    s.pages[pageId].arrows = next.arrows as Draft<Arrow>[];
     s.pages[pageId].updated = Date.now();
   });
   bumpHistory();
@@ -406,6 +408,7 @@ export function deleteBlocks(pageId: string, ids: string[]) {
   const drop = new Set(ids);
   mutatePage(pageId, (p) => {
     p.blocks = p.blocks.filter((b) => !drop.has(b.id));
+    p.arrows = p.arrows.filter((a) => !drop.has(a.from) && !drop.has(a.to));
   });
 }
 
@@ -456,6 +459,41 @@ export function sendToBack(pageId: string, ids: string[]) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Arrows                                                              */
+/* ------------------------------------------------------------------ */
+
+export const maxArrowZ = (arrows: Arrow[]) => arrows.reduce((m, a) => Math.max(m, a.z || 0), 0);
+
+export function addArrow(pageId: string, from: string, to: string): string {
+  const page = get().pages[pageId];
+  if (!page || from === to) return '';
+  const id = newId();
+  const arrow: Arrow = { id, from, to, heads: 'one', style: 'solid', z: maxArrowZ(page.arrows) + 1 };
+  mutatePage(pageId, (p) => {
+    p.arrows.push(arrow as Draft<Arrow>);
+  });
+  return id;
+}
+
+export function updateArrow(pageId: string, arrowId: string, recipe: (a: Draft<Arrow>) => void, opts?: { history?: HistoryMode; touch?: boolean }) {
+  mutatePage(
+    pageId,
+    (p) => {
+      const a = p.arrows.find((x) => x.id === arrowId);
+      if (a) recipe(a);
+    },
+    opts,
+  );
+}
+
+export function deleteArrows(pageId: string, ids: string[]) {
+  const drop = new Set(ids);
+  mutatePage(pageId, (p) => {
+    p.arrows = p.arrows.filter((a) => !drop.has(a.id));
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* Pages                                                               */
 /* ------------------------------------------------------------------ */
 
@@ -468,6 +506,7 @@ export function createPage(partial: Partial<Page> = {}): Page {
     groupId: f.kind === 'group' ? f.id : null,
     tags: f.kind === 'tag' ? [f.tag] : [],
     blocks: [],
+    arrows: [],
     created: now,
     updated: now,
     rev: 0,
@@ -485,10 +524,16 @@ export function duplicatePage(id: string): Page | null {
   const src = get().pages[id];
   if (!src) return null;
   const c = deepClone(src);
+  const idMap = new Map<string, string>();
   c.blocks.forEach((b) => {
-    b.id = newId();
+    const newBlockId = newId();
+    idMap.set(b.id, newBlockId);
+    b.id = newBlockId;
     if (b.type === 'checklist') b.items.forEach((i) => (i.id = newId()));
   });
+  c.arrows = c.arrows
+    .filter((a) => idMap.has(a.from) && idMap.has(a.to))
+    .map((a) => ({ ...a, id: newId(), from: idMap.get(a.from)!, to: idMap.get(a.to)! }));
   return createPage({ ...c, id: newId(), title: `${src.title || 'Untitled'} copy`, created: Date.now(), rev: 0 });
 }
 

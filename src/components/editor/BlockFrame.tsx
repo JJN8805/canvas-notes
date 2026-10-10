@@ -2,13 +2,13 @@ import { memo, useLayoutEffect, useRef, type CSSProperties, type ReactNode } fro
 import type { Block, TableBlock, TextBlock } from '../../types';
 import { deleteBlocks, duplicateBlocks, sendToBack, updateBlock } from '../../store/notes';
 import { setSelected } from '../../store/canvas';
-import { newId } from '../../lib/util';
+import { BLOCK_LABEL, newId } from '../../lib/util';
 import { Icon, type IconName } from '../ui/Icon';
 import { TextBody } from '../blocks/TextBody';
 import { ChecklistBody, CodeBody, ImageBody, TableBody } from '../blocks/Bodies';
 import { useCanvasCtx } from './context';
 
-const LABEL: Record<Block['type'], string> = { text: 'Text', image: 'Image', checklist: 'List', code: 'Code', table: 'Table' };
+const LABEL = BLOCK_LABEL;
 
 export const BlockFrame = memo(function BlockFrame({
   block,
@@ -48,6 +48,14 @@ export const BlockFrame = memo(function BlockFrame({
         <BlockBar block={block} />
       </div>
       <Body block={block} />
+      {(['top', 'right', 'bottom', 'left'] as const).map((side) => (
+        <div
+          key={side}
+          className={`dot dot-${side}`}
+          aria-hidden="true"
+          onPointerDown={(e) => ctx.startConnect(e, block.id, side)}
+        />
+      ))}
       {selected && single && (
         <div className="resize" aria-hidden="true" title="Drag to resize" onPointerDown={(e) => ctx.startResize(e, block.id)} />
       )}
