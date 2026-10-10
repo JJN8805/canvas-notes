@@ -3,9 +3,11 @@ import { flushSync } from 'react-dom';
 import type React from 'react';
 import type { Block } from '../../types';
 import {
+  addArrow,
   addBlock,
   beginGesture,
   bringToFront,
+  deleteArrows,
   deleteBlocks,
   duplicateBlocks,
   endGesture,
@@ -15,11 +17,13 @@ import {
   useNotes,
 } from '../../store/notes';
 import { addImages, imageFiles } from '../../store/images';
-import { canvasApi, editorRegistry, setSelectMode, setSelected, useCanvas, type Point } from '../../store/canvas';
+import { canvasApi, editorRegistry, setSelectMode, setSelected, setSelectedArrow, useCanvas, type Point } from '../../store/canvas';
 import { useUi } from '../../store/ui';
 import { blockHeight, clamp, isEditableTarget, modKey, sanitizeHtml, snap, textToHtml } from '../../lib/util';
 import { BlockFrame } from './BlockFrame';
 import { boundsOf, guideLines, nearestShift, type Guide, type Rect as BoxRect } from '../../lib/guides';
+import { sidePoint, type Side } from '../../lib/arrows';
+import { ArrowLayer, type ConnectingLine } from './ArrowLayer';
 import { CanvasCtx, type CanvasCtxValue } from './context';
 
 const EMPTY: Block[] = [];
@@ -50,6 +54,7 @@ export function Canvas({ pageId }: { pageId: string }) {
   const [panMode, setPanMode] = useState<'off' | 'ready' | 'panning'>('off');
   const [dropping, setDropping] = useState(false);
   const [guides, setGuidesState] = useState<Guide[]>([]);
+  const [connecting, setConnecting] = useState<ConnectingLine | null>(null);
   const guidesKey = useRef('');
   const setGuides = useCallback((g: Guide[]) => {
     const key = JSON.stringify(g);
@@ -355,6 +360,58 @@ export function Canvas({ pageId }: { pageId: string }) {
     [pageId, setGuides],
   );
 
+  const startConnect = useCallback(
+    (e: React.PointerEvent, blockId: string, side: Side) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const b = useNotes.getState().pages[pageId]?.blocks.find((x) => x.id === blockId);
+      if (!b) return;
+      const rect: BoxRect = { x: b.x, y: b.y, w: b.w, h: heightOf(b) };
+      const start = sidePoint(rect, side);
+      const target = e.currentTarget as HTMLElement;
+      target.setPointerCapture(e.pointerId);
+      let hoverId: string | null = null;
+      let hoverEl: HTMLElement | null = null;
+      let last = { clientX: e.clientX, clientY: e.clientY };
+      let raf = 0;
+
+      const apply = () => {
+        raf = 0;
+        const p = worldPoint(last.clientX, last.clientY);
+        setConnecting({ x1: start.x, y1: start.y, x2: p.x, y2: p.y });
+        const el = document.elementFromPoint(last.clientX, last.clientY)?.closest<HTMLElement>('.block');
+        const id = el?.dataset.id && el.dataset.id !== blockId ? el.dataset.id : null;
+        if (id !== hoverId) {
+          hoverEl?.classList.remove('connect-target');
+          hoverId = id;
+          hoverEl = id ? el! : null;
+          hoverEl?.classList.add('connect-target');
+        }
+      };
+      const move = (ev: PointerEvent) => {
+        last = ev;
+        if (!raf) raf = requestAnimationFrame(apply);
+      };
+      const up = () => {
+        target.removeEventListener('pointermove', move);
+        target.removeEventListener('pointerup', up);
+        target.removeEventListener('pointercancel', up);
+        if (raf) cancelAnimationFrame(raf);
+        hoverEl?.classList.remove('connect-target');
+        setConnecting(null);
+        if (hoverId) {
+          const id = addArrow(pageId, blockId, hoverId);
+          if (id) setSelectedArrow(id);
+        }
+      };
+      target.addEventListener('pointermove', move);
+      target.addEventListener('pointerup', up);
+      target.addEventListener('pointercancel', up);
+    },
+    [pageId, worldPoint],
+  );
+
   const longPress = useRef<(() => void) | null>(null);
   const cancelLongPress = () => {
     longPress.current?.();
@@ -403,7 +460,7 @@ export function Canvas({ pageId }: { pageId: string }) {
         setSelected(sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]);
         return;
       }
-      if ((e.target as HTMLElement).closest('.grip, .resize, .bar button')) return;
+      if ((e.target as HTMLElement).closest('.grip, .resize, .bar button, .dot')) return;
       if (!(sel.length === 1 && sel[0] === id)) setSelected([id]);
       bringToFront(pageId, [id]);
     },
@@ -430,8 +487,8 @@ export function Canvas({ pageId }: { pageId: string }) {
   );
 
   const ctx = useMemo<CanvasCtxValue>(
-    () => ({ pageId, startMove, startResize, pointerDownBlock, reportHeight }),
-    [pageId, startMove, startResize, pointerDownBlock, reportHeight],
+    () => ({ pageId, startMove, startResize, startConnect, pointerDownBlock, reportHeight }),
+    [pageId, startMove, startResize, startConnect, pointerDownBlock, reportHeight],
   );
 
   /* ---------- empty-canvas gestures: marquee, pan ---------- */
@@ -616,7 +673,17 @@ export function Canvas({ pageId }: { pageId: string }) {
       }
 
       const sel = useCanvas.getState().selected;
-      if (!sel.length) return;
+      if (!sel.length) {
+        const arrowSel = useCanvas.getState().selectedArrow;
+        if (arrowSel && (e.key === 'Delete' || e.key === 'Backspace')) {
+          e.preventDefault();
+          deleteArrows(pageId, [arrowSel]);
+          setSelectedArrow(null);
+        } else if (arrowSel && e.key === 'Escape') {
+          setSelectedArrow(null);
+        }
+        return;
+      }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         deleteBlocks(pageId, sel);
@@ -744,6 +811,7 @@ export function Canvas({ pageId }: { pageId: string }) {
             {blocks.map((b) => (
               <BlockFrame key={b.id} block={b} selected={selSet.has(b.id)} single={single && selSet.has(b.id)} />
             ))}
+            <ArrowLayer pageId={pageId} blocks={blocks} heights={heights} connecting={connecting} />
             {guides.map((g, i) =>
               g.axis === 'x' ? (
                 <div key={i} className="guide" style={{ left: g.pos, top: g.from, height: g.to - g.from, borderLeftWidth: 1 / zoom }} />

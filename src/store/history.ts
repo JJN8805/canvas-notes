@@ -1,18 +1,24 @@
-import type { Block } from '../types';
+import type { Arrow, Block } from '../types';
 
 /**
- * Per-page undo/redo for canvas edits. Snapshots are the page's `blocks` array.
- * Because the store uses immer, unchanged blocks are shared between snapshots,
- * so keeping 200 steps is cheap.
+ * Per-page undo/redo for canvas edits. Snapshots are the page's `blocks` and
+ * `arrows` arrays together, so a box delete and the arrows it took with it
+ * undo as one step. Because the store uses immer, unchanged arrays are shared
+ * between snapshots, so keeping 200 steps is cheap.
  *
  * Typing in one box is coalesced into a single step (same `key`) until something
  * else happens, so one undo reverts one editing session rather than one keystroke.
  */
+export interface Snapshot {
+  blocks: Block[];
+  arrows: Arrow[];
+}
+
 interface Stack {
-  past: Block[][];
-  future: Block[][];
+  past: Snapshot[];
+  future: Snapshot[];
   key: string | null;
-  gesture: Block[] | null;
+  gesture: Snapshot | null;
 }
 
 const LIMIT = 200;
@@ -28,7 +34,7 @@ function stack(pageId: string): Stack {
 }
 
 export const history = {
-  record(pageId: string, before: Block[], key: string | null) {
+  record(pageId: string, before: Snapshot, key: string | null) {
     const s = stack(pageId);
     if (key && s.key === key) return;
     s.past.push(before);
@@ -37,19 +43,19 @@ export const history = {
     s.key = key;
   },
   /** Start of a drag or resize: remember the layout before it. */
-  beginGesture(pageId: string, current: Block[]) {
+  beginGesture(pageId: string, current: Snapshot) {
     stack(pageId).gesture = current;
   },
   /** End of a drag or resize: one undo step if anything changed. Returns true if a step was added. */
-  endGesture(pageId: string, current: Block[]): boolean {
+  endGesture(pageId: string, current: Snapshot): boolean {
     const s = stack(pageId);
     const before = s.gesture;
     s.gesture = null;
-    if (!before || before === current) return false;
+    if (!before || (before.blocks === current.blocks && before.arrows === current.arrows)) return false;
     this.record(pageId, before, null);
     return true;
   },
-  undo(pageId: string, current: Block[]): Block[] | null {
+  undo(pageId: string, current: Snapshot): Snapshot | null {
     const s = stack(pageId);
     const prev = s.past.pop();
     if (!prev) return null;
@@ -57,7 +63,7 @@ export const history = {
     s.key = null;
     return prev;
   },
-  redo(pageId: string, current: Block[]): Block[] | null {
+  redo(pageId: string, current: Snapshot): Snapshot | null {
     const s = stack(pageId);
     const next = s.future.pop();
     if (!next) return null;

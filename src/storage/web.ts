@@ -27,7 +27,7 @@ interface Schema extends DBSchema {
 const rowToPage = (r: PageRow): Page => normalizePage({ ...r });
 const pageRecord = (r: PageRow): PageRecord => ({
   id: r.id, etag: r.etag, deleted: r.deleted, title: r.title, groupId: r.groupId,
-  tags: r.tags, blocks: r.blocks, created: r.created, updated: r.updated,
+  tags: r.tags, blocks: r.blocks, arrows: r.arrows, created: r.created, updated: r.updated,
 });
 const groupRecord = (r: GroupRow): GroupRecord => ({
   id: r.id, etag: r.etag, deleted: r.deleted, name: r.name, color: r.color, position: r.position, parentId: r.parentId ?? null,
@@ -173,7 +173,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
       // A deleted page that is edited again comes back.
       const rev = existing ? existing.rev + 1 : 1;
       await tx.store.put({
-        id: page.id, title: page.title, groupId: page.groupId, tags: page.tags, blocks: page.blocks,
+        id: page.id, title: page.title, groupId: page.groupId, tags: page.tags, blocks: page.blocks, arrows: page.arrows,
         created: page.created, updated: page.updated, rev, etag: newEtag(), synced: existing?.synced ?? null, deleted: false,
       });
       await tx.done;

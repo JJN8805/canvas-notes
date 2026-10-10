@@ -1,4 +1,4 @@
-import type { Block, Group, GroupColor, Page } from '../types';
+import type { Arrow, Block, Group, GroupColor, Page } from '../types';
 
 export type SaveResult = { ok: true; rev: number } | { ok: false; reason: 'conflict' };
 
@@ -29,6 +29,7 @@ export interface PageRecord {
   groupId: string | null;
   tags: string[];
   blocks: Block[];
+  arrows: Arrow[];
   created: number;
   updated: number;
 }
@@ -108,6 +109,7 @@ export function normalizePage(p: Partial<Page> & { id: string }): Page {
     groupId: p.groupId ?? null,
     tags: Array.isArray(p.tags) ? p.tags : [],
     blocks: Array.isArray(p.blocks) ? p.blocks : [],
+    arrows: Array.isArray(p.arrows) ? p.arrows : [],
     created: p.created ?? Date.now(),
     updated: p.updated ?? p.created ?? Date.now(),
     rev: p.rev ?? 0,

@@ -6,7 +6,7 @@ vi.mock('@tauri-apps/plugin-fs', () => fakeFs);
 vi.mock('@tauri-apps/api/path', () => ({ appConfigDir: async () => '/config' }));
 
 import { createTauriStorage } from '../src/storage/tauri';
-import type { NotesStorage } from '../src/storage/types';
+import type { NotesStorage, PageRecord } from '../src/storage/types';
 import type { Page } from '../src/types';
 import { handleRequest, syncWithLaptop, type SyncRequest } from '../src/sync/engine';
 
@@ -42,7 +42,7 @@ const send = <T,>(req: SyncRequest): Promise<T> =>
 const sync = () => syncWithLaptop(phone.sync, send);
 
 function page(id: string, title: string, extra: Partial<Page> = {}): Page {
-  return { id, title, groupId: null, tags: [], blocks: [], created: 1, updated: 1, rev: 0, ...extra };
+  return { id, title, groupId: null, tags: [], blocks: [], arrows: [], created: 1, updated: 1, rev: 0, ...extra };
 }
 
 /** Save the way the app does: with the revision last read from disk. */
@@ -175,6 +175,32 @@ describe('Wi-Fi sync', () => {
     expect((await laptop.loadAll()).groups).toEqual([{ id: 'old', name: 'From old phone', color: 'plum', parentId: null }]);
   });
 
+  it('reads a page sent by an older app version (no arrows field) without crashing', async () => {
+    const old = { id: 'old-page', etag: 'e1', deleted: false, title: 'From old phone', groupId: null, tags: [], blocks: [], created: 1, updated: 1 };
+    const ok = await laptop.sync.applyRemoteIf('page', old as unknown as PageRecord, null);
+    expect(ok).toBe(true);
+    const loaded = await laptop.loadPage('old-page');
+    expect(loaded?.arrows).toEqual([]);
+  });
+
+  it('syncs an arrow and its edits between devices', async () => {
+    await save(laptop, page('a', 'Diagram', {
+      blocks: [
+        { id: 'b1', type: 'text', x: 0, y: 0, w: 100, h: 40, z: 1, html: '<p>One</p>' },
+        { id: 'b2', type: 'text', x: 300, y: 0, w: 100, h: 40, z: 2, html: '<p>Two</p>' },
+      ],
+      arrows: [{ id: 'arr1', from: 'b1', to: 'b2', heads: 'one', style: 'solid', z: 1 }],
+    }));
+    await sync();
+    const onPhone = (await phone.loadAll()).pages.find((p) => p.id === 'a');
+    expect(onPhone?.arrows).toEqual([{ id: 'arr1', from: 'b1', to: 'b2', heads: 'one', style: 'solid', z: 1 }]);
+
+    await save(phone, { ...onPhone!, arrows: [{ ...onPhone!.arrows[0], label: 'leads to', style: 'dashed' as const }] });
+    await sync();
+    const onLaptop = (await laptop.loadAll()).pages.find((p) => p.id === 'a');
+    expect(onLaptop?.arrows).toEqual([{ id: 'arr1', from: 'b1', to: 'b2', heads: 'one', style: 'dashed', label: 'leads to', z: 1 }]);
+  });
+
   it('never lets the phone overwrite a laptop change it has not seen', async () => {
     await save(laptop, page('a', 'v1'));
     await sync();
@@ -235,7 +261,7 @@ describe('Local saving with tombstones', () => {
     const upgraded = await device('upgraded');
 
     const all = await upgraded.loadAll();
-    expect(all.pages.map((p) => [p.title, p.groupId, p.tags, p.rev])).toEqual([['Written before sync existed', 'g', ['x'], 3]]);
+    expect(all.pages.map((p) => [p.title, p.groupId, p.tags, p.arrows, p.rev])).toEqual([['Written before sync existed', 'g', ['x'], [], 3]]);
     expect(all.groups).toEqual([{ id: 'g', name: 'Old group', color: 'moss', parentId: null }]);
     const meta = await upgraded.sync.listMeta('page');
     expect(meta[0].etag).toMatch(/^[0-9a-f]{18}$/);

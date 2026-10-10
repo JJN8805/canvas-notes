@@ -8,6 +8,8 @@ export interface Point {
 
 interface CanvasState {
   selected: string[];
+  /** The selected arrow, if any. Mutually exclusive with a non-empty `selected`. */
+  selectedArrow: string | null;
   zoom: number;
   /** The rich-text editor that currently has focus, for the formatting bar. */
   activeEditor: Editor | null;
@@ -16,12 +18,22 @@ interface CanvasState {
 }
 
 // Plain zustand (no immer): TipTap editors must not be frozen.
-export const useCanvas = create<CanvasState>(() => ({ selected: [], zoom: 1, activeEditor: null, selectMode: false }));
+export const useCanvas = create<CanvasState>(() => ({
+  selected: [],
+  selectedArrow: null,
+  zoom: 1,
+  activeEditor: null,
+  selectMode: false,
+}));
 
 export function setSelected(ids: string[]) {
-  const cur = useCanvas.getState().selected;
-  if (cur.length === ids.length && cur.every((id, i) => id === ids[i])) return;
-  useCanvas.setState({ selected: ids });
+  const cur = useCanvas.getState();
+  if (cur.selected.length === ids.length && cur.selected.every((id, i) => id === ids[i]) && !cur.selectedArrow) return;
+  useCanvas.setState({ selected: ids, selectedArrow: null });
+}
+
+export function setSelectedArrow(id: string | null) {
+  useCanvas.setState({ selectedArrow: id, selected: id ? [] : useCanvas.getState().selected });
 }
 
 export function setSelectMode(on: boolean) {
@@ -30,7 +42,7 @@ export function setSelectMode(on: boolean) {
 }
 
 export function resetCanvas() {
-  useCanvas.setState({ selected: [], zoom: 1, activeEditor: null, selectMode: false });
+  useCanvas.setState({ selected: [], selectedArrow: null, zoom: 1, activeEditor: null, selectMode: false });
 }
 
 /** Imperative helpers the mounted canvas provides (coordinates, focusing). */

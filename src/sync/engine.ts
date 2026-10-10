@@ -187,6 +187,7 @@ async function syncRound(store: SyncStore, send: Send, report: SyncReport): Prom
           groupId: r.groupId,
           tags: r.tags,
           blocks: r.blocks,
+          arrows: r.arrows,
           created: Date.now(),
           updated: Date.now(),
         });
