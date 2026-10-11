@@ -1,6 +1,9 @@
 import { openDB, type DBSchema } from 'idb';
 import type { Group, GroupColor, Page } from '../types';
 import { newId } from '../lib/util';
+import { openGraph } from '../graph/open';
+import { openWasmDb } from '../graph/wasmDb';
+import type { GraphMirror } from '../graph/mirror';
 import {
   base64ToBytes,
   bytesToBase64,
@@ -63,6 +66,45 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
   }
 
   const urlCache = new Map<string, Promise<string>>();
+
+  // The graph lives in memory here and is rebuilt from the stored pages on every start,
+  // so the dev server exercises the same code as the desktop app without a second copy of the data.
+  let graph: GraphMirror | null = null;
+  const mirror = (job: (g: GraphMirror) => Promise<void>) => {
+    if (graph) job(graph).catch((e) => console.error('graph mirror failed', e));
+  };
+  const livePages = async () => (await db.getAll('pages')).filter((p) => !p.deleted).map(pageRecord);
+  const liveGroups = async () => (await db.getAll('groups')).filter((g) => !g.deleted).map(groupRecord);
+  const mirrorPage = async (id: string) => {
+    const r = await db.get('pages', id);
+    if (r) mirror((g) => g.page(pageRecord(r)));
+  };
+  const mirrorRemote = async (kind: 'page' | 'group', rec: PageRecord | GroupRecord) => {
+    if (kind === 'page') return mirrorPage(rec.id);
+    const r = rec as GroupRecord;
+    mirror((g) => g.group({ id: r.id, name: r.name, color: r.color, parentId: r.parentId, deleted: r.deleted }));
+    for (const p of await db.getAll('pages')) if (p.groupId === r.id && !p.deleted) await mirrorPage(p.id);
+  };
+  try {
+    const imported = new Map<string, string>(); // per session: the in-memory graph always starts empty
+    graph = await openGraph(await openWasmDb(), {
+      getSetting: async (k) => (k === 'graph_imported_at' ? imported.get(k) ?? null : (await db.get('settings', k)) ?? null),
+      setSetting: async (k, v) => {
+        if (k === 'graph_imported_at') imported.set(k, v ?? '');
+        else if (v === null) await db.delete('settings', k);
+        else await db.put('settings', v, k);
+      },
+      deviceName: 'Browser',
+      backup: async () => {}, // nothing is migrated in place: IndexedDB is not touched
+      loadLegacy: async () => ({ pages: await livePages(), groups: await liveGroups() }),
+      loadGroups: liveGroups,
+      listEtags: async () => (await livePages()).map((p) => ({ id: p.id, etag: p.etag })),
+      loadPages: async (ids) => (await livePages()).filter((p) => ids.includes(p.id)),
+    });
+  } catch (e) {
+    console.error('graph layer unavailable', e);
+  }
+
   const store = (kind: 'page' | 'group') => (kind === 'page' ? 'pages' : 'groups');
 
   const sync: SyncStore = {
@@ -92,6 +134,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
       } else {
         await db.put('groups', { ...(rec as GroupRecord), synced: rec.etag });
       }
+      await mirrorRemote(kind, rec as PageRecord | GroupRecord);
     },
     async applyRemoteIf(kind, rec, base) {
       if (kind === 'page') {
@@ -103,6 +146,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
         }
         await tx.store.put({ ...(rec as PageRecord), rev: (cur?.rev ?? 0) + 1, synced: rec.etag });
         await tx.done;
+        await mirrorRemote(kind, rec as PageRecord);
         return true;
       }
       const tx = db.transaction('groups', 'readwrite');
@@ -113,6 +157,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
       }
       await tx.store.put({ ...(rec as GroupRecord), synced: rec.etag });
       await tx.done;
+      await mirrorRemote(kind, rec as GroupRecord);
       return true;
     },
     async markSynced(kind, id, etag) {
@@ -126,6 +171,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
     },
     async insertLocalPage(r) {
       await db.put('pages', { ...r, etag: newEtag(), synced: null, deleted: false, rev: 1 });
+      await mirrorPage(r.id);
     },
     async listImageIds() {
       return (await db.getAllKeys('images')) as string[];
@@ -144,6 +190,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
   return {
     kind: 'browser',
     sync,
+    graph,
 
     async location() {
       return 'this browser (IndexedDB)';
@@ -177,6 +224,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
         created: page.created, updated: page.updated, rev, etag: newEtag(), synced: existing?.synced ?? null, deleted: false,
       });
       await tx.done;
+      await mirrorPage(page.id);
       return { ok: true, rev };
     },
 
@@ -185,6 +233,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
       const p = await tx.store.get(id);
       if (p && !p.deleted) await tx.store.put({ ...p, deleted: true, etag: newEtag(), updated: Date.now(), rev: p.rev + 1 });
       await tx.done;
+      mirror((g) => g.removePage(id));
     },
 
     async saveGroups(groups) {
@@ -201,6 +250,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
         if (!keep.has(r.id) && !r.deleted) await tx.store.put({ ...r, deleted: true, etag: newEtag() });
       }
       await tx.done;
+      mirror((g) => g.groups(groups.map((x) => ({ id: x.id, name: x.name, color: x.color, parentId: x.parentId }))));
     },
 
     async putImage(blob) {

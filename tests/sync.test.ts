@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { FakeDatabase, fakeFs, useDevice } from './fakes';
+import { FakeDatabase, fakeFs, fakePath, useDevice } from './fakes';
 
 vi.mock('@tauri-apps/plugin-sql', () => ({ default: FakeDatabase }));
 vi.mock('@tauri-apps/plugin-fs', () => fakeFs);
-vi.mock('@tauri-apps/api/path', () => ({ appConfigDir: async () => '/config' }));
+vi.mock('@tauri-apps/api/path', () => fakePath);
 
 import { createTauriStorage } from '../src/storage/tauri';
 import type { NotesStorage, PageRecord } from '../src/storage/types';

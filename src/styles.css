@@ -295,6 +295,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .ed-group { order: 3; }
   .tags-ed { order: 4; flex: 1; }
   .ed-export { order: 1; }
+  .ed-backlinks { order: 1; }
   /* On phones the selection bar goes to the top, clear of the toolbar and zoom buttons. */
   .multi-bar { top: 12px; bottom: auto; max-width: calc(100% - 24px); }
 }

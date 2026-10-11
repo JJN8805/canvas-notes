@@ -47,6 +47,7 @@ It runs on your laptop (Linux, also Windows and macOS) and on Android. The two k
 | Alt while dragging | Turn off snapping (guides and the 8 px grid) |
 | Right-click a page card | Page menu (rename, export, move, delete) |
 | Delete, with an arrow selected | Remove the selected connector |
+| Type `[[Page title]]` in a text box | Link to another page. The other page then shows a **Linked from** button in its header, listing every page that links to it |
 
 **On a phone:**
 - **Double-tap empty space** for a new text box, and **tap a box** to edit it.

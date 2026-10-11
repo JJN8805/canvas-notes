@@ -8,6 +8,7 @@ import {
   addBlock,
   createGroup,
   flushPage,
+  getStorage,
   history,
   mutatePage,
   redo,
@@ -53,6 +54,42 @@ export function Editor({ pageId }: { pageId: string }) {
 }
 
 /* ---------------- Header ---------------- */
+
+/** Pages that mention this one as [[its title]]. Hidden when there are none (or the graph is unavailable). */
+function Backlinks({ pageId }: { pageId: string }) {
+  const title = useNotes((s) => s.pages[pageId]?.title);
+  const updated = useNotes((s) => s.pages[pageId]?.updated);
+  const titles = useNotes((s) => s.pages);
+  const [links, setLinks] = useState<{ pageId: string; title: string }[]>([]);
+  useEffect(() => {
+    const graph = getStorage().graph;
+    if (!graph) return;
+    let live = true;
+    // Saves reach the graph a moment after the store changes.
+    const t = setTimeout(() => {
+      void graph.idle().then(() => graph.backlinks(pageId)).then((l) => live && setLinks(l.filter((b) => titles[b.pageId])));
+    }, 800);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+    // titles changes on every edit of any page, which is when backlinks may change
+  }, [pageId, title, updated, titles]);
+  if (!links.length) return null;
+  return (
+    <button
+      className="btn ed-backlinks"
+      onClick={(e) =>
+        openMenu(e.currentTarget, [
+          { heading: 'Linked from' },
+          ...links.map((l) => ({ label: titles[l.pageId]?.title || 'Untitled', action: () => navigate({ name: 'page', id: l.pageId }) })),
+        ])
+      }
+    >
+      Linked from {links.length}
+    </button>
+  );
+}
 
 function EditorHeader({ pageId }: { pageId: string }) {
   const title = useNotes((s) => s.pages[pageId]?.title ?? '');
@@ -122,6 +159,7 @@ function EditorHeader({ pageId }: { pageId: string }) {
         <option value="__new">New group…</option>
       </select>
       <TagEditor pageId={pageId} />
+      <Backlinks pageId={pageId} />
       <button
         className="btn ed-export"
         onClick={(e) => openMenu(e.currentTarget, [{ heading: 'Export this page as' }, ...EXPORT_ITEMS(pageId)])}

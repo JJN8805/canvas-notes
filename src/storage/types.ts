@@ -1,3 +1,4 @@
+import type { GraphMirror } from '../graph/mirror';
 import type { Arrow, Block, Group, GroupColor, Page } from '../types';
 
 export type SaveResult = { ok: true; rev: number } | { ok: false; reason: 'conflict' };
@@ -100,6 +101,8 @@ export interface NotesStorage {
   getSetting(key: string): Promise<string | null>;
   setSetting(key: string, value: string | null): Promise<void>;
   sync: SyncStore;
+  /** The graph layer (links, tags, groups as nodes and edges); null if it could not start. */
+  graph: GraphMirror | null;
 }
 
 export function normalizePage(p: Partial<Page> & { id: string }): Page {
