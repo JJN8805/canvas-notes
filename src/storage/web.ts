@@ -1,5 +1,6 @@
 import { openDB, type DBSchema } from 'idb';
 import type { Group, GroupColor, Page } from '../types';
+import { isBlankPage, shouldSnapshot, snapshotsToDrop } from '../lib/history';
 import { newId } from '../lib/util';
 import { openGraph } from '../graph/open';
 import { openWasmDb } from '../graph/wasmDb';
@@ -13,6 +14,7 @@ import {
   type NotesStorage,
   type PageRecord,
   type SaveResult,
+  type Snapshot,
   type SyncStore,
 } from './types';
 
@@ -25,6 +27,7 @@ interface Schema extends DBSchema {
   meta: { key: string; value: { groups: Group[] } };
   images: { key: string; value: { id: string; blob: Blob; created: number } };
   settings: { key: string; value: string };
+  snapshots: { key: string; value: Snapshot; indexes: { pageId: string } };
 }
 
 const rowToPage = (r: PageRow): Page => normalizePage({ ...r });
@@ -38,7 +41,7 @@ const groupRecord = (r: GroupRow): GroupRecord => ({
 
 /** Browser fallback so the UI can be developed with `npm run dev` without Tauri. */
 export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesStorage> {
-  const db = await openDB<Schema>(dbName, 2, {
+  const db = await openDB<Schema>(dbName, 3, {
     upgrade(d, oldVersion) {
       if (oldVersion < 1) {
         d.createObjectStore('pages', { keyPath: 'id' });
@@ -48,6 +51,9 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
       if (oldVersion < 2) {
         d.createObjectStore('groups', { keyPath: 'id' });
         d.createObjectStore('settings');
+      }
+      if (oldVersion < 3) {
+        d.createObjectStore('snapshots', { keyPath: 'id' }).createIndex('pageId', 'pageId');
       }
     },
   });
@@ -105,6 +111,39 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
     console.error('graph layer unavailable', e);
   }
 
+  /* ---- history: versions of a page, kept on this device only ---- */
+  const sameContent = (a: { title: string; blocks: unknown; arrows: unknown }, b: { title: string; blocks: unknown; arrows: unknown }) =>
+    a.title === b.title && JSON.stringify(a.blocks) === JSON.stringify(b.blocks) && JSON.stringify(a.arrows) === JSON.stringify(b.arrows);
+  const newestFirst = async (pageId: string) => (await db.getAllFromIndex('snapshots', 'pageId', pageId)).sort((a, b) => b.taken - a.taken);
+
+  async function takeSnapshot(pageId: string, force: boolean): Promise<boolean> {
+    const now = Date.now();
+    const page = await db.get('pages', pageId);
+    if (!page || page.deleted || isBlankPage(page)) return false;
+    const have = await newestFirst(pageId);
+    if (!force && !shouldSnapshot(have[0]?.taken ?? null, now)) return false;
+    if (have[0] && sameContent(have[0], page)) return false;
+    await db.put('snapshots', { id: newId(), pageId, taken: now, title: page.title, blocks: page.blocks, arrows: page.arrows });
+    for (const id of snapshotsToDrop([...have.map((s) => ({ id: s.id, taken: s.taken })), { id: '', taken: now }], now)) {
+      if (id) await db.delete('snapshots', id);
+    }
+    return true;
+  }
+  /** A history problem must never fail a save or a sync. */
+  const safeSnapshot = (pageId: string, force: boolean) => takeSnapshot(pageId, force).catch((e) => void console.error('history snapshot failed', e));
+  const snapshotIfReplacing = async (rec: PageRecord) => {
+    const cur = await db.get('pages', rec.id);
+    if (cur && !cur.deleted && !sameContent(cur, rec)) await safeSnapshot(rec.id, true);
+  };
+
+  async function purgePage(id: string) {
+    const tx = db.transaction('pages', 'readwrite');
+    const p = await tx.store.get(id);
+    if (p?.deleted) await tx.store.put({ ...p, title: '', tags: [], blocks: [], arrows: [], etag: newEtag(), rev: p.rev + 1 });
+    await tx.done;
+    for (const s of await db.getAllFromIndex('snapshots', 'pageId', id)) await db.delete('snapshots', s.id);
+  }
+
   const store = (kind: 'page' | 'group') => (kind === 'page' ? 'pages' : 'groups');
 
   const sync: SyncStore = {
@@ -127,6 +166,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
     },
     async applyRemote(kind, rec) {
       if (kind === 'page') {
+        await snapshotIfReplacing(rec as PageRecord);
         const tx = db.transaction('pages', 'readwrite');
         const cur = await tx.store.get(rec.id);
         await tx.store.put({ ...(rec as PageRecord), rev: (cur?.rev ?? 0) + 1, synced: rec.etag });
@@ -137,6 +177,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
       await mirrorRemote(kind, rec as PageRecord | GroupRecord);
     },
     async applyRemoteIf(kind, rec, base) {
+      if (kind === 'page' && base !== null) await snapshotIfReplacing(rec as PageRecord);
       if (kind === 'page') {
         const tx = db.transaction('pages', 'readwrite');
         const cur = await tx.store.get(rec.id);
@@ -211,6 +252,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
     },
 
     async savePage(page): Promise<SaveResult> {
+      await safeSnapshot(page.id, false); // the page as it was before this save
       const tx = db.transaction('pages', 'readwrite');
       const existing = await tx.store.get(page.id);
       if (existing && !existing.deleted && existing.rev !== page.rev) {
@@ -234,6 +276,32 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
       if (p && !p.deleted) await tx.store.put({ ...p, deleted: true, etag: newEtag(), updated: Date.now(), rev: p.rev + 1 });
       await tx.done;
       mirror((g) => g.removePage(id));
+    },
+
+    async listTrash() {
+      return (await db.getAll('pages'))
+        .filter((p) => p.deleted && !isBlankPage(p))
+        .sort((a, b) => b.updated - a.updated)
+        .map(rowToPage);
+    },
+
+    purgePage,
+
+    async purgeExpiredTrash(cutoff) {
+      const pages = await db.getAll('pages');
+      const old = pages.filter((p) => p.deleted && p.updated < cutoff && !isBlankPage(p));
+      for (const p of old) await purgePage(p.id);
+      // History of pages whose tombstone is empty has nothing to come back to.
+      for (const p of pages) {
+        if (p.deleted && isBlankPage(p)) for (const s of await db.getAllFromIndex('snapshots', 'pageId', p.id)) await db.delete('snapshots', s.id);
+      }
+      return old.length;
+    },
+
+    listSnapshots: newestFirst,
+
+    snapshotPage(pageId, opts) {
+      return takeSnapshot(pageId, !!opts?.force);
     },
 
     async saveGroups(groups) {
@@ -273,7 +341,11 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
       return p;
     },
 
-    async pruneImages(used) {
+    async pruneImages(usedByLivePages) {
+      // Trashed pages and saved versions can come back, so their images stay too.
+      const used = new Set(usedByLivePages);
+      const keep = [...(await db.getAll('pages')).filter((p) => p.deleted), ...(await db.getAll('snapshots'))];
+      for (const r of keep) for (const b of r.blocks) if (b.type === 'image') used.add(b.imageId);
       const cutoff = Date.now() - 10 * 60 * 1000;
       let n = 0;
       for (const row of await db.getAll('images')) {

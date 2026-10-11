@@ -98,6 +98,7 @@ export type Filter =
   | { kind: 'all' }
   | { kind: 'ungrouped' }
   | { kind: 'group'; id: string }
-  | { kind: 'tag'; tag: string };
+  | { kind: 'tag'; tag: string }
+  | { kind: 'trash' };
 
 export type SortKey = 'updated' | 'created' | 'title';

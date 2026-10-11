@@ -23,6 +23,8 @@ It runs on your laptop (Linux, also Windows and macOS) and on Android. The two k
   - Search covers everything written on the pages.
   - On the laptop, you can drag a card onto a group in the sidebar.
   - A deleted page can be restored from the "Undo" toast.
+- **Trash.** Deleted pages go to **Trash** in the sidebar, where you can **Restore** them or **Delete forever**. After 30 days a trashed page's content is removed automatically. The deletion itself still syncs to your other devices, and so does **Delete forever**, so a page you removed for good can't be restored from another device.
+- **History.** The **History** button in a page's header lists earlier versions of the page with a miniature of each. **Restore this version** puts back its boxes and arrows (the title, tags and group stay), and Ctrl+Z undoes it. A version is saved at most once an hour while you edit, and also before a sync replaces your copy with another device's. Hourly versions are kept for 2 days, then one per day for 30 days. History stays on the device where you made it and is never synced.
 - **Snap guides.** While you drag or resize, a box's edges and centre snap to other boxes' edges and centres, and a pink line shows the match. Hold Alt to move freely.
 - **Connector arrows.** Hover a box to show four connection dots; drag from a dot onto another box to draw an arrow between them (dropping on empty space cancels). Arrows always take the shortest side-to-side route and stay attached as either box moves or resizes. Click an arrow to select it, then use its menu to set a label, choose arrowheads (none / one end / both) or switch between a solid and dashed line. Delete removes the selected arrow; deleting a box removes its arrows too, as one undo step.
 - **Frames.** Add a labelled, coloured area from the toolbar to group boxes together. Drag a frame by its title bar to move everything inside it; resizing a frame leaves its contents where they are. Frames can be nested inside other frames. Rename a frame inline, pick its colour from its title bar, and collapse it to a title bar only, hiding its boxes (and their arrows) until you expand it again. Deleting a frame keeps its boxes — they just stop belonging to it. Frames always sit behind boxes, and work with snap guides, undo/redo, sync, thumbnails and exports like any other box.
@@ -162,7 +164,7 @@ To back up, copy that folder.
 
 **Phone:** in the app's private storage. With sync on, the laptop holds a full copy too.
 
-Images that no page uses any more are cleaned up when the app next starts.
+Images that no page uses any more are cleaned up when the app next starts. Images used by a page in the Trash, or by a saved version in History, are kept.
 
 ## Development
 

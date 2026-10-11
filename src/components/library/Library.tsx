@@ -1,12 +1,16 @@
-import { memo, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { Filter, Group, Page } from '../../types';
 import { blockText, colorVar, timeAgo } from '../../lib/util';
+import { daysLeft } from '../../lib/history';
 import { navigate } from '../../lib/route';
 import {
   createExamplePage,
   createGroup,
   createPage,
+  deleteForever,
   deleteGroup,
+  loadTrash,
+  restoreFromTrash,
   moveGroup,
   toggleCollapsed,
   deletePage,
@@ -35,6 +39,7 @@ function filterTitle(f: Filter, groups: Group[]): string {
   if (f.kind === 'group') return groupPath(groups, f.id).join(' / ') || 'Group';
   if (f.kind === 'ungrouped') return 'Ungrouped';
   if (f.kind === 'tag') return '#' + f.tag;
+  if (f.kind === 'trash') return 'Trash';
   return 'All pages';
 }
 
@@ -79,6 +84,10 @@ export function Library() {
     <div className="library">
       <Sidebar pages={all} groups={groups} filter={filter} />
       <main className="main">
+        {filter.kind === 'trash' ? (
+          <TrashView />
+        ) : (
+          <>
         <div className="main-head">
           <div className="main-title">
             <h1>{filterTitle(filter, groups)}</h1>
@@ -120,6 +129,8 @@ export function Library() {
           </div>
         ) : (
           <EmptyState total={all.length} filter={filter} query={query} />
+        )}
+          </>
         )}
       </main>
     </div>
@@ -175,6 +186,62 @@ function EmptyState({ total, filter, query }: { total: number; filter: Filter; q
   );
 }
 
+/* ---------------- Trash ---------------- */
+
+function TrashView() {
+  const trash = useNotes((s) => s.trash);
+  useEffect(() => void loadTrash(), []);
+  const now = Date.now();
+  return (
+    <>
+      <div className="main-head">
+        <div className="main-title">
+          <h1>Trash</h1>
+          <p>
+            {trash.length} deleted page{trash.length === 1 ? '' : 's'}. They are removed for good 30 days after deletion.
+          </p>
+        </div>
+      </div>
+      {trash.length ? (
+        <div className="cards">
+          {trash.map((p) => (
+            <article key={p.id} className="card trashed" aria-label={p.title || 'Untitled'}>
+              <Thumbnail blocks={p.blocks} arrows={p.arrows} />
+              <div className="card-body">
+                <div className={'card-title' + (p.title ? '' : ' untitled')}>{p.title || 'Untitled'}</div>
+                <div className="card-meta">
+                  Deleted {timeAgo(p.updated)}, removed in {daysLeft(p.updated, now)} day{daysLeft(p.updated, now) === 1 ? '' : 's'}
+                </div>
+                <div className="trash-actions">
+                  <button className="btn" onClick={() => restoreFromTrash(p.id)}>Restore</button>
+                  <button
+                    className="btn"
+                    onClick={async () => {
+                      const ok = await confirmDanger(
+                        `Delete “${p.title || 'Untitled'}” forever?`,
+                        'This page and its saved versions are removed from this device and from your other devices the next time they sync. This cannot be undone.',
+                        'Delete forever',
+                      );
+                      if (ok) await deleteForever(p.id);
+                    }}
+                  >
+                    Delete forever
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="empty">
+          <h2>Trash is empty</h2>
+          <p>Pages you delete stay here for 30 days, so you can bring them back.</p>
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ---------------- Sidebar ---------------- */
 
 function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Group[]; filter: Filter }) {
@@ -192,6 +259,7 @@ function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Group[]; fi
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [pages]);
   const groupIds = new Set(groups.map((g) => g.id));
+  const trashCount = useNotes((s) => s.trash.length);
   const ungrouped = pages.filter((p) => !p.groupId || !groupIds.has(p.groupId)).length;
   const rows = useMemo(() => groupTree(groups, collapsed), [groups, collapsed]);
   // Counts include pages in subgroups.
@@ -219,6 +287,15 @@ function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Group[]; fi
           active={filter.kind === 'ungrouped'}
           onClick={() => setFilter({ kind: 'ungrouped' })}
           dropGroup={null}
+        />
+        <NavItem
+          label="Trash"
+          count={trashCount}
+          active={filter.kind === 'trash'}
+          onClick={() => {
+            setFilter({ kind: 'trash' });
+            void loadTrash();
+          }}
         />
       </div>
 

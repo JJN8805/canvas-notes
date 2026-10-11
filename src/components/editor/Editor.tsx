@@ -22,6 +22,7 @@ import { ask, openMenu } from '../../store/ui';
 import { EXPORT_ITEMS } from '../../export/export';
 import { groupTree } from '../../lib/groups';
 import { Icon } from '../ui/Icon';
+import { HistoryPanel } from './HistoryPanel';
 import { Canvas } from './Canvas';
 
 export function Editor({ pageId }: { pageId: string }) {
@@ -100,6 +101,7 @@ function EditorHeader({ pageId }: { pageId: string }) {
   const canUndo = history.canUndo(pageId);
   const canRedo = history.canRedo(pageId);
   const titleRef = useRef<HTMLInputElement>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
     if (!title && !blockCount) titleRef.current?.focus();
@@ -160,6 +162,10 @@ function EditorHeader({ pageId }: { pageId: string }) {
       </select>
       <TagEditor pageId={pageId} />
       <Backlinks pageId={pageId} />
+      <button className="btn ed-history" onClick={() => setShowHistory(true)}>
+        History
+      </button>
+      {showHistory && <HistoryPanel pageId={pageId} onClose={() => setShowHistory(false)} />}
       <button
         className="btn ed-export"
         onClick={(e) => openMenu(e.currentTarget, [{ heading: 'Export this page as' }, ...EXPORT_ITEMS(pageId)])}

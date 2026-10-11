@@ -55,6 +55,16 @@ export interface ImagePayload {
   data: string;
 }
 
+/** An earlier version of a page, kept on this device only (never synced). */
+export interface Snapshot {
+  id: string;
+  pageId: string;
+  taken: number;
+  title: string;
+  blocks: Block[];
+  arrows: Arrow[];
+}
+
 export interface SyncStore {
   listMeta(kind: SyncKind): Promise<SyncMeta[]>;
   getRecords(kind: SyncKind, ids: string[]): Promise<SyncRecord[]>;
@@ -91,6 +101,19 @@ export interface NotesStorage {
   savePage(page: Page): Promise<SaveResult>;
   /** Marks a page deleted (kept as a tombstone so the deletion syncs). */
   deletePage(id: string): Promise<void>;
+  /** Deleted pages that can still be restored (not purged), newest deletion first; `updated` is the deletion time. */
+  listTrash(): Promise<Page[]>;
+  /** Empties a trashed page for good but keeps the tombstone, with a new etag so the purge syncs. */
+  purgePage(id: string): Promise<void>;
+  /** Purges trashed pages deleted before `cutoff` and drops history of purged pages. Returns how many pages were purged. */
+  purgeExpiredTrash(cutoff: number): Promise<number>;
+  /** Saved versions of a page, newest first. */
+  listSnapshots(pageId: string): Promise<Snapshot[]>;
+  /**
+   * Keeps the page as stored now as a version. Without `force` it happens at most once an hour.
+   * Blank pages and a copy of the newest version are skipped. Returns whether one was added.
+   */
+  snapshotPage(pageId: string, opts?: { force?: boolean }): Promise<boolean>;
   saveGroups(groups: Group[]): Promise<void>;
   /** Stores image bytes and returns an id to keep in the page. */
   putImage(blob: Blob): Promise<string>;

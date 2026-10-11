@@ -9,6 +9,8 @@ import { history } from './history';
 import { effectiveParents, validParents } from '../lib/groups';
 import { containingFrame, ungroupedAfterDelete } from '../lib/frames';
 import { toast } from './ui';
+import { TRASH_DAYS } from '../lib/history';
+import type { Snapshot } from '../storage/types';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -18,6 +20,8 @@ interface NotesState {
   storageKind: 'desktop' | 'browser';
   storageLocation: string;
   pages: Record<string, Page>;
+  /** Deleted pages that can still be restored (`updated` is when they were deleted). */
+  trash: Page[];
   groups: Group[];
   save: { state: SaveState; message: string };
   filter: Filter;
@@ -36,6 +40,7 @@ export const useNotes = create<NotesState>()(
     storageKind: 'browser' as const,
     storageLocation: '',
     pages: {},
+    trash: [],
     groups: [],
     save: { state: 'idle' as SaveState, message: '' },
     filter: { kind: 'all' } as Filter,
@@ -85,6 +90,9 @@ async function doInit() {
       s.collapsed = Array.isArray(collapsed) ? collapsed : [];
       s.status = 'ready';
     });
+    // Pages deleted more than 30 days ago are emptied for good (their deletion still syncs).
+    await storage.purgeExpiredTrash(Date.now() - TRASH_DAYS * 24 * 3600_000).catch((e) => console.warn('Trash cleanup failed', e));
+    await loadTrash();
     // Images deleted from pages are kept until the next launch so undo can bring them back.
     storage.pruneImages(usedImageIds(pages)).catch((e) => console.warn('Image cleanup failed', e));
 
@@ -106,6 +114,52 @@ async function doInit() {
       s.error = e instanceof Error ? e.message : String(e);
     });
   }
+}
+
+/** Re-reads the Trash list from storage. */
+export async function loadTrash() {
+  try {
+    const trash = await getStorage().listTrash();
+    set((s) => {
+      s.trash = trash;
+    });
+  } catch (e) {
+    console.warn('Could not read the Trash', e);
+  }
+}
+
+/** Puts a trashed page back, the same way the delete toast's Undo does. */
+export function restoreFromTrash(id: string) {
+  const page = get().trash.find((p) => p.id === id);
+  if (!page) return;
+  set((s) => {
+    s.pages[id] = { ...deepClone(page), rev: 0, updated: Date.now() };
+    s.trash = s.trash.filter((p) => p.id !== id);
+  });
+  markDirty(id);
+  toast(`Restored “${page.title || 'Untitled'}”`);
+}
+
+/** Empties a trashed page for good. */
+export async function deleteForever(id: string) {
+  try {
+    await getStorage().purgePage(id);
+  } catch (e) {
+    console.error(e);
+  }
+  await loadTrash();
+}
+
+/** Replaces the page's boxes and arrows with an earlier version. Undo (Ctrl+Z) brings the current ones back. */
+export async function restoreSnapshot(pageId: string, snap: Snapshot) {
+  await flushPage(pageId);
+  // Keep what is there now too, so this stays reversible after undo history is gone.
+  await getStorage().snapshotPage(pageId, { force: true }).catch((e) => console.warn('History snapshot failed', e));
+  mutatePage(pageId, (p) => {
+    p.blocks = deepClone(snap.blocks) as Draft<Block>[];
+    p.arrows = deepClone(snap.arrows) as Draft<Arrow>[];
+  });
+  toast('Restored an earlier version. Undo brings back the one you had.');
 }
 
 function usedImageIds(pages: Page[]): Set<string> {
@@ -591,6 +645,7 @@ export async function deletePage(id: string) {
   refreshSaveState();
   try {
     await getStorage().deletePage(id);
+    await loadTrash();
   } catch (e) {
     console.error(e);
   }
@@ -599,6 +654,7 @@ export async function deletePage(id: string) {
     run: () => {
       set((s) => {
         s.pages[id] = { ...snapshot, rev: 0 };
+        s.trash = s.trash.filter((p) => p.id !== id);
       });
       markDirty(id);
     },
