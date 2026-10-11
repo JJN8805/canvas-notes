@@ -55,6 +55,7 @@ const PATHS = {
     </>
   ),
   frame: <rect x="3" y="3" width="14" height="14" rx="1.5" strokeDasharray="2.5 2" />,
+  draw: <path d="M4 16l1-4L14 3l3 3-9 9-4 1zM12 5l3 3" />,
   chevron: <path d="M6 8l4 4 4-4" />,
 } as const;
 

@@ -1,4 +1,4 @@
-export type BlockType = 'text' | 'image' | 'checklist' | 'code' | 'table' | 'frame';
+export type BlockType = 'text' | 'image' | 'checklist' | 'code' | 'table' | 'frame' | 'draw';
 
 interface BlockBase {
   id: string;
@@ -51,7 +51,14 @@ export interface FrameBlock extends BlockBase {
   color: GroupColor;
   collapsed: boolean;
 }
-export type Block = TextBlock | ImageBlock | ChecklistBlock | CodeBlock | TableBlock | FrameBlock;
+/** A freehand drawing made with Excalidraw. `scene` is its JSON (elements and background colour),
+ *  `preview` an SVG render of it, so lists, thumbnails and exports never need to load Excalidraw. */
+export interface DrawBlock extends BlockBase {
+  type: 'draw';
+  scene: string;
+  preview: string;
+}
+export type Block = TextBlock | ImageBlock | ChecklistBlock | CodeBlock | TableBlock | FrameBlock | DrawBlock;
 
 export type ArrowheadMode = 'none' | 'one' | 'both';
 export type LineStyle = 'solid' | 'dashed';

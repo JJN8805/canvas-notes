@@ -1,11 +1,13 @@
 import { memo, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
-import type { Block, FrameBlock, TableBlock, TextBlock } from '../../types';
+import type { Block, DrawBlock, FrameBlock, TableBlock, TextBlock } from '../../types';
 import { deleteBlocks, duplicateBlocks, sendToBack, updateBlock } from '../../store/notes';
 import { setSelected } from '../../store/canvas';
+import { openDraw } from '../../store/draw';
 import { BLOCK_LABEL, newId } from '../../lib/util';
 import { Icon, type IconName } from '../ui/Icon';
 import { TextBody } from '../blocks/TextBody';
 import { ChecklistBody, CodeBody, ImageBody, TableBody } from '../blocks/Bodies';
+import { DrawBody } from '../blocks/DrawBody';
 import { useCanvasCtx } from './context';
 
 const LABEL = BLOCK_LABEL;
@@ -37,7 +39,7 @@ export const BlockFrame = memo(function BlockFrame({
     left: block.x,
     top: block.y,
     width: block.w,
-    ...(block.type === 'image' ? { height: block.h } : { minHeight: block.h }),
+    ...(block.type === 'image' || block.type === 'draw' ? { height: block.h } : { minHeight: block.h }),
   };
 
   const cls = ['block', `b-${block.type}`];
@@ -77,6 +79,8 @@ function Body({ block }: { block: NonFrameBlock }) {
       return <TableBody block={block} />;
     case 'image':
       return <ImageBody block={block} />;
+    case 'draw':
+      return <DrawBody block={block as DrawBlock} />;
   }
 }
 
@@ -107,6 +111,9 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
         }),
       ),
     );
+  }
+  if (block.type === 'draw') {
+    extra.push(btn('Edit drawing', 'Edit', () => openDraw(pageId, block.id)));
   }
   if (block.type === 'table') {
     const edit = (fn: (b: TableBlock) => void) => updateBlock<TableBlock>(pageId, block.id, fn);

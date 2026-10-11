@@ -28,6 +28,8 @@ export function blockPlainText(b: Block): string {
       return b.title ?? '';
     case 'image':
       return b.alt ?? '';
+    case 'draw':
+      return '';
   }
 }
 

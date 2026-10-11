@@ -19,6 +19,7 @@ import {
 import { addImages, imageFiles } from '../../store/images';
 import { canvasApi, editorRegistry, setSelectMode, setSelected, setSelectedArrow, useCanvas, type Point } from '../../store/canvas';
 import { useUi } from '../../store/ui';
+import { useDraw } from '../../store/draw';
 import { blockHeight, clamp, isEditableTarget, modKey, sanitizeHtml, snap, textToHtml } from '../../lib/util';
 import { BlockFrame } from './BlockFrame';
 import { FrameChrome } from './FrameChrome';
@@ -654,7 +655,7 @@ export function Canvas({ pageId }: { pageId: string }) {
   /* ---------- keyboard & clipboard ---------- */
 
   useEffect(() => {
-    const blocked = () => !!(useUi.getState().dialog || useUi.getState().menu);
+    const blocked = () => !!(useUi.getState().dialog || useUi.getState().menu || useDraw.getState().editing);
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (blocked()) return;

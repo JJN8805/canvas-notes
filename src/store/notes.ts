@@ -436,6 +436,7 @@ export const BLOCK_DEFAULTS: Record<Exclude<BlockType, 'image'>, () => NewBlockF
     ],
   }),
   frame: () => ({ w: 360, h: 240, title: 'Frame', color: 'slate', collapsed: false }),
+  draw: () => ({ w: 420, h: 300, scene: '', preview: '' }),
 };
 
 export const maxZ = (blocks: Block[]) => blocks.reduce((m, b) => Math.max(m, b.z || 0), 0);

@@ -22,8 +22,10 @@ import { ask, openMenu } from '../../store/ui';
 import { EXPORT_ITEMS } from '../../export/export';
 import { groupTree } from '../../lib/groups';
 import { Icon } from '../ui/Icon';
-import { HistoryPanel } from './HistoryPanel';
 import { Canvas } from './Canvas';
+import { HistoryPanel } from './HistoryPanel';
+import { DrawOverlay } from './DrawOverlay';
+import { closeDraw, openDraw } from '../../store/draw';
 
 export function Editor({ pageId }: { pageId: string }) {
   const exists = useNotes((s) => !!s.pages[pageId]);
@@ -32,6 +34,7 @@ export function Editor({ pageId }: { pageId: string }) {
     resetCanvas();
     return () => {
       void flushPage(pageId);
+      closeDraw();
       resetCanvas();
     };
   }, [pageId]);
@@ -46,6 +49,7 @@ export function Editor({ pageId }: { pageId: string }) {
       <EditorHeader pageId={pageId} />
       <div className="ed-body">
         <Canvas pageId={pageId} />
+        <DrawOverlay pageId={pageId} />
         <AddToolbar pageId={pageId} />
         <FormatBar />
         <ZoomControls />
@@ -264,6 +268,7 @@ const TOOLS: { type: BlockType; label: string }[] = [
   { type: 'code', label: 'Code' },
   { type: 'table', label: 'Table' },
   { type: 'frame', label: 'Frame' },
+  { type: 'draw', label: 'Draw' },
 ];
 
 function AddToolbar({ pageId }: { pageId: string }) {
@@ -275,13 +280,14 @@ function AddToolbar({ pageId }: { pageId: string }) {
       fileRef.current?.click();
       return;
     }
-    const spot = type === 'frame' ? api.visibleSpot(360, 240) : api.visibleSpot(type === 'code' ? 432 : 300, 80);
+    const spot = type === 'frame' ? api.visibleSpot(360, 240) : type === 'draw' ? api.visibleSpot(420, 300) : api.visibleSpot(type === 'code' ? 432 : 300, 80);
     let id = '';
     flushSync(() => {
       id = addBlock(pageId, type, spot);
       setSelected([id]);
     });
-    if (type !== 'frame') api.focusBlock(id);
+    if (type === 'draw') openDraw(pageId, id);
+    else if (type !== 'frame') api.focusBlock(id);
   };
   const selectMode = useCanvas((s) => s.selectMode);
   return (

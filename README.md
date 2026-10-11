@@ -28,6 +28,7 @@ It runs on your laptop (Linux, also Windows and macOS) and on Android. The two k
 - **Snap guides.** While you drag or resize, a box's edges and centre snap to other boxes' edges and centres, and a pink line shows the match. Hold Alt to move freely.
 - **Connector arrows.** Hover a box to show four connection dots; drag from a dot onto another box to draw an arrow between them (dropping on empty space cancels). Arrows always take the shortest side-to-side route and stay attached as either box moves or resizes. Click an arrow to select it, then use its menu to set a label, choose arrowheads (none / one end / both) or switch between a solid and dashed line. Delete removes the selected arrow; deleting a box removes its arrows too, as one undo step.
 - **Frames.** Add a labelled, coloured area from the toolbar to group boxes together. Drag a frame by its title bar to move everything inside it; resizing a frame leaves its contents where they are. Frames can be nested inside other frames. Rename a frame inline, pick its colour from its title bar, and collapse it to a title bar only, hiding its boxes (and their arrows) until you expand it again. Deleting a frame keeps its boxes — they just stop belonging to it. Frames always sit behind boxes, and work with snap guides, undo/redo, sync, thumbnails and exports like any other box.
+- **Drawing boxes.** **Draw** in the toolbar adds a box for sketches, made with [Excalidraw](https://github.com/excalidraw/excalidraw) (MIT licence). The box shows a picture of the drawing; double-click it (or use **Edit** in its bar) to open Excalidraw over it with its pen, shapes, arrows, text and eraser, and press **Done** when finished. Edits are saved as you draw, and one drawing session is one undo step. Excalidraw is only downloaded into the app the first time you open a drawing, and its fonts are bundled, so drawing works offline. Thumbnails, PNG and PDF exports show the drawing, and Markdown exports save it as an `.svg` file in the zip. Chinese, Japanese and Korean text in a drawing uses your system font. On a computer the editor opens in a panel at least 560 × 420 px, because Excalidraw can't work inside the zoomed canvas.
 - **Export** any page from its header (**Export**) or from its card's menu:
   - **Markdown:** text, checklists, code and tables in reading order, with arrows listed under a **Connections** heading and each frame's contents nested under a heading named after it. Pages with pictures become a `.zip` holding the `.md` file and an `images/` folder.
   - **PDF:** one page, sized to your content and drawn exactly as on the canvas. It's a picture of the page, so its text isn't selectable. Use Markdown when you need the text.
@@ -169,6 +170,7 @@ Images that no page uses any more are cleaned up when the app next starts. Image
 ## Development
 
 ```bash
+npm run assets     # copies Excalidraw's fonts into public/ (dev and build do this for you)
 npm run dev        # UI in a browser at http://localhost:1420 (notes stored in IndexedDB, no sync)
 npm test           # sync and storage tests, run against a real SQLite database
 npm run typecheck

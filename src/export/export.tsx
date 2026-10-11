@@ -2,7 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import TurndownService from 'turndown';
 import { zipSync } from 'fflate';
-import type { Arrow, Block, ChecklistBlock, CodeBlock, ImageBlock, Page, TableBlock, TextBlock } from '../types';
+import type { Arrow, Block, ChecklistBlock, CodeBlock, DrawBlock, ImageBlock, Page, TableBlock, TextBlock } from '../types';
 import { BLOCK_LABEL, blockHeight, blockText } from '../lib/util';
 import { hiddenBlockIds, paintOrder } from '../lib/frames';
 import { routeBetween, type Rect as ArrowRect } from '../lib/arrows';
@@ -59,7 +59,7 @@ export async function renderPage(page: Page, maxScale = 2): Promise<{ canvas: HT
                 left: b.x - box.x,
                 top: b.y - box.y,
                 width: b.w,
-                ...(b.type === 'image' || b.type === 'frame' ? { height: blockHeight(b) } : { minHeight: b.h }),
+                ...(b.type === 'image' || b.type === 'frame' || b.type === 'draw' ? { height: blockHeight(b) } : { minHeight: b.h }),
               }}
             >
               <StaticBody block={b} />
@@ -71,7 +71,7 @@ export async function renderPage(page: Page, maxScale = 2): Promise<{ canvas: HT
 
     // Wait for fonts and for every image to arrive and decode.
     await document.fonts.ready;
-    const expected = visible.filter((b) => b.type === 'image').length;
+    const expected = visible.filter((b) => b.type === 'image' || (b.type === 'draw' && b.preview)).length;
     const deadline = Date.now() + 8000;
     while (host.querySelectorAll('img').length < expected && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
     await Promise.all(Array.from(host.querySelectorAll('img')).map((img) => img.decode().catch(() => undefined)));
@@ -96,6 +96,17 @@ export async function renderPage(page: Page, maxScale = 2): Promise<{ canvas: HT
       const img = el.classList.contains('b-image') ? el.querySelector('img') : null;
       if (el.classList.contains('b-image')) {
         if (img && img.naturalWidth) drawCover(ctx, img, x, y, w, h, 4);
+        continue;
+      }
+      if (el.classList.contains('b-draw')) {
+        // Drawn directly like pictures, for the same WebKit reason.
+        const pic = el.querySelector('img');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(x, y, w, h);
+        if (pic && pic.naturalWidth) {
+          const k = Math.min(w / pic.naturalWidth, h / pic.naturalHeight);
+          ctx.drawImage(pic, x + (w - pic.naturalWidth * k) / 2, y + (h - pic.naturalHeight * k) / 2, pic.naturalWidth * k, pic.naturalHeight * k);
+        }
         continue;
       }
       // Snapshot the box at the origin. Setting this on the element itself (rather than
@@ -282,11 +293,11 @@ export function readingOrder(blocks: Block[]): Block[] {
  *  maps to heading depth) followed by its own contents, recursively; other blocks go
  *  through the normal per-type rendering. `all` is the full (visible) block list, used
  *  to look up each frame's direct children. */
-function blocksToMarkdown(blocks: Block[], all: Block[], imagePath: (b: ImageBlock) => string, headingDepth: number, out: string[]) {
+function blocksToMarkdown(blocks: Block[], all: Block[], imagePath: (b: ImageBlock) => string, drawingPath: (b: DrawBlock) => string, headingDepth: number, out: string[]) {
   for (const b of readingOrder(blocks)) {
     if (b.type === 'frame') {
       out.push(`${'#'.repeat(Math.min(headingDepth, 6))} ${b.title || 'Frame'}`);
-      blocksToMarkdown(all.filter((x) => x.frameId === b.id), all, imagePath, headingDepth + 1, out);
+      blocksToMarkdown(all.filter((x) => x.frameId === b.id), all, imagePath, drawingPath, headingDepth + 1, out);
       continue;
     }
     switch (b.type) {
@@ -313,6 +324,11 @@ function blocksToMarkdown(blocks: Block[], all: Block[], imagePath: (b: ImageBlo
         );
         break;
       }
+      case 'draw': {
+        const path = drawingPath(b as DrawBlock);
+        if (path) out.push(`![Drawing](${path})`);
+        break;
+      }
       case 'image': {
         const img = b as ImageBlock;
         out.push(`![${(img.alt ?? '').replace(/[[\]]/g, '')}](${imagePath(img)})`);
@@ -322,13 +338,13 @@ function blocksToMarkdown(blocks: Block[], all: Block[], imagePath: (b: ImageBlo
   }
 }
 
-export function pageToMarkdown(page: Page, imagePath: (b: ImageBlock) => string): string {
+export function pageToMarkdown(page: Page, imagePath: (b: ImageBlock) => string, drawingPath: (b: DrawBlock) => string = () => ''): string {
   const out: string[] = [`# ${page.title || 'Untitled'}`];
   if (page.tags.length) out.push(page.tags.map((t) => `#${t}`).join(' '));
   // Boxes hidden behind a collapsed frame (and their arrows, below) are left out of exports too.
   const hidden = hiddenBlockIds(page.blocks);
   const visible = page.blocks.filter((b) => !hidden.has(b.id));
-  blocksToMarkdown(visible.filter((b) => !b.frameId), visible, imagePath, 2, out);
+  blocksToMarkdown(visible.filter((b) => !b.frameId), visible, imagePath, drawingPath, 2, out);
   const visibleIds = new Set(visible.map((b) => b.id));
   const arrows = page.arrows.filter((a) => visibleIds.has(a.from) && visibleIds.has(a.to));
   if (arrows.length) {
@@ -359,8 +375,9 @@ const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', '
 async function markdownExport(page: Page): Promise<{ bytes: Uint8Array<ArrayBuffer>; ext: 'md' | 'zip' }> {
   const hidden = hiddenBlockIds(page.blocks);
   const imageBlocks = page.blocks.filter((b): b is ImageBlock => b.type === 'image' && !hidden.has(b.id));
+  const drawings = page.blocks.filter((b): b is DrawBlock => b.type === 'draw' && !!b.preview && !hidden.has(b.id));
   const enc = new TextEncoder();
-  if (!imageBlocks.length) return { bytes: toArrayBufferBytes(enc.encode(pageToMarkdown(page, () => ''))), ext: 'md' };
+  if (!imageBlocks.length && !drawings.length) return { bytes: toArrayBufferBytes(enc.encode(pageToMarkdown(page, () => ''))), ext: 'md' };
 
   const files: Record<string, Uint8Array> = {};
   const names = new Map<string, string>();
@@ -372,8 +389,12 @@ async function markdownExport(page: Page): Promise<{ bytes: Uint8Array<ArrayBuff
     names.set(b.imageId, name);
     files[name] = base64ToBytes(img.data);
   }
+  // Drawings go in as SVG files next to the pictures.
+  for (const d of drawings) files[`images/drawing-${d.id}.svg`] = enc.encode(d.preview);
   const base = fileBase(page);
-  files[`${base}.md`] = enc.encode(pageToMarkdown(page, (b) => names.get(b.imageId) ?? ''));
+  files[`${base}.md`] = enc.encode(
+    pageToMarkdown(page, (b) => names.get(b.imageId) ?? '', (b) => (b.preview ? `images/drawing-${b.id}.svg` : '')),
+  );
   return { bytes: toArrayBufferBytes(zipSync(files, { level: 6 })), ext: 'zip' };
 }
 

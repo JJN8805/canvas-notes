@@ -89,6 +89,7 @@ export const BLOCK_LABEL: Record<Block['type'], string> = {
   code: 'Code',
   table: 'Table',
   frame: 'Frame',
+  draw: 'Drawing',
 };
 
 export function blockText(b: Block): string {
@@ -111,7 +112,7 @@ export const FRAME_HEAD_H = 32;
 
 export function blockHeight(b: Block): number {
   if (b.type === 'frame') return b.collapsed ? FRAME_HEAD_H : b.h;
-  return b.type === 'image' ? b.h : Math.max(b.h, b.ah ?? 0);
+  return b.type === 'image' || b.type === 'draw' ? b.h : Math.max(b.h, b.ah ?? 0);
 }
 
 export function isEditableTarget(el: Element | null): boolean {

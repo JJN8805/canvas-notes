@@ -4,6 +4,7 @@ import { blockHeight, colorVar, sanitizeHtml } from '../../lib/util';
 import { routeBetween } from '../../lib/arrows';
 import { hiddenBlockIds, paintOrder } from '../../lib/frames';
 import { useImageUrl } from '../../lib/useImageUrl';
+import { DrawPreview } from '../blocks/DrawBody';
 
 const PAD = 36;
 const MAX_SCALE = 0.42;
@@ -134,6 +135,8 @@ export function StaticBody({ block: b }: { block: Block }) {
       );
     case 'image':
       return <StaticImage imageId={b.imageId} />;
+    case 'draw':
+      return <DrawPreview preview={b.preview} />;
     case 'frame':
       return (
         <>
