@@ -14,6 +14,8 @@ export default defineConfig({
     hmr: host ? { protocol: 'ws', host, port: 1421 } : undefined,
     watch: { ignored: ['**/src-tauri/**'] },
   },
+  // The WASM SQLite finds its .wasm file relative to itself, so it must not be pre-bundled.
+  optimizeDeps: { exclude: ['@sqlite.org/sqlite-wasm'] },
   envPrefix: ['VITE_', 'TAURI_ENV_*'],
   build: {
     target: 'safari15',
