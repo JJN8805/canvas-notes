@@ -17,10 +17,12 @@ import {
   useNotes,
 } from '../../store/notes';
 import { addImages, imageFiles } from '../../store/images';
-import { canvasApi, editorRegistry, setSelectMode, setSelected, setSelectedArrow, useCanvas, type Point } from '../../store/canvas';
+import { canvasApi, editorRegistry, setSelectMode, setSelected, setSelectedArrow, useCanvas, type CanvasView, type Point } from '../../store/canvas';
 import { useUi } from '../../store/ui';
 import { useDraw } from '../../store/draw';
-import { blockHeight, clamp, isEditableTarget, modKey, sanitizeHtml, snap, textToHtml } from '../../lib/util';
+import { dragsStickyBody, isStickyKey, STICKY_SIZE, stickyCorner } from '../../lib/colors';
+import { liveDrawing, svgSrc } from '../../lib/drawing';
+import { blockHeight, clamp, isFixedHeight, isEditableTarget, modKey, sanitizeHtml, snap, textToHtml } from '../../lib/util';
 import { BlockFrame } from './BlockFrame';
 import { FrameChrome } from './FrameChrome';
 import { boundsOf, guideLines, nearestShift, type Guide, type Rect as BoxRect } from '../../lib/guides';
@@ -49,6 +51,10 @@ export function Canvas({ pageId }: { pageId: string }) {
   const heights = useRef(new Map<string, number>());
   const blocksRef = useRef(blocks);
   blocksRef.current = blocks;
+  const drawing = useNotes((s) => s.pages[pageId]?.drawing ?? null);
+  const drawingRef = useRef(drawing);
+  drawingRef.current = drawing;
+  const drawMode = useDraw((s) => s.open);
   const pendingScroll = useRef<Point | null>(null);
   const spaceDown = useRef(false);
   const cascade = useRef(0);
@@ -86,6 +92,11 @@ export function Canvas({ pageId }: { pageId: string }) {
       mx = Math.max(mx, b.x + b.w);
       my = Math.max(my, b.y + (heights.current.get(b.id) ?? blockHeight(b)));
     }
+    const ink = liveDrawing(drawingRef.current);
+    if (ink) {
+      mx = Math.max(mx, ink.x + ink.w);
+      my = Math.max(my, ink.y + ink.h);
+    }
     const W = Math.max(v.clientWidth / z, mx + MARGIN);
     const H = Math.max(v.clientHeight / z, my + MARGIN);
     world.style.width = W + 'px';
@@ -103,7 +114,7 @@ export function Canvas({ pageId }: { pageId: string }) {
       v.scrollTop = pendingScroll.current.y;
       pendingScroll.current = null;
     }
-  }, [blocks, zoom, updateExtent]);
+  }, [blocks, drawing, zoom, updateExtent]);
 
   useEffect(() => {
     const ro = new ResizeObserver(() => updateExtent());
@@ -150,6 +161,9 @@ export function Canvas({ pageId }: { pageId: string }) {
     };
   }, []);
 
+  /** Where the pointer last was (screen coordinates), so "S" can drop a sticky under it. */
+  const pointer = useRef<Point | null>(null);
+
   const focusBlock = useCallback((id: string) => {
     const ed = editorRegistry.get(id);
     if (ed) {
@@ -160,12 +174,30 @@ export function Canvas({ pageId }: { pageId: string }) {
     el?.focus();
   }, []);
 
+  const getView = useCallback((): CanvasView => {
+    const v = viewportRef.current;
+    return { zoom: useCanvas.getState().zoom, left: v?.scrollLeft ?? 0, top: v?.scrollTop ?? 0 };
+  }, []);
+
+  const setView = useCallback((next: CanvasView) => {
+    const v = viewportRef.current;
+    if (!v) return;
+    const z = clamp(next.zoom, MIN_ZOOM, MAX_ZOOM);
+    if (z === useCanvas.getState().zoom) {
+      v.scrollLeft = next.left;
+      v.scrollTop = next.top;
+    } else {
+      pendingScroll.current = { x: next.left, y: next.top };
+      useCanvas.setState({ zoom: z });
+    }
+  }, []);
+
   useEffect(() => {
-    canvasApi.current = { worldPoint, visibleSpot, focusBlock, zoomTo };
+    canvasApi.current = { worldPoint, visibleSpot, focusBlock, zoomTo, getView, setView };
     return () => {
       canvasApi.current = null;
     };
-  }, [worldPoint, visibleSpot, focusBlock, zoomTo]);
+  }, [worldPoint, visibleSpot, focusBlock, zoomTo, getView, setView]);
 
   const blurInside = () => {
     const a = document.activeElement as HTMLElement | null;
@@ -331,7 +363,7 @@ export function Canvas({ pageId }: { pageId: string }) {
       const b = useNotes.getState().pages[pageId]?.blocks.find((x) => x.id === id);
       if (!b) return;
       const el = worldRef.current?.querySelector<HTMLElement>(`[data-id="${id}"]`);
-      const startH = b.type === 'image' ? b.h : Math.max(b.h, el?.offsetHeight ?? b.h);
+      const startH = isFixedHeight(b) ? b.h : Math.max(b.h, el?.offsetHeight ?? b.h);
       const aspect = b.type === 'image' && b.aspect ? b.aspect : b.w / startH;
       const s0 = { x: e.clientX, y: e.clientY, w: b.w, h: startH };
       const others: BoxRect[] = (useNotes.getState().pages[pageId]?.blocks ?? [])
@@ -489,14 +521,29 @@ export function Canvas({ pageId }: { pageId: string }) {
           window.removeEventListener('pointercancel', cancelLongPress);
         };
       }
+      // A sticky is dragged by its text like a real note; double-click (or Enter) to type in it.
+      const target = e.target as HTMLElement;
+      const text = target.closest('.text-editor');
+      if (
+        dragsStickyBody({
+          type: useNotes.getState().pages[pageId]?.blocks.find((b) => b.id === id)?.type ?? '',
+          pointerType: e.pointerType,
+          shiftKey: e.shiftKey,
+          editing: !!text?.contains(document.activeElement),
+          onText: !!text,
+        })
+      ) {
+        startMove(e, id);
+        return;
+      }
       if (e.shiftKey) {
         // Shift-click toggles a block in the selection without starting to edit it.
-        if ((e.target as HTMLElement).closest('.grip')) return;
+        if ((e.target as HTMLElement).closest('.grip, .grab')) return;
         e.preventDefault();
         setSelected(sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]);
         return;
       }
-      if ((e.target as HTMLElement).closest('.grip, .resize, .bar button, .dot')) return;
+      if ((e.target as HTMLElement).closest('.grip, .grab, .resize, .bar button, .dot, .ci-grip')) return;
       if (!(sel.length === 1 && sel[0] === id)) setSelected([id]);
       bringToFront(pageId, [id]);
     },
@@ -508,7 +555,7 @@ export function Canvas({ pageId }: { pageId: string }) {
       heights.current.set(id, h);
       updateExtent();
       const b = useNotes.getState().pages[pageId]?.blocks.find((x) => x.id === id);
-      if (b && b.type !== 'image' && Math.abs((b.ah ?? 0) - h) > 2) {
+      if (b && !isFixedHeight(b) && Math.abs((b.ah ?? 0) - h) > 2) {
         mutatePage(
           pageId,
           (p) => {
@@ -655,7 +702,7 @@ export function Canvas({ pageId }: { pageId: string }) {
   /* ---------- keyboard & clipboard ---------- */
 
   useEffect(() => {
-    const blocked = () => !!(useUi.getState().dialog || useUi.getState().menu || useDraw.getState().editing);
+    const blocked = () => !!(useUi.getState().dialog || useUi.getState().menu || useDraw.getState().open);
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (blocked()) return;
@@ -710,6 +757,22 @@ export function Canvas({ pageId }: { pageId: string }) {
         return;
       }
 
+      if (isStickyKey(e)) {
+        // At the pointer if it is over the canvas, otherwise in the middle of what is visible.
+        e.preventDefault();
+        const r = viewportRef.current?.getBoundingClientRect();
+        const m = pointer.current;
+        const over = !!(r && m && m.x >= r.left && m.x <= r.right && m.y >= r.top && m.y <= r.bottom);
+        const at = over ? stickyCorner(worldPoint(m!.x, m!.y)) : visibleSpot(STICKY_SIZE, STICKY_SIZE);
+        let id = '';
+        flushSync(() => {
+          id = addBlock(pageId, 'sticky', at);
+          setSelected([id]);
+        });
+        focusBlock(id);
+        return;
+      }
+
       const sel = useCanvas.getState().selected;
       if (!sel.length) {
         const arrowSel = useCanvas.getState().selectedArrow;
@@ -726,7 +789,7 @@ export function Canvas({ pageId }: { pageId: string }) {
         e.preventDefault();
         deleteBlocks(pageId, sel);
         setSelected([]);
-      } else if (mod && key === 'd') {
+      } else if (mod && key === 'd' && !e.altKey) {
         e.preventDefault();
         setSelected(duplicateBlocks(pageId, sel));
       } else if (e.key === 'Escape') {
@@ -788,17 +851,22 @@ export function Canvas({ pageId }: { pageId: string }) {
       setSelected([id]);
     };
 
+    const onPointer = (e: PointerEvent) => {
+      pointer.current = { x: e.clientX, y: e.clientY };
+    };
+    window.addEventListener('pointermove', onPointer);
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', onBlur);
     document.addEventListener('paste', onPaste);
     return () => {
+      window.removeEventListener('pointermove', onPointer);
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('paste', onPaste);
     };
-  }, [pageId, focusBlock, visibleSpot, zoomTo]);
+  }, [pageId, focusBlock, visibleSpot, zoomTo, worldPoint]);
 
   /* ---------- file drop ---------- */
 
@@ -861,6 +929,15 @@ export function Canvas({ pageId }: { pageId: string }) {
               ) : (
                 <BlockFrame key={b.id} block={b} selected={selSet.has(b.id)} single={single && selSet.has(b.id)} />
               ),
+            )}
+            {!drawMode && liveDrawing(drawing) && (
+              <img
+                className="ink"
+                alt=""
+                draggable={false}
+                src={svgSrc(drawing!.preview)}
+                style={{ left: drawing!.x, top: drawing!.y, width: drawing!.w, height: drawing!.h }}
+              />
             )}
             <ArrowLayer pageId={pageId} blocks={visibleBlocks} heights={heights} connecting={connecting} />
             {guides.map((g, i) =>

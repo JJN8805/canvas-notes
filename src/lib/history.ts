@@ -38,8 +38,8 @@ export function snapshotsToDrop(list: { id: string; taken: number }[], now: numb
 }
 
 /** A page with nothing in it: a deleted one like this is a purged tombstone (nothing left to restore). */
-export function isBlankPage(p: { title: string; tags: unknown[]; blocks: unknown[]; arrows?: unknown[] }): boolean {
-  return p.title === '' && p.tags.length === 0 && p.blocks.length === 0 && (p.arrows?.length ?? 0) === 0;
+export function isBlankPage(p: { title: string; tags: unknown[]; blocks: unknown[]; arrows?: unknown[]; drawing?: unknown }): boolean {
+  return p.title === '' && p.tags.length === 0 && p.blocks.length === 0 && (p.arrows?.length ?? 0) === 0 && !p.drawing;
 }
 
 /** Whole days until a page deleted at `deletedAt` is purged (never below 0). */

@@ -1,17 +1,26 @@
-import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { Arrow, Block } from '../../types';
-import { blockHeight, colorVar, sanitizeHtml } from '../../lib/util';
+import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import type { Arrow, Block, PageDrawing } from '../../types';
+import { frameInk, tintVars } from '../../lib/colors';
+import { liveDrawing, svgSrc, unionBounds } from '../../lib/drawing';
+import { blockHeight, colorVar, isFixedHeight, sanitizeHtml } from '../../lib/util';
 import { routeBetween } from '../../lib/arrows';
 import { hiddenBlockIds, paintOrder } from '../../lib/frames';
 import { useImageUrl } from '../../lib/useImageUrl';
-import { DrawPreview } from '../blocks/DrawBody';
 
 const PAD = 36;
 const MAX_SCALE = 0.42;
 const EMPTY_ARROWS: Arrow[] = [];
 
 /** A miniature of the page: the real blocks, laid out the same way, scaled to fit the card. */
-export const Thumbnail = memo(function Thumbnail({ blocks, arrows = EMPTY_ARROWS }: { blocks: Block[]; arrows?: Arrow[] }) {
+export const Thumbnail = memo(function Thumbnail({
+  blocks,
+  arrows = EMPTY_ARROWS,
+  drawing,
+}: {
+  blocks: Block[];
+  arrows?: Arrow[];
+  drawing?: PageDrawing | null;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
 
@@ -27,22 +36,19 @@ export const Thumbnail = memo(function Thumbnail({ blocks, arrows = EMPTY_ARROWS
     return blocks.filter((b) => !hidden.has(b.id));
   }, [blocks]);
 
+  const ink = liveDrawing(drawing);
   const layout = useMemo(() => {
-    if (!visible.length) return null;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const b of visible) {
-      minX = Math.min(minX, b.x);
-      minY = Math.min(minY, b.y);
-      maxX = Math.max(maxX, b.x + b.w);
-      maxY = Math.max(maxY, b.y + blockHeight(b));
-    }
+    const boxes = visible.map((b) => ({ x: b.x, y: b.y, w: b.w, h: blockHeight(b) }));
+    if (ink) boxes.push(ink);
+    if (!boxes.length) return null;
+    const { minX, minY, maxX, maxY } = unionBounds(boxes);
     return {
       minX, minY,
       w: maxX - minX + PAD * 2,
       h: maxY - minY + PAD * 2,
       sorted: paintOrder(visible),
     };
-  }, [visible]);
+  }, [visible, ink]);
 
   let transform = 'scale(0)';
   if (layout && box.w) {
@@ -66,12 +72,21 @@ export const Thumbnail = memo(function Thumbnail({ blocks, arrows = EMPTY_ARROWS
                 left: b.x - layout.minX + PAD,
                 top: b.y - layout.minY + PAD,
                 width: b.w,
-                ...(b.type === 'image' || b.type === 'frame' ? { height: blockHeight(b) } : { minHeight: b.h }),
-              }}
+                ...(isFixedHeight(b) || b.type === 'frame' ? { height: blockHeight(b) } : { minHeight: b.h }),
+                ...tintVars(b),
+              } as CSSProperties}
             >
               <StaticBody block={b} />
             </div>
           ))}
+          {ink && (
+            <img
+              className="ink"
+              alt=""
+              src={svgSrc(ink.preview)}
+              style={{ left: ink.x - layout.minX + PAD, top: ink.y - layout.minY + PAD, width: ink.w, height: ink.h }}
+            />
+          )}
           {arrows.length > 0 && (
             <svg className="mini-arrows" aria-hidden="true">
               {arrows.map((a) => {
@@ -99,6 +114,7 @@ export const Thumbnail = memo(function Thumbnail({ blocks, arrows = EMPTY_ARROWS
 export function StaticBody({ block: b }: { block: Block }) {
   switch (b.type) {
     case 'text':
+    case 'sticky':
       return <div className="body prose" dangerouslySetInnerHTML={{ __html: sanitizeHtml(b.html) }} />;
     case 'checklist':
       return (
@@ -135,13 +151,11 @@ export function StaticBody({ block: b }: { block: Block }) {
       );
     case 'image':
       return <StaticImage imageId={b.imageId} />;
-    case 'draw':
-      return <DrawPreview preview={b.preview} />;
     case 'frame':
       return (
         <>
           <div className="frame-body" style={{ background: `color-mix(in srgb, ${colorVar(b.color)} 12%, transparent)`, borderColor: colorVar(b.color) }} />
-          <div className="frame-head" style={{ background: colorVar(b.color) }}>
+          <div className="frame-head" style={{ background: colorVar(b.color), color: frameInk(b.color) ?? undefined }}>
             <span className="frame-title-static">{b.title || 'Frame'}</span>
           </div>
         </>

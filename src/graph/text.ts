@@ -17,6 +17,7 @@ export function htmlToText(html: string): string {
 export function blockPlainText(b: Block): string {
   switch (b.type) {
     case 'text':
+    case 'sticky':
       return htmlToText(b.html ?? '');
     case 'checklist':
       return b.items.map((i) => i.text).filter(Boolean).join('\n');
@@ -28,8 +29,6 @@ export function blockPlainText(b: Block): string {
       return b.title ?? '';
     case 'image':
       return b.alt ?? '';
-    case 'draw':
-      return '';
   }
 }
 

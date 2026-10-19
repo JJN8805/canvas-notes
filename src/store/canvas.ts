@@ -45,6 +45,12 @@ export function resetCanvas() {
   useCanvas.setState({ selected: [], selectedArrow: null, zoom: 1, activeEditor: null, selectMode: false });
 }
 
+export interface CanvasView {
+  zoom: number;
+  left: number;
+  top: number;
+}
+
 /** Imperative helpers the mounted canvas provides (coordinates, focusing). */
 export interface CanvasApi {
   /** A sensible spot for a new item of the given size inside the visible area. */
@@ -52,6 +58,9 @@ export interface CanvasApi {
   worldPoint(clientX: number, clientY: number): Point;
   focusBlock(id: string): void;
   zoomTo(zoom: number, anchor?: Point): void;
+  /** The zoom and scroll position (in screen pixels) of the visible part of the page. */
+  getView(): CanvasView;
+  setView(view: CanvasView): void;
 }
 export const canvasApi: { current: CanvasApi | null } = { current: null };
 

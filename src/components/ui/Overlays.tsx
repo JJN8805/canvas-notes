@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { closeDialog, closeMenu, dismissToast, useUi, type MenuItem } from '../../store/ui';
-import { GROUP_COLORS } from '../../types';
+import { GROUP_COLORS, NOTE_COLORS } from '../../types';
 import { colorVar } from '../../lib/util';
 
 export function Overlays() {
@@ -74,10 +74,37 @@ function MenuHost() {
       {menu.items.map((it: MenuItem, i) => {
         if ('separator' in it) return <div key={i} className="menu-sep" />;
         if ('heading' in it) return <div key={i} className="menu-head">{it.heading}</div>;
+        if ('colors' in it) {
+          return (
+            <div key={i}>
+              <div className="menu-head">{it.title ?? 'Color'}</div>
+              <div className="swatches">
+                <button
+                  className="swatch swatch-none"
+                  aria-label="No color"
+                  title="None"
+                  aria-pressed={it.current === null}
+                  onClick={() => run(() => it.pick(null))}
+                />
+                {NOTE_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    className="swatch"
+                    style={{ background: colorVar(c) }}
+                    aria-label={c}
+                    title={c}
+                    aria-pressed={it.current === c}
+                    onClick={() => run(() => it.pick(c))}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        }
         if ('swatches' in it) {
           return (
             <div key={i}>
-              <div className="menu-head">Color</div>
+              <div className="menu-head">{it.title ?? 'Color'}</div>
               <div className="swatches">
                 {GROUP_COLORS.map((c) => (
                   <button

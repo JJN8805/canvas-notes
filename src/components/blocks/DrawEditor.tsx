@@ -1,45 +1,90 @@
-// Loaded lazily (see DrawOverlay): this file and Excalidraw only reach the browser when a drawing is opened.
+// Loaded lazily (see DrawOverlay): this file and Excalidraw only reach the browser when draw mode is first opened.
 import './excalidrawAssets';
 import '@excalidraw/excalidraw/index.css';
 import { useEffect, useRef } from 'react';
-import { Excalidraw, exportToSvg } from '@excalidraw/excalidraw';
+import { Excalidraw, exportToSvg, getCommonBounds, getSceneVersion } from '@excalidraw/excalidraw';
+import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types';
+import type { PageDrawing } from '../../types';
+import { toolToLock } from '../../lib/drawing';
 
-interface Scene {
-  elements: readonly Record<string, unknown>[];
-  background?: string;
-}
+type Elements = readonly Record<string, unknown>[];
 
-function parse(scene: string): Scene {
+/** Space kept around the strokes in the SVG render so thick lines aren't clipped. */
+const PAD = 16;
+
+export function parseScene(scene: string): Elements {
   try {
-    const s = JSON.parse(scene) as Scene;
-    return Array.isArray(s.elements) ? s : { elements: [] };
+    const s = JSON.parse(scene) as { elements?: unknown };
+    return Array.isArray(s.elements) ? (s.elements as Elements) : [];
   } catch {
-    return { elements: [] };
+    return [];
   }
 }
 
-export default function DrawEditor({ scene, onChange }: { scene: string; onChange: (scene: string, preview: string) => void }) {
-  const initial = useRef(parse(scene));
+/** The drawing for these strokes (null when there are none). Its box is in the canvas's own coordinates. */
+export async function toPageDrawing(elements: Elements): Promise<PageDrawing | null> {
+  if (!elements.length) return null;
+  const [minX, minY, maxX, maxY] = getCommonBounds(elements as never);
+  const svg = await exportToSvg({
+    elements: elements as never,
+    appState: { exportBackground: false },
+    files: null,
+    exportPadding: PAD,
+  });
+  return {
+    scene: JSON.stringify({ elements }),
+    preview: svg.outerHTML,
+    x: Math.floor(minX - PAD),
+    y: Math.floor(minY - PAD),
+    w: Math.ceil(maxX - minX + PAD * 2),
+    h: Math.ceil(maxY - minY + PAD * 2),
+  };
+}
+
+export interface DrawView {
+  /** Excalidraw's own scroll offsets: the canvas is at screen = (point + scroll) * zoom. */
+  scrollX: number;
+  scrollY: number;
+  zoom: number;
+}
+
+export interface DrawHandle {
+  setView(view: DrawView): void;
+}
+
+export default function DrawEditor({
+  scene,
+  view,
+  dark,
+  onChange,
+  onView,
+  onReady,
+}: {
+  scene: string;
+  view: DrawView;
+  dark: boolean;
+  onChange: (drawing: PageDrawing | null) => void;
+  onView: (view: DrawView) => void;
+  onReady: (handle: DrawHandle) => void;
+}) {
+  const initial = useRef({ elements: parseScene(scene), view });
   const timer = useRef<number | null>(null);
-  const latest = useRef<{ elements: Scene['elements']; background: string } | null>(null);
+  const version = useRef(getSceneVersion(initial.current.elements as never));
+  const latest = useRef<Elements | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const api = useRef<ExcalidrawImperativeAPI | null>(null);
+  const lastTool = useRef('selection');
+  const onViewRef = useRef(onView);
+  onViewRef.current = onView;
 
   const commit = async () => {
-    const cur = latest.current;
+    const elements = latest.current;
     latest.current = null;
-    if (!cur) return;
-    if (!cur.elements.length) return onChangeRef.current('', '');
-    const svg = await exportToSvg({
-      elements: cur.elements as never,
-      appState: { exportBackground: true, viewBackgroundColor: cur.background },
-      files: null,
-      exportPadding: 12,
-    });
-    onChangeRef.current(JSON.stringify({ elements: cur.elements, background: cur.background } satisfies Scene), svg.outerHTML);
+    if (elements) onChangeRef.current(await toPageDrawing(elements));
   };
 
-  // Whatever is still waiting when the editor closes is saved too.
+  // Whatever is still waiting when draw mode closes is saved too.
   useEffect(
     () => () => {
       if (timer.current !== null) window.clearTimeout(timer.current);
@@ -48,22 +93,44 @@ export default function DrawEditor({ scene, onChange }: { scene: string; onChang
     [],
   );
 
+  const ready = (a: ExcalidrawImperativeAPI) => {
+    api.current = a;
+    onReady({
+      setView: (v) => a.updateScene({ appState: { scrollX: v.scrollX, scrollY: v.scrollY, zoom: { value: v.zoom as never } } }),
+    });
+  };
+
   return (
     <Excalidraw
+      excalidrawAPI={ready}
       initialData={{
         elements: initial.current.elements as never,
-        appState: { viewBackgroundColor: initial.current.background ?? '#ffffff' },
-        scrollToContent: true,
+        appState: {
+          viewBackgroundColor: 'transparent',
+          scrollX: initial.current.view.scrollX,
+          scrollY: initial.current.view.scrollY,
+          zoom: { value: initial.current.view.zoom as never },
+        },
       }}
-      theme="light"
+      theme={dark ? 'dark' : 'light'}
       handleKeyboardGlobally={false}
       detectScroll={false}
       UIOptions={{
-        canvasActions: { loadScene: false, saveToActiveFile: false, export: false, saveAsImage: false, toggleTheme: false },
+        canvasActions: { loadScene: false, saveToActiveFile: false, export: false, saveAsImage: false, toggleTheme: false, changeViewBackgroundColor: false },
         tools: { image: false },
       }}
-      onChange={(elements, appState) => {
-        latest.current = { elements: elements.filter((e) => !e.isDeleted) as never, background: appState.viewBackgroundColor };
+      onScrollChange={(scrollX, scrollY, zoom) => onViewRef.current({ scrollX, scrollY, zoom: zoom.value })}
+      onChange={(all, appState) => {
+        // A tool stays selected until you pick another: Excalidraw would drop back to the pointer after each stroke.
+        const tool = appState.activeTool;
+        const lock = toolToLock(lastTool.current, tool);
+        lastTool.current = tool.type;
+        if (lock) api.current?.setActiveTool({ type: lock as 'freedraw', locked: true });
+        // Panning and zooming also arrive here; only a change to the strokes is worth saving.
+        const v = getSceneVersion(all);
+        if (v === version.current) return;
+        version.current = v;
+        latest.current = all.filter((e) => !e.isDeleted) as never;
         if (timer.current !== null) window.clearTimeout(timer.current);
         timer.current = window.setTimeout(() => void commit(), 700);
       }}

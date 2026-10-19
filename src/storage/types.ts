@@ -1,5 +1,7 @@
+import { cleanColor } from '../lib/colors';
+import { cleanDate, kindOf } from '../lib/pages';
 import type { GraphMirror } from '../graph/mirror';
-import type { Arrow, Block, Group, GroupColor, Page } from '../types';
+import type { Arrow, Block, Group, GroupColor, NoteColor, Page, PageDrawing, PageKind } from '../types';
 
 export type SaveResult = { ok: true; rev: number } | { ok: false; reason: 'conflict' };
 
@@ -31,6 +33,13 @@ export interface PageRecord {
   tags: string[];
   blocks: Block[];
   arrows: Arrow[];
+  /** Absent in records from app versions before page drawings. */
+  drawing?: PageDrawing | null;
+  /** Absent in records from app versions before templates and daily pages. */
+  kind?: PageKind;
+  dailyDate?: string | null;
+  /** Absent in records from app versions before page colours. */
+  color?: NoteColor | null;
   created: number;
   updated: number;
 }
@@ -136,6 +145,10 @@ export function normalizePage(p: Partial<Page> & { id: string }): Page {
     tags: Array.isArray(p.tags) ? p.tags : [],
     blocks: Array.isArray(p.blocks) ? p.blocks : [],
     arrows: Array.isArray(p.arrows) ? p.arrows : [],
+    drawing: p.drawing ?? null,
+    color: cleanColor(p.color),
+    kind: kindOf(p),
+    dailyDate: cleanDate(p.dailyDate),
     created: p.created ?? Date.now(),
     updated: p.updated ?? p.created ?? Date.now(),
     rev: p.rev ?? 0,

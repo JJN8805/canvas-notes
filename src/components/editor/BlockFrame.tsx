@@ -1,13 +1,13 @@
 import { memo, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
-import type { Block, DrawBlock, FrameBlock, TableBlock, TextBlock } from '../../types';
-import { deleteBlocks, duplicateBlocks, sendToBack, updateBlock } from '../../store/notes';
-import { setSelected } from '../../store/canvas';
-import { openDraw } from '../../store/draw';
-import { BLOCK_LABEL, newId } from '../../lib/util';
+import type { Block, FrameBlock, NoteColor, TableBlock, TextBlock } from '../../types';
+import { deleteBlocks, duplicateBlocks, sendToBack, setColor, updateBlock } from '../../store/notes';
+import { canvasApi, setSelected } from '../../store/canvas';
+import { BLOCK_LABEL, isFixedHeight, newId } from '../../lib/util';
 import { Icon, type IconName } from '../ui/Icon';
 import { TextBody } from '../blocks/TextBody';
 import { ChecklistBody, CodeBody, ImageBody, TableBody } from '../blocks/Bodies';
-import { DrawBody } from '../blocks/DrawBody';
+import { colorOf, noteVar, tintVars } from '../../lib/colors';
+import { openMenu } from '../../store/ui';
 import { useCanvasCtx } from './context';
 
 const LABEL = BLOCK_LABEL;
@@ -39,15 +39,19 @@ export const BlockFrame = memo(function BlockFrame({
     left: block.x,
     top: block.y,
     width: block.w,
-    ...(block.type === 'image' || block.type === 'draw' ? { height: block.h } : { minHeight: block.h }),
-  };
+    ...(isFixedHeight(block) ? { height: block.h } : { minHeight: block.h }),
+    ...tintVars(block),
+  } as CSSProperties;
 
   const cls = ['block', `b-${block.type}`];
   if (selected) cls.push('sel');
   if (block.type === 'text' && block.fill) cls.push('fill');
 
   return (
-    <div ref={ref} className={cls.join(' ')} data-id={block.id} style={style} onPointerDownCapture={(e) => ctx.pointerDownBlock(e, block.id)}>
+    <div ref={ref} className={cls.join(' ')} data-id={block.id} style={style} onPointerDownCapture={(e) => ctx.pointerDownBlock(e, block.id)}
+      onDoubleClick={block.type === 'sticky' ? () => canvasApi.current?.focusBlock(block.id) : undefined}>
+      {/* A band just outside and inside the box's edge that moves it, so it can be grabbed without the bar. */}
+      <div className="grab" aria-hidden="true" title="Drag to move" onPointerDown={(e) => ctx.startMove(e, block.id)} />
       <div className="bar-wrap">
         <BlockBar block={block} />
       </div>
@@ -79,8 +83,8 @@ function Body({ block }: { block: NonFrameBlock }) {
       return <TableBody block={block} />;
     case 'image':
       return <ImageBody block={block} />;
-    case 'draw':
-      return <DrawBody block={block as DrawBlock} />;
+    case 'sticky':
+      return <TextBody block={block} />;
   }
 }
 
@@ -112,9 +116,6 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
       ),
     );
   }
-  if (block.type === 'draw') {
-    extra.push(btn('Edit drawing', 'Edit', () => openDraw(pageId, block.id)));
-  }
   if (block.type === 'table') {
     const edit = (fn: (b: TableBlock) => void) => updateBlock<TableBlock>(pageId, block.id, fn);
     extra.push(
@@ -143,6 +144,19 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
         {LABEL[block.type]}
       </span>
       {extra}
+      <button
+        aria-label="Color"
+        title={block.type === 'image' ? 'Border color' : 'Color'}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          openMenu(e.currentTarget, [
+            { colors: true, title: block.type === 'image' ? 'Border color' : 'Color', current: colorOf(block), pick: (c: NoteColor | null) => setColor(pageId, [block.id], c) },
+          ]);
+        }}
+      >
+        <span className="swatch-dot" style={{ background: block.tint ? noteVar(block.tint) : 'transparent' }} />
+      </button>
       {btn('Send to back', icon('layer'), () => sendToBack(pageId, [block.id]))}
       {btn('Duplicate', icon('copy'), () => setSelected(duplicateBlocks(pageId, [block.id])))}
       {btn('Delete', icon('trash'), () => {

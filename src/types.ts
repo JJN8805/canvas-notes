@@ -1,4 +1,9 @@
-export type BlockType = 'text' | 'image' | 'checklist' | 'code' | 'table' | 'frame' | 'draw';
+export type BlockType = 'text' | 'image' | 'checklist' | 'code' | 'table' | 'frame' | 'sticky';
+
+/** The muted colours offered for boxes, stickies and page cards. Their light and dark values are
+ *  the `--n-*` tokens in styles.css; each has a matching `--n-*-ink` for text on top of it. */
+export const NOTE_COLORS = ['yellow', 'orange', 'red', 'pink', 'purple', 'blue', 'green', 'gray'] as const;
+export type NoteColor = (typeof NOTE_COLORS)[number];
 
 interface BlockBase {
   id: string;
@@ -15,6 +20,8 @@ interface BlockBase {
   /** Id of the frame directly containing this block, if any. Shared by every
    *  block type (including frames) so frames can nest inside frames. */
   frameId?: string | null;
+  /** Background tint (a border for pictures). Absent or null = no colour. Frames use their own `color` instead. */
+  tint?: NoteColor | null;
 }
 
 export interface TextBlock extends BlockBase {
@@ -48,17 +55,15 @@ export interface TableBlock extends BlockBase {
 export interface FrameBlock extends BlockBase {
   type: 'frame';
   title: string;
-  color: GroupColor;
+  color: GroupColor | NoteColor;
   collapsed: boolean;
 }
-/** A freehand drawing made with Excalidraw. `scene` is its JSON (elements and background colour),
- *  `preview` an SVG render of it, so lists, thumbnails and exports never need to load Excalidraw. */
-export interface DrawBlock extends BlockBase {
-  type: 'draw';
-  scene: string;
-  preview: string;
+/** A small coloured note. Its colour is the block's `tint` (no tint = plain paper). Fixed size; long text scrolls. */
+export interface StickyBlock extends BlockBase {
+  type: 'sticky';
+  html: string;
 }
-export type Block = TextBlock | ImageBlock | ChecklistBlock | CodeBlock | TableBlock | FrameBlock | DrawBlock;
+export type Block = TextBlock | ImageBlock | ChecklistBlock | CodeBlock | TableBlock | FrameBlock | StickyBlock;
 
 export type ArrowheadMode = 'none' | 'one' | 'both';
 export type LineStyle = 'solid' | 'dashed';
@@ -77,6 +82,21 @@ export interface Arrow {
   z: number;
 }
 
+/** Freehand ink over the whole page, made with Excalidraw. `scene` is its JSON (the elements), and
+ *  `preview` an SVG render of them that covers the box x/y/w/h in canvas pixels, so the canvas,
+ *  thumbnails and exports never need to load Excalidraw. */
+export interface PageDrawing {
+  scene: string;
+  preview: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** A page is either a normal page or a template (a page kept for starting new pages from). */
+export type PageKind = 'page' | 'template';
+
 export interface Page {
   id: string;
   title: string;
@@ -84,6 +104,14 @@ export interface Page {
   tags: string[];
   blocks: Block[];
   arrows: Arrow[];
+  /** Absent means 'page'. Templates live in the same table and sync like pages but never show in the library. */
+  kind?: PageKind;
+  /** For a daily page, its local calendar date as YYYY-MM-DD. At most one live page per date. */
+  dailyDate?: string | null;
+  /** Colour of the page's card in the library. Absent or null = none. */
+  color?: NoteColor | null;
+  /** Absent when nothing is drawn on the page. */
+  drawing?: PageDrawing | null;
   created: number;
   updated: number;
   /** Revision stored on disk. 0 means never saved. Used to detect edits from another window. */
@@ -106,6 +134,7 @@ export type Filter =
   | { kind: 'ungrouped' }
   | { kind: 'group'; id: string }
   | { kind: 'tag'; tag: string }
-  | { kind: 'trash' };
+  | { kind: 'trash' }
+  | { kind: 'templates' };
 
 export type SortKey = 'updated' | 'created' | 'title';

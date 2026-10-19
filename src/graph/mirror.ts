@@ -158,11 +158,8 @@ export class GraphMirror {
         ids.set(b.id, other && other.page_id !== p.id ? `${b.id}${SEP}${p.id}` : b.id);
       }
       const { id, type, x, y, w, h, z, ...content } = b;
-      // The blocks table (migration v5) predates drawings, so they are stored as its generic 'shape'.
-      // The SVG preview is left out: the graph only needs to know the drawing is there.
-      if (b.type === 'draw') delete (content as { preview?: string }).preview;
       await repo.putBlock({
-        id: ids.get(id)!, pageId: p.id, type: b.type === 'draw' ? 'shape' : type, x, y, w, h, z: Math.round(z ?? 0),
+        id: ids.get(id)!, pageId: p.id, type, x, y, w, h, z: Math.round(z ?? 0),
         content, plainText: blockPlainText(b),
       });
     }

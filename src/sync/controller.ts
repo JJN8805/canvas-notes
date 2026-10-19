@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { isTauri } from '../storage';
-import { flushAll, getStorage, refreshFromDisk, useNotes } from '../store/notes';
+import { flushAll, getStorage, refreshFromDisk, resolveDailyDuplicates, useNotes } from '../store/notes';
 import { toast } from '../store/ui';
 import { handleRequest, syncWithLaptop, type SyncReport, type SyncRequest } from './engine';
 
@@ -114,7 +114,8 @@ function refreshSoon() {
   if (refreshTimer !== null) clearTimeout(refreshTimer);
   refreshTimer = window.setTimeout(() => {
     refreshTimer = null;
-    void refreshFromDisk();
+    // The laptop is the one that settles two devices having made the same day's page (the phone then receives the fix).
+    void refreshFromDisk().then(() => resolveDailyDuplicates());
   }, 300);
 }
 

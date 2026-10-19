@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GroupColor } from '../types';
+import type { GroupColor, NoteColor } from '../types';
 
 export interface ToastMsg {
   id: number;
@@ -23,7 +23,9 @@ export type MenuItem =
   | { label: string; action: () => void; danger?: boolean; check?: boolean; dot?: GroupColor }
   | { heading: string }
   | { separator: true }
-  | { swatches: true; current: GroupColor; pick: (c: GroupColor) => void };
+  | { swatches: true; title?: string; current: string; pick: (c: GroupColor) => void }
+  /** The note colours, plus "None" (null). */
+  | { colors: true; title?: string; current: NoteColor | null; pick: (c: NoteColor | null) => void };
 
 export interface MenuReq {
   anchor: HTMLElement;

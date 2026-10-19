@@ -1,6 +1,6 @@
 import DOMPurify from 'dompurify';
-import type { Block, GroupColor } from '../types';
-import { GROUP_COLORS } from '../types';
+import type { Block, GroupColor, NoteColor } from '../types';
+import { GROUP_COLORS, NOTE_COLORS } from '../types';
 
 export const GRID = 8;
 export const snap = (v: number) => Math.round(v / GRID) * GRID;
@@ -13,7 +13,8 @@ export function newId(): string {
 
 export const deepClone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
-export function colorVar(c: GroupColor | string): string {
+export function colorVar(c: GroupColor | NoteColor | string): string {
+  if ((NOTE_COLORS as readonly string[]).includes(c)) return `var(--n-${c})`;
   return `var(--c-${(GROUP_COLORS as readonly string[]).includes(c) ? c : 'slate'})`;
 }
 
@@ -89,12 +90,13 @@ export const BLOCK_LABEL: Record<Block['type'], string> = {
   code: 'Code',
   table: 'Table',
   frame: 'Frame',
-  draw: 'Drawing',
+  sticky: 'Sticky',
 };
 
 export function blockText(b: Block): string {
   switch (b.type) {
     case 'text':
+    case 'sticky':
       return htmlToText(b.html);
     case 'checklist':
       return b.items.map((i) => i.text).join(' ');
@@ -110,9 +112,12 @@ export function blockText(b: Block): string {
 /** Height of a frame's always-visible title bar; a collapsed frame shrinks to just this. */
 export const FRAME_HEAD_H = 32;
 
+/** Pictures and stickies keep the height they were given; every other box grows with its content. */
+export const isFixedHeight = (b: Block) => b.type === 'image' || b.type === 'sticky';
+
 export function blockHeight(b: Block): number {
   if (b.type === 'frame') return b.collapsed ? FRAME_HEAD_H : b.h;
-  return b.type === 'image' || b.type === 'draw' ? b.h : Math.max(b.h, b.ah ?? 0);
+  return isFixedHeight(b) ? b.h : Math.max(b.h, b.ah ?? 0);
 }
 
 export function isEditableTarget(el: Element | null): boolean {

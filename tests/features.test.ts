@@ -117,8 +117,18 @@ describe('Markdown export', () => {
   });
 });
 
+const haveImageMagick = (() => {
+  try {
+    execFileSync('convert', ['-version'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
 describe('PDF export', () => {
-  it('writes a valid one-page PDF that a real PDF tool can read and render', () => {
+  // Needs ImageMagick (to make a test JPEG) and poppler (to read the PDF back); skipped where they aren't installed.
+  it.skipIf(!haveImageMagick)('writes a valid one-page PDF that a real PDF tool can read and render', () => {
     // A tiny real JPEG, made with ImageMagick.
     const dir = mkdtempSync(join(tmpdir(), 'pdf-'));
     execFileSync('convert', ['-size', '64x40', 'xc:#2b47c9', join(dir, 'a.jpg')]);

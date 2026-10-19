@@ -1,85 +1,62 @@
-import { lazy, Suspense, useEffect, useState } from "react";
-import type { DrawBlock } from "../../types";
-import { updateBlock, useNotes } from "../../store/notes";
-import { closeDraw, useDraw } from "../../store/draw";
+import { lazy, Suspense, useRef, useState } from 'react';
+import { setPageDrawing, useNotes } from '../../store/notes';
+import { canvasApi } from '../../store/canvas';
+import { closeDraw, useDraw } from '../../store/draw';
+import type { DrawHandle, DrawView } from '../blocks/DrawEditor';
 
-// Excalidraw is large: it is only fetched the first time a drawing is opened.
-const DrawEditor = lazy(() => import("../blocks/DrawEditor"));
+// Excalidraw is large: it is only fetched the first time draw mode is opened.
+const DrawEditor = lazy(() => import('../blocks/DrawEditor'));
 
-const MIN_W = 560;
-const MIN_H = 420;
+const darkQuery = () => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
 
 /**
- * Excalidraw cannot work inside the zoomed canvas (it reads pointer positions from the screen),
- * so it opens in an unscaled panel placed over the box being edited, at least big enough for its toolbar.
+ * Draw mode: Excalidraw laid, transparent, over the whole canvas so you draw among the boxes.
+ * It cannot work inside the zoomed canvas (it reads pointer positions from the screen), so the two
+ * share one view instead. Excalidraw is told where the canvas is, and whenever you pan or zoom
+ * inside it the canvas follows (and Excalidraw is pulled back if the canvas can't go that far).
  */
 export function DrawOverlay({ pageId }: { pageId: string }) {
-  const editing = useDraw((s) => s.editing);
-  if (!editing || editing.pageId !== pageId) return null;
-  return (
-    <Panel key={editing.blockId} pageId={pageId} blockId={editing.blockId} />
-  );
+  const open = useDraw((s) => s.open);
+  if (!open) return null;
+  return <Panel pageId={pageId} />;
 }
 
-function Panel({ pageId, blockId }: { pageId: string; blockId: string }) {
-  const block = useNotes((s) =>
-    s.pages[pageId]?.blocks.find((b) => b.id === blockId),
-  );
-  // Read once: the saved scene must not be fed back in while drawing.
-  const [scene] = useState(() => (block?.type === "draw" ? block.scene : ""));
-  const [rect] = useState(() => {
-    const r = document
-      .querySelector<HTMLElement>(`[data-id="${CSS.escape(blockId)}"]`)
-      ?.getBoundingClientRect();
-    const w = Math.min(Math.max(r?.width ?? 0, MIN_W), window.innerWidth - 16);
-    const h = Math.min(
-      Math.max(r?.height ?? 0, MIN_H),
-      window.innerHeight - 16,
-    );
-    const cx = (r?.left ?? 0) + (r?.width ?? w) / 2;
-    const cy = (r?.top ?? 0) + (r?.height ?? h) / 2;
-    return {
-      left: Math.min(Math.max(8, cx - w / 2), window.innerWidth - w - 8),
-      top: Math.min(Math.max(8, cy - h / 2), window.innerHeight - h - 8),
-      width: w,
-      height: h,
-    };
-  });
+const toView = (v: { zoom: number; left: number; top: number }): DrawView => ({ scrollX: -v.left / v.zoom, scrollY: -v.top / v.zoom, zoom: v.zoom });
 
-  useEffect(() => {
-    if (!block) closeDraw(); // the box was deleted (for example by undo)
-  }, [block]);
+function Panel({ pageId }: { pageId: string }) {
+  // Read once: the saved scene must not be fed back in while drawing.
+  const [scene] = useState(() => useNotes.getState().pages[pageId]?.drawing?.scene ?? '');
+  const [view] = useState(() => toView(canvasApi.current!.getView()));
+  const handle = useRef<DrawHandle | null>(null);
+
+  const follow = (v: DrawView) => {
+    const api = canvasApi.current;
+    if (!api) return;
+    const cur = api.getView();
+    if (Math.abs(cur.zoom - v.zoom) > 1e-6 || Math.abs(-cur.left / cur.zoom - v.scrollX) > 0.5 || Math.abs(-cur.top / cur.zoom - v.scrollY) > 0.5) {
+      api.setView({ zoom: v.zoom, left: -v.scrollX * v.zoom, top: -v.scrollY * v.zoom });
+      // Once the canvas has settled, pull Excalidraw back to wherever the canvas actually ended up.
+      requestAnimationFrame(() => {
+        const now = canvasApi.current?.getView();
+        if (now) handle.current?.setView(toView(now));
+      });
+    }
+  };
 
   return (
-    <div
-      className="draw-overlay"
-      style={rect}
-      role="dialog"
-      aria-label="Drawing editor"
-      onKeyDown={(e) => e.stopPropagation()}
-    >
+    <div className="draw-overlay" role="dialog" aria-label="Drawing" onKeyDown={(e) => e.stopPropagation()}>
       <button className="btn primary draw-done" onClick={closeDraw}>
         Done
       </button>
-      <Suspense
-        fallback={<div className="draw-loading">Loading drawing tools…</div>}
-      >
-        <div className="draw-host">
-          <DrawEditor
-            scene={scene}
-            onChange={(next, preview) =>
-              updateBlock<DrawBlock>(
-                pageId,
-                blockId,
-                (b) => {
-                  b.scene = next;
-                  b.preview = preview;
-                },
-                { history: { key: "draw:" + blockId } },
-              )
-            }
-          />
-        </div>
+      <Suspense fallback={<div className="draw-loading">Loading drawing tools…</div>}>
+        <DrawEditor
+          scene={scene}
+          view={view}
+          dark={darkQuery()}
+          onReady={(h) => (handle.current = h)}
+          onView={follow}
+          onChange={(d) => setPageDrawing(pageId, d)}
+        />
       </Suspense>
     </div>
   );

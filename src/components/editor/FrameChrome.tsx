@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
-import type { FrameBlock } from '../../types';
-import { deleteBlocks, duplicateBlocks, updateBlock } from '../../store/notes';
+import type { FrameBlock, GroupColor, NoteColor } from '../../types';
+import { colorOf, frameInk } from '../../lib/colors';
+import { deleteBlocks, duplicateBlocks, setColor, updateBlock } from '../../store/notes';
 import { setSelected } from '../../store/canvas';
 import { openMenu } from '../../store/ui';
 import { blockHeight, colorVar } from '../../lib/util';
@@ -42,7 +43,7 @@ export function FrameChrome({
           style={{ background: `color-mix(in srgb, ${colorVar(block.color)} 12%, transparent)`, borderColor: colorVar(block.color) }}
         />
       )}
-      <div className="frame-head" style={{ background: colorVar(block.color) }} onPointerDown={(e) => startMove(e, block.id)}>
+      <div className="frame-head" style={{ background: colorVar(block.color), color: frameInk(block.color) ?? undefined }} onPointerDown={(e) => startMove(e, block.id)}>
         <button
           className="frame-collapse"
           aria-label={block.collapsed ? 'Expand frame' : 'Collapse frame'}
@@ -76,10 +77,12 @@ export function FrameChrome({
           onClick={(e) => {
             stop(e);
             openMenu(e.currentTarget, [
+              { colors: true, current: colorOf(block), pick: (c: NoteColor | null) => setColor(pageId, [block.id], c) },
               {
                 swatches: true,
+                title: 'Classic colors',
                 current: block.color,
-                pick: (c) => updateBlock<FrameBlock>(pageId, block.id, (b) => {
+                pick: (c: GroupColor) => updateBlock<FrameBlock>(pageId, block.id, (b) => {
                   b.color = c;
                 }),
               },

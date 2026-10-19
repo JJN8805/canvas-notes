@@ -2,13 +2,15 @@ import { useEffect, useRef } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Placeholder } from '@tiptap/extensions';
-import type { TextBlock } from '../../types';
+import type { StickyBlock, TextBlock } from '../../types';
 import { updateBlock } from '../../store/notes';
 import { addImages, imageFiles } from '../../store/images';
 import { canvasApi, editorRegistry, useCanvas } from '../../store/canvas';
 import { useCanvasCtx } from '../editor/context';
 
-export function TextBody({ block }: { block: TextBlock }) {
+/** The rich-text editor of a text box, or of a sticky (which only offers bold, italic and bullets). */
+export function TextBody({ block }: { block: TextBlock | StickyBlock }) {
+  const sticky = block.type === 'sticky';
   const { pageId } = useCanvasCtx();
   // Handlers are created once with the editor, so read position through a ref.
   const latest = useRef(block);
@@ -17,25 +19,34 @@ export function TextBody({ block }: { block: TextBlock }) {
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({
-        heading: { levels: [1, 2, 3] },
-        link: { openOnClick: false, autolink: true, linkOnPaste: true },
-      }),
-      Placeholder.configure({ placeholder: 'Type something…' }),
+      StarterKit.configure(
+        sticky
+          ? {
+              heading: false, blockquote: false, codeBlock: false, code: false, strike: false, underline: false,
+              link: false, horizontalRule: false, orderedList: false,
+            }
+          : {
+              heading: { levels: [1, 2, 3] },
+              link: { openOnClick: false, autolink: true, linkOnPaste: true },
+            },
+      ),
+      Placeholder.configure({ placeholder: sticky ? 'Note…' : 'Type something…' }),
     ],
     content: block.html,
     immediatelyRender: true,
     shouldRerenderOnTransaction: false,
     editorProps: {
-      attributes: { class: 'body prose', 'aria-label': 'Text box' },
+      attributes: { class: 'body prose', 'aria-label': sticky ? 'Sticky note' : 'Text box' },
       // Images pasted or dropped into a text box become their own image boxes beside it.
       handlePaste: (_view, event) => {
+        if (sticky) return false;
         const files = imageFiles(event.clipboardData);
         if (!files.length) return false;
         void addImages(pageId, files, beside());
         return true;
       },
       handleDrop: (_view, event) => {
+        if (sticky) return false;
         const files = imageFiles((event as DragEvent).dataTransfer);
         if (!files.length) return false;
         const pt = canvasApi.current?.worldPoint((event as DragEvent).clientX, (event as DragEvent).clientY);
@@ -44,7 +55,7 @@ export function TextBody({ block }: { block: TextBlock }) {
       },
     },
     onUpdate: ({ editor: ed }) => {
-      updateBlock<TextBlock>(pageId, block.id, (b) => {
+      updateBlock<TextBlock | StickyBlock>(pageId, block.id, (b) => {
         b.html = ed.getHTML();
       }, { history: { key: 'text:' + block.id } });
     },

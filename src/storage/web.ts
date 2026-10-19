@@ -1,5 +1,6 @@
 import { openDB, type DBSchema } from 'idb';
 import type { Group, GroupColor, Page } from '../types';
+import { cleanDate, kindOf } from '../lib/pages';
 import { isBlankPage, shouldSnapshot, snapshotsToDrop } from '../lib/history';
 import { newId } from '../lib/util';
 import { openGraph } from '../graph/open';
@@ -33,7 +34,7 @@ interface Schema extends DBSchema {
 const rowToPage = (r: PageRow): Page => normalizePage({ ...r });
 const pageRecord = (r: PageRow): PageRecord => ({
   id: r.id, etag: r.etag, deleted: r.deleted, title: r.title, groupId: r.groupId,
-  tags: r.tags, blocks: r.blocks, arrows: r.arrows, created: r.created, updated: r.updated,
+  tags: r.tags, blocks: r.blocks, arrows: r.arrows, drawing: r.drawing ?? null, color: r.color ?? null, kind: kindOf(r), dailyDate: cleanDate(r.dailyDate), created: r.created, updated: r.updated,
 });
 const groupRecord = (r: GroupRow): GroupRecord => ({
   id: r.id, etag: r.etag, deleted: r.deleted, name: r.name, color: r.color, position: r.position, parentId: r.parentId ?? null,
@@ -79,11 +80,12 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
   const mirror = (job: (g: GraphMirror) => Promise<void>) => {
     if (graph) job(graph).catch((e) => console.error('graph mirror failed', e));
   };
-  const livePages = async () => (await db.getAll('pages')).filter((p) => !p.deleted).map(pageRecord);
+  // The graph only knows real pages: templates stay out of search and links.
+  const livePages = async () => (await db.getAll('pages')).filter((p) => !p.deleted && kindOf(p) === 'page').map(pageRecord);
   const liveGroups = async () => (await db.getAll('groups')).filter((g) => !g.deleted).map(groupRecord);
   const mirrorPage = async (id: string) => {
     const r = await db.get('pages', id);
-    if (r) mirror((g) => g.page(pageRecord(r)));
+    if (r && kindOf(r) !== 'template') mirror((g) => g.page(pageRecord(r)));
   };
   const mirrorRemote = async (kind: 'page' | 'group', rec: PageRecord | GroupRecord) => {
     if (kind === 'page') return mirrorPage(rec.id);
@@ -139,7 +141,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
   async function purgePage(id: string) {
     const tx = db.transaction('pages', 'readwrite');
     const p = await tx.store.get(id);
-    if (p?.deleted) await tx.store.put({ ...p, title: '', tags: [], blocks: [], arrows: [], etag: newEtag(), rev: p.rev + 1 });
+    if (p?.deleted) await tx.store.put({ ...p, title: '', tags: [], blocks: [], arrows: [], drawing: null, color: null, dailyDate: null, etag: newEtag(), rev: p.rev + 1 });
     await tx.done;
     for (const s of await db.getAllFromIndex('snapshots', 'pageId', id)) await db.delete('snapshots', s.id);
   }
@@ -262,7 +264,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
       // A deleted page that is edited again comes back.
       const rev = existing ? existing.rev + 1 : 1;
       await tx.store.put({
-        id: page.id, title: page.title, groupId: page.groupId, tags: page.tags, blocks: page.blocks, arrows: page.arrows,
+        id: page.id, title: page.title, groupId: page.groupId, tags: page.tags, blocks: page.blocks, arrows: page.arrows, drawing: page.drawing ?? null, color: page.color ?? null, kind: kindOf(page), dailyDate: cleanDate(page.dailyDate),
         created: page.created, updated: page.updated, rev, etag: newEtag(), synced: existing?.synced ?? null, deleted: false,
       });
       await tx.done;
@@ -280,7 +282,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
 
     async listTrash() {
       return (await db.getAll('pages'))
-        .filter((p) => p.deleted && !isBlankPage(p))
+        .filter((p) => p.deleted && kindOf(p) === 'page' && !isBlankPage(p))
         .sort((a, b) => b.updated - a.updated)
         .map(rowToPage);
     },
