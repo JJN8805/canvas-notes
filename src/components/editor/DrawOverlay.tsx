@@ -2,12 +2,14 @@ import { lazy, Suspense, useRef, useState } from 'react';
 import { setPageDrawing, useNotes } from '../../store/notes';
 import { canvasApi } from '../../store/canvas';
 import { closeDraw, useDraw } from '../../store/draw';
+import { usePrefs } from '../../store/prefs';
+import { isDarkTheme } from '../../lib/settings';
 import type { DrawHandle, DrawView } from '../blocks/DrawEditor';
 
 // Excalidraw is large: it is only fetched the first time draw mode is opened.
 const DrawEditor = lazy(() => import('../blocks/DrawEditor'));
 
-const darkQuery = () => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+const darkQuery = () => isDarkTheme(usePrefs.getState().theme, window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false);
 
 /**
  * Draw mode: Excalidraw laid, transparent, over the whole canvas so you draw among the boxes.

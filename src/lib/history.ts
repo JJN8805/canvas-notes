@@ -43,6 +43,6 @@ export function isBlankPage(p: { title: string; tags: unknown[]; blocks: unknown
 }
 
 /** Whole days until a page deleted at `deletedAt` is purged (never below 0). */
-export function daysLeft(deletedAt: number, now: number): number {
-  return Math.max(0, Math.ceil(TRASH_DAYS - (now - deletedAt) / DAY));
+export function daysLeft(deletedAt: number, now: number, keepDays = TRASH_DAYS): number {
+  return Math.max(0, Math.ceil(keepDays - (now - deletedAt) / DAY));
 }

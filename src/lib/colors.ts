@@ -63,10 +63,10 @@ export const STICKY_SIZE = 200;
 export const isStickyKey = (e: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey: boolean; repeat?: boolean }) =>
   e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !e.repeat;
 
-/** Top-left corner for a sticky centred on a point, kept on the 8px grid and off negative coordinates. */
+/** Top-left corner for a sticky centred on a point, kept on the 8px grid. */
 export const stickyCorner = (p: { x: number; y: number }, size = STICKY_SIZE) => ({
-  x: Math.max(0, Math.round((p.x - size / 2) / 8) * 8),
-  y: Math.max(0, Math.round((p.y - size / 2) / 8) * 8),
+  x: Math.round((p.x - size / 2) / 8) * 8,
+  y: Math.round((p.y - size / 2) / 8) * 8,
 });
 
 /**

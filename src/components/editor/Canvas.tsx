@@ -25,11 +25,13 @@ import { liveDrawing, svgSrc } from '../../lib/drawing';
 import { blockHeight, clamp, isFixedHeight, isEditableTarget, modKey, sanitizeHtml, snap, textToHtml } from '../../lib/util';
 import { BlockFrame } from './BlockFrame';
 import { FrameChrome } from './FrameChrome';
+import { usePrefs } from '../../store/prefs';
 import { boundsOf, guideLines, nearestShift, type Guide, type Rect as BoxRect } from '../../lib/guides';
 import { containingFrame, frameDescendants, hiddenBlockIds, paintOrder } from '../../lib/frames';
 import { sidePoint, type Side } from '../../lib/arrows';
 import { ArrowLayer, type ConnectingLine } from './ArrowLayer';
 import { CanvasCtx, type CanvasCtxValue } from './context';
+import { contentBounds, EDGE_PX, fitView, growOrigin, initialOrigin, scrollShift, toCanvas } from '../../lib/viewport';
 
 const EMPTY: Block[] = [];
 const MIN_ZOOM = 0.25;
@@ -56,6 +58,9 @@ export function Canvas({ pageId }: { pageId: string }) {
   drawingRef.current = drawing;
   const drawMode = useDraw((s) => s.open);
   const pendingScroll = useRef<Point | null>(null);
+  /** The canvas coordinate at scroll position 0 (see lib/viewport.ts), and the furthest right/bottom the page has been opened up to. */
+  const origin = useRef<Point | null>(null);
+  const reach = useRef<Point>({ x: 0, y: 0 });
   const spaceDown = useRef(false);
   const cascade = useRef(0);
 
@@ -78,7 +83,16 @@ export function Canvas({ pageId }: { pageId: string }) {
     const v = viewportRef.current!;
     const r = v.getBoundingClientRect();
     const z = useCanvas.getState().zoom;
-    return { x: (clientX - r.left + v.scrollLeft) / z, y: (clientY - r.top + v.scrollTop) / z };
+    const o = origin.current ?? { x: 0, y: 0 };
+    return { x: toCanvas(clientX - r.left, v.scrollLeft, o.x, z), y: toCanvas(clientY - r.top, v.scrollTop, o.y, z) };
+  }, []);
+
+  /** The canvas coordinate at the top-left of the view. Unlike scrollLeft/scrollTop it doesn't change when the origin moves. */
+  const viewCorner = useCallback((): Point => {
+    const v = viewportRef.current!;
+    const z = useCanvas.getState().zoom;
+    const o = origin.current ?? { x: 0, y: 0 };
+    return { x: v.scrollLeft / z + o.x, y: v.scrollTop / z + o.y };
   }, []);
 
   const heightOf = (b: Block) => heights.current.get(b.id) ?? blockHeight(b);
@@ -87,23 +101,46 @@ export function Canvas({ pageId }: { pageId: string }) {
     const v = viewportRef.current, world = worldRef.current, sizer = sizerRef.current;
     if (!v || !world || !sizer) return;
     const z = useCanvas.getState().zoom;
-    let mx = 0, my = 0;
-    for (const b of blocksRef.current) {
-      mx = Math.max(mx, b.x + b.w);
-      my = Math.max(my, b.y + (heights.current.get(b.id) ?? blockHeight(b)));
-    }
+    const boxes: Rect[] = blocksRef.current.map((b) => ({ x: b.x, y: b.y, w: b.w, h: heights.current.get(b.id) ?? blockHeight(b) }));
     const ink = liveDrawing(drawingRef.current);
-    if (ink) {
-      mx = Math.max(mx, ink.x + ink.w);
-      my = Math.max(my, ink.y + ink.h);
-    }
-    const W = Math.max(v.clientWidth / z, mx + MARGIN);
-    const H = Math.max(v.clientHeight / z, my + MARGIN);
-    world.style.width = W + 'px';
-    world.style.height = H + 'px';
-    world.style.transform = `scale(${z})`;
+    if (ink) boxes.push(ink);
+    const content = contentBounds(boxes);
+
+    // The page has no edges: the scrollable area always reaches well past the content and the view, in every direction.
+    const first = origin.current === null;
+    const old = origin.current ?? initialOrigin(content, z);
+    const o = first ? old : { x: growOrigin(old.x, content?.minX ?? null, v.scrollLeft, z), y: growOrigin(old.y, content?.minY ?? null, v.scrollTop, z) };
+    origin.current = o;
+    const left = first ? -o.x * z : v.scrollLeft;
+    const top = first ? -o.y * z : v.scrollTop;
+    const r = reach.current;
+    r.x = Math.max(r.x, (content?.maxX ?? 0) + MARGIN, toCanvas(v.clientWidth, left, o.x, z) + EDGE_PX / z);
+    r.y = Math.max(r.y, (content?.maxY ?? 0) + MARGIN, toCanvas(v.clientHeight, top, o.y, z) + EDGE_PX / z);
+
+    const W = Math.max(v.clientWidth / z, r.x - o.x);
+    const H = Math.max(v.clientHeight / z, r.y - o.y);
+    // Boxes sit at their real coordinates inside the world; the transform slides the origin to the scroll area's corner.
+    world.style.width = Math.max(1, r.x) + 'px';
+    world.style.height = Math.max(1, r.y) + 'px';
+    world.style.transform = `translate(${-o.x * z}px, ${-o.y * z}px) scale(${z})`;
     sizer.style.width = W * z + 'px';
     sizer.style.height = H * z + 'px';
+    // The dotted background lives on the sizer (the world can't cover negative coordinates) and is kept lined up with the canvas grid.
+    sizer.style.backgroundImage = `radial-gradient(var(--dot) ${1.1 * z}px, transparent ${1.4 * z}px)`;
+    sizer.style.backgroundSize = `${24 * z}px ${24 * z}px`;
+    sizer.style.backgroundPosition = `${(4 - o.x) * z}px ${(4 - o.y) * z}px`;
+
+    if (first) {
+      v.scrollLeft = left;
+      v.scrollTop = top;
+    } else {
+      const sx = scrollShift(old.x, o.x, z), sy = scrollShift(old.y, o.y, z);
+      if (sx || sy) {
+        v.scrollLeft += sx;
+        v.scrollTop += sy;
+        if (pendingScroll.current) pendingScroll.current = { x: pendingScroll.current.x + sx, y: pendingScroll.current.y + sy };
+      }
+    }
   }, []);
 
   useLayoutEffect(() => {
@@ -119,7 +156,13 @@ export function Canvas({ pageId }: { pageId: string }) {
   useEffect(() => {
     const ro = new ResizeObserver(() => updateExtent());
     ro.observe(viewportRef.current!);
-    return () => ro.disconnect();
+    // Scrolling towards any edge opens up more canvas, so the page never runs out.
+    const v = viewportRef.current!;
+    v.addEventListener('scroll', updateExtent, { passive: true });
+    return () => {
+      ro.disconnect();
+      v.removeEventListener('scroll', updateExtent);
+    };
   }, [updateExtent]);
 
   // Leave select mode once the last selected box is tapped off.
@@ -155,11 +198,12 @@ export function Canvas({ pageId }: { pageId: string }) {
     const z = useCanvas.getState().zoom;
     cascade.current = (cascade.current + 1) % 6;
     const off = cascade.current * 24;
+    const c = viewCorner();
     return {
-      x: snap(Math.max(24, (v.scrollLeft + v.clientWidth / 2) / z - w / 2 + off)),
-      y: snap(Math.max(24, (v.scrollTop + v.clientHeight / 2.5) / z - h / 2 + off)),
+      x: snap(c.x + v.clientWidth / 2 / z - w / 2 + off),
+      y: snap(c.y + v.clientHeight / 2.5 / z - h / 2 + off),
     };
-  }, []);
+  }, [viewCorner]);
 
   /** Where the pointer last was (screen coordinates), so "S" can drop a sticky under it. */
   const pointer = useRef<Point | null>(null);
@@ -176,21 +220,38 @@ export function Canvas({ pageId }: { pageId: string }) {
 
   const getView = useCallback((): CanvasView => {
     const v = viewportRef.current;
-    return { zoom: useCanvas.getState().zoom, left: v?.scrollLeft ?? 0, top: v?.scrollTop ?? 0 };
+    const z = useCanvas.getState().zoom;
+    const o = origin.current ?? { x: 0, y: 0 };
+    // `left`/`top` are the canvas coordinate at the view's top-left edge, in screen pixels (so they can be negative).
+    return { zoom: z, left: (v?.scrollLeft ?? 0) + o.x * z, top: (v?.scrollTop ?? 0) + o.y * z };
   }, []);
 
   const setView = useCallback((next: CanvasView) => {
     const v = viewportRef.current;
     if (!v) return;
     const z = clamp(next.zoom, MIN_ZOOM, MAX_ZOOM);
+    const o = origin.current ?? { x: 0, y: 0 };
+    const at = { x: next.left - o.x * z, y: next.top - o.y * z };
     if (z === useCanvas.getState().zoom) {
-      v.scrollLeft = next.left;
-      v.scrollTop = next.top;
+      v.scrollLeft = at.x;
+      v.scrollTop = at.y;
     } else {
-      pendingScroll.current = { x: next.left, y: next.top };
+      pendingScroll.current = at;
       useCanvas.setState({ zoom: z });
     }
   }, []);
+
+  /** Zooms and scrolls so everything on the page is in view (or goes back to the start of an empty page). */
+  const fitContent = useCallback(() => {
+    const v = viewportRef.current;
+    if (!v) return;
+    const boxes: Rect[] = blocksRef.current.map((b) => ({ x: b.x, y: b.y, w: b.w, h: heights.current.get(b.id) ?? blockHeight(b) }));
+    const ink = liveDrawing(drawingRef.current);
+    if (ink) boxes.push(ink);
+    const content = contentBounds(boxes) ?? { minX: 0, minY: 0, maxX: v.clientWidth, maxY: v.clientHeight };
+    const f = fitView(content, v.clientWidth, v.clientHeight, MIN_ZOOM);
+    setView({ zoom: f.zoom, left: f.x * f.zoom, top: f.y * f.zoom });
+  }, [setView]);
 
   useEffect(() => {
     canvasApi.current = { worldPoint, visibleSpot, focusBlock, zoomTo, getView, setView };
@@ -230,15 +291,13 @@ export function Canvas({ pageId }: { pageId: string }) {
 
       const starts = new Map(page.blocks.filter((b) => dragIds.has(b.id)).map((b) => [b.id, { x: b.x, y: b.y }]));
       const anchor = starts.get(id)!;
-      const minX = Math.min(...[...starts.values()].map((p) => p.x));
-      const minY = Math.min(...[...starts.values()].map((p) => p.y));
       const rectOf = (b: Block): BoxRect => ({ x: b.x, y: b.y, w: b.w, h: heights.current.get(b.id) ?? blockHeight(b) });
       const group = boundsOf(page.blocks.filter((b) => starts.has(b.id)).map(rectOf));
       const others = page.blocks.filter((b) => !starts.has(b.id)).map(rectOf);
       beginGesture(pageId);
 
       const v = viewportRef.current!;
-      const s0 = { x: e.clientX, y: e.clientY, sl: v.scrollLeft, st: v.scrollTop };
+      const s0 = { x: e.clientX, y: e.clientY, c: viewCorner() };
       const target = e.currentTarget as HTMLElement;
       target.setPointerCapture(e.pointerId);
       const frame = worldRef.current?.querySelector(`[data-id="${id}"]`);
@@ -252,10 +311,12 @@ export function Canvas({ pageId }: { pageId: string }) {
       const apply = () => {
         raf = 0;
         const z = useCanvas.getState().zoom;
-        let dx = (last.clientX - s0.x + v.scrollLeft - s0.sl) / z;
-        let dy = (last.clientY - s0.y + v.scrollTop - s0.st) / z;
+        // Measured against the canvas coordinate at the view's corner, so the page opening up further left or up mid-drag doesn't move the box.
+        const c = viewCorner();
+        let dx = (last.clientX - s0.x) / z + (c.x - s0.c.x);
+        let dy = (last.clientY - s0.y) / z + (c.y - s0.c.y);
         let lines: Guide[] = [];
-        if (!last.altKey) {
+        if (!last.altKey && usePrefs.getState().snap) {
           // Line up with other boxes when close; otherwise snap to the 8 px grid.
           const moved = { ...group, x: group.x + dx, y: group.y + dy };
           const sx = nearestShift(moved, others, SNAP_PX / z, 'x');
@@ -264,8 +325,6 @@ export function Canvas({ pageId }: { pageId: string }) {
           dy = sy !== null ? dy + sy : snap(anchor.y + dy) - anchor.y;
           lines = guideLines({ ...group, x: group.x + dx, y: group.y + dy }, others);
         }
-        dx = Math.max(dx, -minX);
-        dy = Math.max(dy, -minY);
         setGuides(lines);
         mutatePage(
           pageId,
@@ -352,7 +411,7 @@ export function Canvas({ pageId }: { pageId: string }) {
       target.addEventListener('pointerup', up);
       target.addEventListener('pointercancel', up);
     },
-    [pageId, setGuides],
+    [pageId, setGuides, viewCorner],
   );
 
   const startResize = useCallback(
@@ -382,7 +441,7 @@ export function Canvas({ pageId }: { pageId: string }) {
         let h = Math.max(32, s0.h + (last.clientY - s0.y) / z);
         const keepRatio = b.type === 'image' && !last.shiftKey;
         let lines: Guide[] = [];
-        if (!last.altKey) {
+        if (!last.altKey && usePrefs.getState().snap) {
           // The right and bottom edges line up with other boxes when close.
           const sx = nearestShift({ x: b.x, y: b.y, w, h }, others, SNAP_PX / z, 'x', ['end']);
           w = sx !== null ? w + sx : snap(w);
@@ -745,6 +804,11 @@ export function Canvas({ pageId }: { pageId: string }) {
         zoomTo(useCanvas.getState().zoom / 1.2);
         return;
       }
+      if (mod && e.key === '1') {
+        e.preventDefault();
+        fitContent();
+        return;
+      }
       if (mod && e.key === '0') {
         e.preventDefault();
         zoomTo(1);
@@ -813,8 +877,8 @@ export function Canvas({ pageId }: { pageId: string }) {
           (p) => {
             for (const b of p.blocks) {
               if (!nudgeIds.has(b.id)) continue;
-              b.x = Math.max(0, b.x + dx);
-              b.y = Math.max(0, b.y + dy);
+              b.x += dx;
+              b.y += dy;
             }
           },
           { history: { key: 'nudge:' + sel.join(',') } },
@@ -866,7 +930,7 @@ export function Canvas({ pageId }: { pageId: string }) {
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('paste', onPaste);
     };
-  }, [pageId, focusBlock, visibleSpot, zoomTo, worldPoint]);
+  }, [pageId, focusBlock, visibleSpot, zoomTo, worldPoint, fitContent]);
 
   /* ---------- file drop ---------- */
 

@@ -1,6 +1,7 @@
 import { Fragment, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { Draft } from 'immer';
+import { dailyTitle } from '../../lib/daily';
 import type { ChecklistBlock, CodeBlock, ImageBlock, TableBlock } from '../../types';
 import { updateBlock } from '../../store/notes';
 import { newId } from '../../lib/util';
@@ -171,6 +172,11 @@ export function ChecklistBody({ block }: { block: ChecklistBlock }) {
       <button className="add-item" onClick={() => addAfter(block.items.length - 1)}>
         + Add item
       </button>
+      {block.track && (
+        <div className="track-note" title="Checks are saved for each day and cleared when a new day starts">
+          Tracked daily since {dailyTitle(block.track.start)}
+        </div>
+      )}
     </div>
   );
 }

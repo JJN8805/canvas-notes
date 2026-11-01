@@ -29,7 +29,10 @@ export function cloneContent(src: Content): Content {
   c.blocks.forEach((b: Block) => {
     b.id = idMap.get(b.id)!;
     if (b.frameId) b.frameId = idMap.get(b.frameId) ?? null;
-    if (b.type === 'checklist') b.items.forEach((i) => (i.id = newId()));
+    if (b.type === 'checklist') {
+      b.items.forEach((i) => (i.id = newId()));
+      delete b.track; // a copy starts with no daily history
+    }
   });
   c.arrows = c.arrows
     .filter((a) => idMap.has(a.from) && idMap.has(a.to))

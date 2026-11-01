@@ -97,10 +97,10 @@ describe('the S shortcut', () => {
     expect(isStickyKey(key('a'))).toBe(false);
   });
 
-  it('centres the sticky on the pointer, on the grid, never at negative coordinates', () => {
+  it('centres the sticky on the pointer and on the grid, including left of or above the start', () => {
     expect(stickyCorner({ x: 500, y: 300 })).toEqual({ x: 400, y: 200 });
     expect(stickyCorner({ x: 503, y: 297 })).toEqual({ x: 400, y: 200 });
-    expect(stickyCorner({ x: 10, y: 20 })).toEqual({ x: 0, y: 0 });
+    expect(stickyCorner({ x: 10, y: 20 })).toEqual({ x: -88, y: -80 });
   });
 });
 

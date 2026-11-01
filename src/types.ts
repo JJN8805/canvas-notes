@@ -34,15 +34,31 @@ export interface ImageBlock extends BlockBase {
   imageId: string;
   aspect: number;
   alt?: string;
+  /** Set on the heatmap pictures of an attendance page: a fingerprint of the drawing, so it is only redrawn when it changes. */
+  heat?: string;
 }
 export interface ChecklistItem {
   id: string;
   text: string;
   done: boolean;
 }
+/**
+ * Daily tracking for a checklist (see lib/attendance.ts). Absent = not tracked, and older app versions simply ignore it.
+ * `log` maps a date (YYYY-MM-DD) to the ids of the items that were checked that day; a day with nothing checked has no entry.
+ */
+export interface ChecklistTrack {
+  /** The first day tracked. */
+  start: string;
+  /** The day the list's current checks belong to; checks are cleared when a new day starts. */
+  day: string;
+  log: Record<string, string[]>;
+  /** The first day each item was seen on the list, so an item added later isn't counted as missed for earlier days. */
+  first: Record<string, string>;
+}
 export interface ChecklistBlock extends BlockBase {
   type: 'checklist';
   items: ChecklistItem[];
+  track?: ChecklistTrack;
 }
 export interface CodeBlock extends BlockBase {
   type: 'code';
@@ -51,6 +67,8 @@ export interface CodeBlock extends BlockBase {
 export interface TableBlock extends BlockBase {
   type: 'table';
   rows: string[][];
+  /** Set on the summary table of an attendance page: the tracked checklist it is built from. Absent on ordinary tables. */
+  attendance?: { pageId: string; blockId: string };
 }
 export interface FrameBlock extends BlockBase {
   type: 'frame';

@@ -1,4 +1,5 @@
-import type { Arrow, Block, NoteColor } from '../types';
+import { arrow, builder, type Built } from './templateKit';
+import { MORE_BUILDERS } from './moreTemplates';
 import type { PageRecord, SyncStore } from '../storage/types';
 
 /** Every device builds the built-in templates with these ids, so two devices that each seed them agree and nothing is duplicated. */
@@ -13,37 +14,13 @@ export const BUILTIN_IDS = {
 
 /** Both devices start these at the same version, so they begin in sync; only an edit makes a template differ. */
 export const SEED_ETAG = 'seed-1';
+/** The second batch of starters was redrawn once (frames sized to fit, proper input boxes), so its version is 2. */
+export const SEED_ETAG_2 = 'seed-2';
 const SEEDED_KEY = 'templates.seeded';
-
-type Draft = { type: Block['type']; x: number; y: number; w: number; h: number } & Record<string, unknown>;
-
-function builder(prefix: string) {
-  let n = 0;
-  const id = () => `${prefix}-${++n}`;
-  const blocks: Block[] = [];
-  const add = (b: Draft) => {
-    const full = { ...b, id: id(), z: blocks.length + 1 } as unknown as Block;
-    if (full.frameId === undefined) delete full.frameId;
-    blocks.push(full);
-    return full.id;
-  };
-  return {
-    blocks,
-    id,
-    text: (x: number, y: number, w: number, html: string, frameId?: string) => add({ type: 'text', x, y, w, h: 40, html, frameId } as Draft),
-    list: (x: number, y: number, w: number, items: string[], frameId?: string) =>
-      add({ type: 'checklist', x, y, w, h: 48, items: items.map((text, i) => ({ id: `${prefix}-item-${x}-${y}-${i}`, text, done: false })), frameId } as Draft),
-    table: (x: number, y: number, w: number, rows: string[][], frameId?: string) => add({ type: 'table', x, y, w, h: 72, rows, frameId } as Draft),
-    sticky: (x: number, y: number, tint: NoteColor, html: string, frameId?: string) =>
-      add({ type: 'sticky', x, y, w: 200, h: 200, html, tint, frameId } as Draft),
-    frame: (x: number, y: number, w: number, h: number, title: string, color: string, frameId?: string) =>
-      add({ type: 'frame', x, y, w, h, title, color, collapsed: false, frameId } as Draft),
-  };
-}
-
-type Built = { title: string; blocks: Block[]; arrows: Arrow[] };
-
-const arrow = (id: string, from: string, to: string): Arrow => ({ id, from, to, heads: 'one', style: 'solid', z: 1 });
+/** The second batch of starters (forms, boards, planners…). Apps that already seeded the first six get these on their next start. */
+const SEEDED_MORE_KEY = 'templates.seeded.2';
+/** Set once the second batch's first version has been replaced by the redrawn one (see `seedBuiltinTemplates`). */
+const REFRESHED_MORE_KEY = 'templates.refreshed.2';
 
 const meeting = (): Built => {
   const b = builder(BUILTIN_IDS.meeting);
@@ -117,7 +94,9 @@ const daily = (): Built => {
   return { title: 'Daily page', blocks: b.blocks, arrows: [] };
 };
 
-/** The six starter templates, as page records ready to be stored (marked as already agreed between devices). */
+const FIRST_IDS: string[] = Object.values(BUILTIN_IDS);
+
+/** All starter templates, as page records ready to be stored (marked as already agreed between devices). */
 export function builtinTemplates(now = Date.now()): PageRecord[] {
   const made: [string, Built][] = [
     [BUILTIN_IDS.meeting, meeting()],
@@ -126,10 +105,11 @@ export function builtinTemplates(now = Date.now()): PageRecord[] {
     [BUILTIN_IDS.todo, todo()],
     [BUILTIN_IDS.brainstorm, brainstorm()],
     [BUILTIN_IDS.daily, daily()],
+    ...MORE_BUILDERS.map(([id, make]): [string, Built] => [id, make()]),
   ];
   return made.map(([id, t]) => ({
     id,
-    etag: SEED_ETAG,
+    etag: FIRST_IDS.includes(id) ? SEED_ETAG : SEED_ETAG_2,
     deleted: false,
     title: t.title,
     groupId: null,
@@ -148,22 +128,46 @@ export function builtinTemplates(now = Date.now()): PageRecord[] {
 interface Seedable {
   getSetting(key: string): Promise<string | null>;
   setSetting(key: string, value: string | null): Promise<void>;
-  sync: Pick<SyncStore, 'listMeta' | 'applyRemote'>;
+  sync: Pick<SyncStore, 'listMeta' | 'getRecords' | 'applyRemote'>;
 }
 
 /**
- * Adds the starter templates once. A template whose id is already known, even as a deleted one, is never added again,
+ * Adds the starter templates, each batch once. A template whose id is already known, even as a deleted one, is never added again,
  * so deleting a starter really removes it, and a device that syncs in a starter another device seeded doesn't get a second copy.
  */
 export async function seedBuiltinTemplates(storage: Seedable): Promise<number> {
-  if ((await storage.getSetting(SEEDED_KEY)) !== null) return 0;
-  const known = new Set((await storage.sync.listMeta('page')).map((m) => m.id));
+  const batches: [string, (id: string) => boolean][] = [
+    [SEEDED_KEY, (id) => FIRST_IDS.includes(id)],
+    [SEEDED_MORE_KEY, (id) => !FIRST_IDS.includes(id)],
+  ];
+  const todo = [];
+  for (const batch of batches) if ((await storage.getSetting(batch[0])) === null) todo.push(batch);
+  const metas = await storage.sync.listMeta('page');
+  await refreshRedrawn(storage, metas);
+  if (!todo.length) return 0;
+  const known = new Set(metas.map((m) => m.id));
   let added = 0;
   for (const rec of builtinTemplates()) {
-    if (known.has(rec.id)) continue;
+    if (known.has(rec.id) || !todo.some(([, inBatch]) => inBatch(rec.id))) continue;
     await storage.sync.applyRemote('page', rec);
     added++;
   }
-  await storage.setSetting(SEEDED_KEY, String(Date.now()));
+  for (const [key] of todo) await storage.setSetting(key, String(Date.now()));
   return added;
+}
+
+/**
+ * The second batch of starters was first shipped with rough layouts. Once, a copy of one that has never been edited
+ * is replaced by the redrawn one; one you changed, renamed or deleted is left alone. "Never edited" means its last-edited
+ * time is still its creation time: opening a template changes its version (the editor saves the measured box heights) but not that.
+ * Both devices do the same, so they stay in agreement.
+ */
+async function refreshRedrawn(storage: Seedable, metas: { id: string; deleted: boolean }[]) {
+  if ((await storage.getSetting(REFRESHED_MORE_KEY)) !== null) return;
+  const live = new Set(metas.filter((m) => !m.deleted).map((m) => m.id));
+  const fresh = builtinTemplates().filter((r) => !FIRST_IDS.includes(r.id) && live.has(r.id));
+  const stored = (await storage.sync.getRecords('page', fresh.map((r) => r.id))) as PageRecord[];
+  const unedited = new Set(stored.filter((r) => r.updated === r.created).map((r) => r.id));
+  for (const rec of fresh) if (unedited.has(rec.id)) await storage.sync.applyRemote('page', rec);
+  await storage.setSetting(REFRESHED_MORE_KEY, String(Date.now()));
 }

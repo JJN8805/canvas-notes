@@ -7,6 +7,7 @@ import { CalendarButton, goToDay } from '../ui/Calendar';
 import { dateKey } from '../../lib/daily';
 import { openSettings } from '../../store/settingsUi';
 import { usePrefs } from '../../store/prefs';
+import { Avatar } from '../ui/Avatar';
 import { daysLeft } from '../../lib/history';
 import { navigate } from '../../lib/route';
 import { openTemplatePicker } from '../../store/picker';
@@ -328,13 +329,14 @@ function TrashView() {
   const trash = useNotes((s) => s.trash);
   useEffect(() => void loadTrash(), []);
   const now = Date.now();
+  const keep = usePrefs((s) => s.trashDays);
   return (
     <>
       <div className="main-head">
         <div className="main-title">
           <h1>Trash</h1>
           <p>
-            {trash.length} deleted page{trash.length === 1 ? '' : 's'}. They are removed for good 30 days after deletion.
+            {trash.length} deleted page{trash.length === 1 ? '' : 's'}. They are removed for good {keep} days after deletion.
           </p>
         </div>
       </div>
@@ -346,7 +348,7 @@ function TrashView() {
               <div className="card-body">
                 <div className={'card-title' + (p.title ? '' : ' untitled')}>{p.title || 'Untitled'}</div>
                 <div className="card-meta">
-                  Deleted {timeAgo(p.updated)}, removed in {daysLeft(p.updated, now)} day{daysLeft(p.updated, now) === 1 ? '' : 's'}
+                  Deleted {timeAgo(p.updated)}, removed in {daysLeft(p.updated, now, keep)} day{daysLeft(p.updated, now, keep) === 1 ? '' : 's'}
                 </div>
                 <div className="trash-actions">
                   <button className="btn" onClick={() => restoreFromTrash(p.id)}>Restore</button>
@@ -371,7 +373,7 @@ function TrashView() {
       ) : (
         <div className="empty">
           <h2>Trash is empty</h2>
-          <p>Pages you delete stay here for 30 days, so you can bring them back.</p>
+          <p>Pages you delete stay here for {keep} days, so you can bring them back.</p>
         </div>
       )}
     </>
@@ -415,6 +417,7 @@ function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Group[]; fi
         <span className="brand-mark" />
         Canvas Notes
       </div>
+      <ProfileChip />
 
       <div className="side-section">
         <NavItem label="All pages" count={pages.length} active={filter.kind === 'all'} onClick={() => setFilter({ kind: 'all' })} />
@@ -517,6 +520,19 @@ function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Group[]; fi
         {storageKind === 'desktop' ? `Stored on this computer in ${storageLocation}` : 'Development mode: stored in this browser only.'}
       </div>
     </nav>
+  );
+}
+
+/** The profile name and avatar under the app name; opens Settings. Shows nothing until a name is set. */
+function ProfileChip() {
+  const name = usePrefs((s) => s.profileName);
+  const color = usePrefs((s) => s.profileColor);
+  if (!name) return null;
+  return (
+    <button className="profile-chip" onClick={openSettings} title="Open settings">
+      <Avatar name={name} color={color} size={24} />
+      <span>{name}</span>
+    </button>
   );
 }
 

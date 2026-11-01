@@ -416,11 +416,12 @@ const FILTERS: Record<string, { name: string; extensions: string[]; mime: string
   md: { name: 'Markdown', extensions: ['md'], mime: 'text/markdown' },
   zip: { name: 'Zip archive', extensions: ['zip'], mime: 'application/zip' },
   pdf: { name: 'PDF', extensions: ['pdf'], mime: 'application/pdf' },
+  json: { name: 'Canvas Notes backup', extensions: ['json'], mime: 'application/json' },
   png: { name: 'PNG image', extensions: ['png'], mime: 'image/png' },
 };
 
 /** Asks where to save, then writes the file. Returns false if cancelled. */
-async function saveBytes(name: string, ext: string, bytes: Uint8Array<ArrayBuffer>): Promise<string | false> {
+export async function saveBytes(name: string, ext: string, bytes: Uint8Array<ArrayBuffer>): Promise<string | false> {
   const f = FILTERS[ext];
   if (isTauri()) {
     const [{ save }, { writeFile }] = await Promise.all([import('@tauri-apps/plugin-dialog'), import('@tauri-apps/plugin-fs')]);

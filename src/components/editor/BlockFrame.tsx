@@ -1,13 +1,14 @@
 import { memo, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import type { Block, FrameBlock, NoteColor, TableBlock, TextBlock } from '../../types';
-import { deleteBlocks, duplicateBlocks, sendToBack, setColor, updateBlock } from '../../store/notes';
+import { deleteBlocks, duplicateBlocks, ensureAttendancePage, sendToBack, setColor, setTracking, updateBlock } from '../../store/notes';
+import { navigate } from '../../lib/route';
 import { canvasApi, setSelected } from '../../store/canvas';
 import { BLOCK_LABEL, isFixedHeight, newId } from '../../lib/util';
 import { Icon, type IconName } from '../ui/Icon';
 import { TextBody } from '../blocks/TextBody';
 import { ChecklistBody, CodeBody, ImageBody, TableBody } from '../blocks/Bodies';
 import { colorOf, noteVar, tintVars } from '../../lib/colors';
-import { openMenu } from '../../store/ui';
+import { confirmDanger, openMenu, toast } from '../../store/ui';
 import { useCanvasCtx } from './context';
 
 const LABEL = BLOCK_LABEL;
@@ -126,15 +127,40 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
     );
   }
   if (block.type === 'checklist') {
+    // A tracked list keeps its items (their history is kept per item), so it has no "Clear done".
+    if (!block.track) {
+      extra.push(
+        btn('Clear completed', 'Clear done', () =>
+          updateBlock(pageId, block.id, (b) => {
+            if (b.type !== 'checklist') return;
+            const left = b.items.filter((i) => !i.done);
+            b.items = left.length ? left : [{ id: newId(), text: '', done: false }];
+          }),
+        ),
+      );
+    }
     extra.push(
-      btn('Clear completed', 'Clear done', () =>
-        updateBlock(pageId, block.id, (b) => {
-          if (b.type !== 'checklist') return;
-          const left = b.items.filter((i) => !i.done);
-          b.items = left.length ? left : [{ id: newId(), text: '', done: false }];
-        }),
-      ),
+      btn(block.track ? 'Stop tracking daily' : 'Track daily', block.track ? 'Tracking ✓' : 'Track daily', () => {
+        if (!block.track) {
+          setTracking(pageId, block.id, true);
+          toast('Tracking daily. Your checks are saved each day and cleared at the start of the next. Open Attendance to see them.');
+          return;
+        }
+        void confirmDanger(
+          'Stop tracking this list?',
+          'Its daily record is forgotten and the checks stay as they are. An attendance page you already made keeps what it shows but stops updating.',
+          'Stop tracking',
+        ).then((ok) => ok && setTracking(pageId, block.id, false));
+      }),
     );
+    if (block.track) {
+      extra.push(
+        btn('Open the attendance page', 'Attendance', () => {
+          const id = ensureAttendancePage(pageId, block.id);
+          if (id) navigate({ name: 'page', id });
+        }),
+      );
+    }
   }
 
   return (

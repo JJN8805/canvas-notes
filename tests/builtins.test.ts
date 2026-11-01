@@ -8,7 +8,9 @@ vi.mock('../src/store/ui', () => ({ toast: () => {}, openMenu: () => {}, useUi: 
 
 import { createTauriStorage } from '../src/storage/tauri';
 import type { NotesStorage } from '../src/storage/types';
-import { BUILTIN_IDS, builtinTemplates, SEED_ETAG, seedBuiltinTemplates } from '../src/lib/builtinTemplates';
+import { MORE_IDS, field } from '../src/lib/moreTemplates';
+import { builder } from '../src/lib/templateKit';
+import { BUILTIN_IDS, builtinTemplates, SEED_ETAG, SEED_ETAG_2, seedBuiltinTemplates } from '../src/lib/builtinTemplates';
 import { libraryPages, resolveDailyTemplate, templatesOf } from '../src/lib/pages';
 import { handleRequest, syncWithLaptop, type SyncRequest } from '../src/sync/engine';
 import { history } from '../src/store/history';
@@ -16,15 +18,20 @@ import { loadPrefs, setDailyTemplate, usePrefs } from '../src/store/prefs';
 import { createPageFromTemplate, createTemplate, deleteTemplate, duplicateTemplate, renameTemplate, useNotes } from '../src/store/notes';
 import type { Page } from '../src/types';
 
+const ALL = builtinTemplates().length;
 const asPages = () => Object.fromEntries(builtinTemplates().map((r) => [r.id, { ...r, rev: 0 } as Page]));
 
 describe('the starter templates', () => {
-  it('are the six asked for, as templates, named and filled in', () => {
+  it('start with the original six, then the form, board and planner templates, as templates, named and filled in', () => {
     const t = builtinTemplates();
-    expect(t.map((x) => x.title)).toEqual(['Meeting notes', 'Weekly review', 'Project plan', 'To-do list', 'Brainstorm board', 'Daily page']);
-    expect(t.map((x) => x.id)).toEqual(Object.values(BUILTIN_IDS));
+    expect(t.slice(0, 6).map((x) => x.title)).toEqual(['Meeting notes', 'Weekly review', 'Project plan', 'To-do list', 'Brainstorm board', 'Daily page']);
+    expect(t.slice(0, 6).map((x) => x.id)).toEqual(Object.values(BUILTIN_IDS));
+    expect(t.slice(6).map((x) => x.id)).toEqual(Object.values(MORE_IDS));
+    expect(t.map((x) => x.title)).toEqual(expect.arrayContaining(['Form builder', 'Registration form', 'Feedback survey', 'Mind map', 'Kanban board']));
+    expect(new Set(t.map((x) => x.id)).size).toBe(t.length);
     for (const x of t) {
-      expect(x).toMatchObject({ kind: 'template', deleted: false, etag: SEED_ETAG, groupId: null, tags: [] });
+      expect(x).toMatchObject({ kind: 'template', deleted: false, groupId: null, tags: [] });
+      expect(x.etag).toBe(Object.values(BUILTIN_IDS).includes(x.id as never) ? SEED_ETAG : SEED_ETAG_2);
       expect(x.blocks.length).toBeGreaterThan(2);
     }
   });
@@ -71,6 +78,55 @@ describe('the starter templates', () => {
   });
 });
 
+describe('form fields', () => {
+  it('draw a label and an input, and report where the next field starts', () => {
+    const b = builder('t');
+    const next = field(b, 100, 200, 300, 'Name', 'short');
+    expect(b.blocks.map((x) => x.type)).toEqual(['text', 'text']);
+    expect(b.blocks[1]).toMatchObject({ x: 100, y: 240, w: 300, fill: true });
+    expect(next).toBeGreaterThan(b.blocks[1].y + b.blocks[1].h);
+  });
+
+  it('give choices one tick box each, and do not overlap the following field', () => {
+    const b = builder('t');
+    const next = field(b, 0, 0, 300, 'Pick', 'choice', undefined, ['a', 'b']);
+    expect(b.blocks[1]).toMatchObject({ type: 'checklist' });
+    expect((b.blocks[1] as { items: unknown[] }).items).toHaveLength(2);
+    expect(next).toBeGreaterThan(40 + 2 * 32);
+  });
+
+  it('make the form builder carry every kind of field plus a flow of arrows', () => {
+    const f = builtinTemplates().find((x) => x.id === MORE_IDS.formBuilder)!;
+    expect(f.blocks.filter((x) => x.type === 'text' && x.fill).length).toBeGreaterThanOrEqual(7);
+    expect(f.blocks.some((x) => x.type === 'checklist')).toBe(true);
+    expect(f.arrows.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('draw inputs as filled text boxes and size every frame to its contents', () => {
+    const all = builtinTemplates();
+    const f = all.find((x) => x.id === MORE_IDS.formBuilder)!;
+    const inputs = f.blocks.filter((x) => x.type === 'text' && x.fill);
+    expect(inputs.length).toBeGreaterThanOrEqual(7);
+    expect(f.blocks.some((x) => x.type === 'table')).toBe(false);
+    // no frame leaves a big empty strip at the bottom: its boxes reach close to its lower edge
+    // (the Kanban board and Cornell notes are deliberately roomy: their frames are meant to be filled)
+    for (const t of all.filter((x) => Object.values(MORE_IDS).includes(x.id as never) && ![MORE_IDS.kanban, MORE_IDS.cornell].includes(x.id as never))) {
+      for (const fr of t.blocks.filter((x) => x.type === 'frame')) {
+        const kids = t.blocks.filter((x) => x.frameId === fr.id);
+        if (!kids.length) continue;
+        const reach = Math.max(...kids.map((k) => k.y + (k.type === 'sticky' ? k.h : k.type === 'table' ? k.h + 24 * k.rows.length : k.type === 'checklist' ? k.h + 32 * k.items.length : k.h)));
+        expect(fr.y + fr.h - reach, `${t.title} / ${fr.type === 'frame' ? fr.title : ''}`).toBeLessThan(220);
+      }
+    }
+  });
+
+  it('keep a mind map wide and connected', () => {
+    const m = builtinTemplates().find((x) => x.id === MORE_IDS.mindmap)!;
+    expect(Math.max(...m.blocks.map((x) => x.x + x.w))).toBeGreaterThan(1800);
+    expect(m.arrows.length).toBeGreaterThanOrEqual(12);
+  });
+});
+
 describe('seeding', () => {
   let a: NotesStorage;
   let b: NotesStorage;
@@ -83,10 +139,50 @@ describe('seeding', () => {
   });
 
   it('adds the six once, and not again on the next start', async () => {
-    expect(await seedBuiltinTemplates(a)).toBe(6);
+    expect(await seedBuiltinTemplates(a)).toBe(ALL);
     expect(await seedBuiltinTemplates(a)).toBe(0);
     const pages = (await a.loadAll()).pages;
-    expect(pages.filter((p) => p.kind === 'template')).toHaveLength(6);
+    expect(pages.filter((p) => p.kind === 'template')).toHaveLength(ALL);
+  });
+
+  it('gives an app that already has the first six only the new ones, and only once', async () => {
+    await a.setSetting('templates.seeded', '1'); // what an earlier version left behind
+    for (const rec of builtinTemplates().slice(0, 6)) await a.sync.applyRemote('page', rec);
+    await a.deletePage(BUILTIN_IDS.todo); // the user removed one of the originals
+    expect(await seedBuiltinTemplates(a)).toBe(ALL - 6);
+    expect(await seedBuiltinTemplates(a)).toBe(0);
+    const ids = (await a.loadAll()).pages.map((p) => p.id);
+    expect(ids).toEqual(expect.arrayContaining(Object.values(MORE_IDS)));
+    expect(ids).not.toContain(BUILTIN_IDS.todo);
+  });
+
+  it('replaces an unedited copy of the first version of a new starter with the redrawn one, once, and leaves edited or deleted ones alone', async () => {
+    const old = builtinTemplates().filter((r) => !Object.values(BUILTIN_IDS).includes(r.id as never));
+    await a.setSetting('templates.seeded', '1');
+    await a.setSetting('templates.seeded.2', '1'); // an app that already ran the first version of the second batch
+    for (const r of old) await a.sync.applyRemote('page', { ...r, etag: 'viewed-' + r.id, title: r.title + ' (old)', blocks: [] });
+    for (const r of builtinTemplates().slice(0, 6)) await a.sync.applyRemote('page', r);
+    // one was edited by the user, one deleted
+    const edited = old[0].id;
+    const gone = old[1].id;
+    await a.sync.applyRemote('page', { ...old[0], etag: 'user-edit', title: 'Mine', blocks: [], updated: old[0].created + 5000 });
+    await a.deletePage(gone);
+
+    await seedBuiltinTemplates(a);
+    const pages = Object.fromEntries((await a.loadAll()).pages.map((p) => [p.id, p]));
+    expect(pages[edited].title).toBe('Mine');
+    expect(pages[gone]).toBeUndefined();
+    const refreshed = pages[old[2].id];
+    expect(refreshed.title).not.toContain('(old)');
+    expect(refreshed.blocks.length).toBeGreaterThan(0);
+
+    // opening one only re-saves its measured heights, so it still counts as unedited
+    expect(pages[old[3].id].title).not.toContain('(old)');
+
+    // and only once: a later edit or revert is never undone
+    await a.sync.applyRemote('page', { ...old[2], etag: 'again', title: 'Back to the first version', blocks: [] });
+    await seedBuiltinTemplates(a);
+    expect((await a.loadPage(old[2].id))!.title).toBe('Back to the first version');
   });
 
   it('never brings back a starter that was deleted', async () => {
@@ -118,7 +214,7 @@ describe('seeding', () => {
     const r = await syncWithLaptop(b.sync, send);
     expect(r).toEqual({ sent: 0, received: 0, conflicts: 0, images: 0 });
     useDevice('b');
-    expect((await b.loadAll()).pages).toHaveLength(6);
+    expect((await b.loadAll()).pages).toHaveLength(ALL);
   });
 
   it('syncs an edit to a starter without a conflict', async () => {
@@ -138,7 +234,7 @@ describe('seeding', () => {
     expect(r.conflicts).toBe(0);
     useDevice('b');
     expect((await b.loadPage(BUILTIN_IDS.todo))?.title).toBe('My to-dos');
-    expect((await b.loadAll()).pages).toHaveLength(6);
+    expect((await b.loadAll()).pages).toHaveLength(ALL);
   });
 });
 
@@ -195,7 +291,7 @@ describe('managing templates', () => {
     const c = duplicateTemplate(BUILTIN_IDS.meeting)!;
     expect(c).toMatchObject({ kind: 'template', title: 'Meeting notes copy' });
     expect(c.id).not.toBe(BUILTIN_IDS.meeting);
-    expect(templatesOf(useNotes.getState().pages)).toHaveLength(7);
+    expect(templatesOf(useNotes.getState().pages)).toHaveLength(ALL + 1);
     expect(libraryPages(useNotes.getState().pages).map((x) => x.id)).toEqual(['p']);
   });
 

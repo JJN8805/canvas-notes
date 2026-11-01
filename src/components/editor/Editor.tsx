@@ -16,6 +16,8 @@ import {
   history,
   mutatePage,
   redo,
+  refreshAttendance,
+  rolloverTracked,
   saveAsTemplate,
   setFilter,
   setPageGroup,
@@ -49,6 +51,22 @@ export function Editor({ pageId }: { pageId: string }) {
   useEffect(() => {
     if (!exists) navigate({ name: 'library' });
   }, [exists]);
+
+  // Start a new day for tracked checklists, and keep an attendance page current, while this page is open
+  // (on opening, when the window comes back, and each minute so a page left open past midnight rolls over).
+  useEffect(() => {
+    const tick = () => {
+      rolloverTracked(pageId);
+      void refreshAttendance(pageId);
+    };
+    tick();
+    const timer = window.setInterval(tick, 60_000);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [pageId]);
 
   if (!exists) return null;
   return (
