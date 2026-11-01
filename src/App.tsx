@@ -3,6 +3,7 @@ import { useRoute } from './lib/route';
 import { initNotes, useNotes } from './store/notes';
 import { Library } from './components/library/Library';
 import { Editor } from './components/editor/Editor';
+import { Navigation } from './components/nav/Navigation';
 import { Overlays } from './components/ui/Overlays';
 import { TemplatePicker } from './components/library/TemplatePicker';
 import { SettingsDialog } from './components/ui/SettingsDialog';
@@ -60,6 +61,7 @@ export function App() {
       <SyncPanel />
       <TemplatePicker />
       <SettingsDialog />
+      <Navigation />
       <Overlays />
     </>
   );

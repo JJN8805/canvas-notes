@@ -324,6 +324,8 @@ const SHORTCUTS: [string, string][] = [
   ['Ctrl + A', 'Select all boxes'],
   ['Delete', 'Remove selected boxes'],
   ['S', 'New sticky note'],
+  ['Ctrl + P', 'Command palette'],
+  ['Ctrl + O', 'Quick switcher: find and open a page'],
   ['Ctrl + Alt + D', 'Open today’s page'],
   ['Space + drag', 'Pan the page'],
   ['Ctrl + scroll', 'Zoom'],

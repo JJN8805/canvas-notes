@@ -32,6 +32,7 @@ import { groupTree } from '../../lib/groups';
 import { Icon } from '../ui/Icon';
 import { Canvas } from './Canvas';
 import { HistoryPanel } from './HistoryPanel';
+import { openNav } from '../../store/nav';
 import { DrawOverlay } from './DrawOverlay';
 import { closeDraw, toggleDraw, useDraw } from '../../store/draw';
 
@@ -258,6 +259,9 @@ function EditorHeader({ pageId }: { pageId: string }) {
       </button>
         </>
       )}
+      <button className="btn ed-outline" title="Headings, frames and links of this page" onClick={() => openNav('outline')}>
+        Outline
+      </button>
       <button className="btn ed-history" onClick={() => setShowHistory(true)}>
         History
       </button>
