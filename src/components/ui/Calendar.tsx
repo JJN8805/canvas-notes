@@ -36,6 +36,7 @@ export function CalendarButton({ selected, label = 'Calendar', align = 'right' }
   return (
     <span className="cal-wrap" ref={wrap}>
       <button className="btn" aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <Icon name="calendar" size={16} />
         {label}
       </button>
       {open && (

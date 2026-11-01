@@ -40,7 +40,7 @@ import {
 } from '../../store/notes';
 import { ask, confirmDanger, openMenu, toast, type MenuItem } from '../../store/ui';
 import { groupPath, groupTree, validParents, withDescendants } from '../../lib/groups';
-import { Icon } from '../ui/Icon';
+import { Icon, type IconName } from '../ui/Icon';
 import { Thumbnail } from './Thumbnail';
 import { SyncButton } from '../sync/SyncPanel';
 import { EXPORT_ITEMS } from '../../export/export';
@@ -133,6 +133,7 @@ export function Library() {
             </select>
             <SyncButton />
             <button className="btn" title="Open today's page (Ctrl+Alt+D)" onClick={() => goToDay(dateKey())}>
+              <Icon name="today" size={16} />
               Today
             </button>
             <CalendarButton />
@@ -166,7 +167,7 @@ function EmptyState({ total, filter, query }: { total: number; filter: Filter; q
         <h2>No pages yet</h2>
         <p>Create a page, then place text, images, checklists, code and tables anywhere on it.</p>
         <div className="row">
-          <button className="btn primary" onClick={openNewPage}>New page</button>
+          <button className="btn primary" onClick={openNewPage}><Icon name="plus" size={16} />New page</button>
           <button
             className="btn"
             onClick={() => {
@@ -191,7 +192,7 @@ function EmptyState({ total, filter, query }: { total: number; filter: Filter; q
             : 'Create a page to get started.'}
       </p>
       <div className="row">
-        <button className="btn primary" onClick={openNewPage}>New page</button>
+        <button className="btn primary" onClick={openNewPage}><Icon name="plus" size={16} />New page</button>
         {(query || filter.kind !== 'all') && (
           <button
             className="btn"
@@ -420,8 +421,9 @@ function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Group[]; fi
       <ProfileChip />
 
       <div className="side-section">
-        <NavItem label="All pages" count={pages.length} active={filter.kind === 'all'} onClick={() => setFilter({ kind: 'all' })} />
+        <NavItem icon="pages" label="All pages" count={pages.length} active={filter.kind === 'all'} onClick={() => setFilter({ kind: 'all' })} />
         <NavItem
+          icon="folder"
           label="Ungrouped"
           count={ungrouped}
           active={filter.kind === 'ungrouped'}
@@ -429,12 +431,14 @@ function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Group[]; fi
           dropGroup={null}
         />
         <NavItem
+          icon="template"
           label="Templates"
           count={templateCount}
           active={filter.kind === 'templates'}
           onClick={() => setFilter({ kind: 'templates' })}
         />
         <NavItem
+          icon="trash"
           label="Trash"
           count={trashCount}
           active={filter.kind === 'trash'}
@@ -504,6 +508,7 @@ function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Group[]; fi
           return (
             <NavItem
               key={t}
+              icon="tag"
               label={'#' + t}
               count={n}
               active={active}
@@ -514,6 +519,7 @@ function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Group[]; fi
       </div>
 
       <button className="side-settings" onClick={openSettings}>
+        <Icon name="settings" size={16} />
         Settings
       </button>
       <div className="side-foot" title={storageLocation}>
@@ -561,6 +567,7 @@ function NavItem(props: {
   hasChildren?: boolean;
   collapsed?: boolean;
   onAddSubgroup?: () => void;
+  icon?: IconName;
 }) {
   const [over, setOver] = useState(false);
   const moreRef = useRef<HTMLSpanElement>(null);
@@ -677,6 +684,7 @@ function NavItem(props: {
           )}
         </span>
       )}
+      {props.icon && <span className="nav-ico"><Icon name={props.icon} size={16} /></span>}
       {props.color && <span className="dot" style={{ background: colorVar(props.color) }} />}
       <span className="lbl" title={props.label}>{props.label}</span>
       <span className="cnt">{props.count}</span>

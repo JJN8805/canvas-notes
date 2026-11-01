@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Icon, type IconName } from './Icon';
 import { chooseDailyTemplate, getStorage, refreshFromDisk, useNotes } from '../../store/notes';
 import {
   setAutoSync,
   setProfileColor,
   setProfileName,
+  setCustomTheme,
+  setPalette,
   setSnap,
   setTheme,
   setTrashDays,
@@ -17,10 +20,12 @@ import { saveBytes } from '../../export/export';
 import { openSyncPanel, useSync } from '../../sync/controller';
 import { confirmDanger, toast } from '../../store/ui';
 import { Avatar } from './Avatar';
+import { CUSTOM_PALETTE, DEFAULT_CUSTOM, DEFAULT_PALETTE, isReadable, PRESETS, type ThemeColors } from '../../lib/themes';
 import { version } from '../../../package.json';
 
 const TABS = ['Profile', 'Appearance', 'Editor', 'Sync', 'Data', 'About'] as const;
 type Tab = (typeof TABS)[number];
+const TAB_ICONS: Record<Tab, IconName> = { Profile: 'user', Appearance: 'palette', Editor: 'edit', Sync: 'sync', Data: 'database', About: 'info' };
 
 export function SettingsDialog() {
   const open = useSettingsUi((s) => s.open);
@@ -56,6 +61,7 @@ function Dialog() {
         <div className="set-tabs" role="tablist" aria-label="Settings sections">
           {TABS.map((t) => (
             <button key={t} role="tab" aria-selected={tab === t} className={'set-tab' + (tab === t ? ' on' : '')} onClick={() => setTab(t)}>
+              <Icon name={TAB_ICONS[t]} size={15} />
               {t}
             </button>
           ))}
@@ -149,20 +155,105 @@ function ProfileTab() {
 /* ---------------- Appearance ---------------- */
 
 const THEME_LABELS: Record<Theme, string> = { system: 'Match my system', light: 'Light', dark: 'Dark' };
+const THEME_ICONS: Record<Theme, IconName> = { system: 'monitor', light: 'sun', dark: 'moon' };
 
 function AppearanceTab() {
   const theme = usePrefs((s) => s.theme);
+  const palette = usePrefs((s) => s.palette);
+  const custom = usePrefs((s) => s.custom);
+  const colored = palette !== DEFAULT_PALETTE;
   return (
-    <Section title="Theme">
-      <div className="seg" role="radiogroup" aria-label="Theme">
-        {(Object.keys(THEME_LABELS) as Theme[]).map((t) => (
-          <button key={t} role="radio" aria-checked={theme === t} className={'seg-btn' + (theme === t ? ' on' : '')} onClick={() => setTheme(t, getStorage())}>
-            {THEME_LABELS[t]}
+    <>
+      <Section title="Mode">
+        <div className="seg" role="radiogroup" aria-label="Mode">
+          {(Object.keys(THEME_LABELS) as Theme[]).map((t) => (
+            <button
+              key={t}
+              role="radio"
+              aria-checked={theme === t}
+              className={'seg-btn' + (theme === t ? ' on' : '')}
+              disabled={colored}
+              onClick={() => setTheme(t, getStorage())}
+            >
+              <Icon name={THEME_ICONS[t]} size={16} />
+              {THEME_LABELS[t]}
+            </button>
+          ))}
+        </div>
+        <p>{colored ? 'A colour theme is light or dark by itself. Choose Default below to use this setting again.' : 'Light, dark, or whatever your computer is set to.'}</p>
+      </Section>
+      <Section title="Colour theme">
+        <div className="theme-grid" role="radiogroup" aria-label="Colour theme">
+          <ThemeCard id={DEFAULT_PALETTE} label="Default" colors={null} active={palette === DEFAULT_PALETTE} />
+          {PRESETS.map((p) => (
+            <ThemeCard key={p.id} id={p.id} label={p.label} colors={p} active={palette === p.id} />
+          ))}
+          <ThemeCard id={CUSTOM_PALETTE} label="Custom" colors={custom} active={palette === CUSTOM_PALETTE} />
+        </div>
+        <CustomEditor custom={custom} active={palette === CUSTOM_PALETTE} />
+        <p>Exports (PNG, PDF) are always drawn in the light theme, whichever you pick here.</p>
+      </Section>
+    </>
+  );
+}
+
+/** A small preview of a theme: its background, surface, text and accent. `null` shows the default look. */
+function ThemeCard({ id, label, colors, active }: { id: string; label: string; colors: ThemeColors | null; active: boolean }) {
+  return (
+    <button role="radio" aria-checked={active} className={'theme-card' + (active ? ' on' : '')} onClick={() => setPalette(id, getStorage())}>
+      <span className="theme-prev" style={colors ? { background: colors.desk } : undefined}>
+        {colors ? (
+          <>
+            <span className="theme-sheet" style={{ background: colors.sheet, color: colors.ink }}>Aa</span>
+            <span className="theme-dot" style={{ background: colors.accent }} />
+          </>
+        ) : (
+          <>
+            <span className="theme-half light" />
+            <span className="theme-half dark" />
+          </>
+        )}
+      </span>
+      <span className="theme-name">
+        {active && <Icon name="check" size={14} />}
+        {label}
+      </span>
+    </button>
+  );
+}
+
+const CUSTOM_FIELDS: [keyof Omit<ThemeColors, 'base'>, string][] = [
+  ['desk', 'Background'],
+  ['sheet', 'Surface'],
+  ['ink', 'Text'],
+  ['accent', 'Accent'],
+];
+
+/** Pickers for the custom theme. Changing any colour switches to the custom theme straight away. */
+function CustomEditor({ custom, active }: { custom: ThemeColors; active: boolean }) {
+  const set = (patch: Partial<ThemeColors>) => setCustomTheme({ ...custom, ...patch }, getStorage());
+  return (
+    <div className="custom-theme">
+      <h3>Make your own</h3>
+      <div className="seg" role="radiogroup" aria-label="Custom theme base">
+        {(['light', 'dark'] as const).map((b) => (
+          <button key={b} role="radio" aria-checked={custom.base === b} className={'seg-btn' + (custom.base === b ? ' on' : '')} onClick={() => set({ base: b })}>
+            <Icon name={b === 'light' ? 'sun' : 'moon'} size={16} />
+            {b === 'light' ? 'Light base' : 'Dark base'}
           </button>
         ))}
       </div>
-      <p>Exports (PNG, PDF) are always drawn in the light theme, whichever you pick here.</p>
-    </Section>
+      <div className="color-fields">
+        {CUSTOM_FIELDS.map(([key, label]) => (
+          <label key={key} className="color-field">
+            <input type="color" value={custom[key]} onChange={(e) => set({ [key]: e.target.value })} aria-label={label} />
+            <span>{label}</span>
+          </label>
+        ))}
+        <button className="btn small" onClick={() => set(DEFAULT_CUSTOM)}>Reset</button>
+      </div>
+      {active && !isReadable(custom) && <p className="warn">The text colour is hard to read on these backgrounds. Pick a lighter or darker text colour.</p>}
+    </div>
   );
 }
 

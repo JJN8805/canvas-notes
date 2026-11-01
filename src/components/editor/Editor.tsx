@@ -163,6 +163,7 @@ function Backlinks({ pageId }: { pageId: string }) {
         ])
       }
     >
+      <Icon name="link" size={16} />
       Linked from {links.length}
     </button>
   );
@@ -255,14 +256,17 @@ function EditorHeader({ pageId }: { pageId: string }) {
           if (name !== null && saveAsTemplate(pageId, name)) toast(`Saved template “${name.trim() || title || 'Untitled template'}”`);
         }}
       >
+        <Icon name="template" size={16} />
         Save as template
       </button>
         </>
       )}
       <button className="btn ed-outline" title="Headings, frames and links of this page" onClick={() => openNav('outline')}>
+        <Icon name="outline" size={16} />
         Outline
       </button>
       <button className="btn ed-history" onClick={() => setShowHistory(true)}>
+        <Icon name="history" size={16} />
         History
       </button>
       {showHistory && <HistoryPanel pageId={pageId} onClose={() => setShowHistory(false)} />}
@@ -271,6 +275,7 @@ function EditorHeader({ pageId }: { pageId: string }) {
         className="btn ed-export"
         onClick={(e) => openMenu(e.currentTarget, [{ heading: 'Export this page as' }, ...EXPORT_ITEMS(pageId)])}
       >
+        <Icon name="export" size={16} />
         Export
       </button>
       )}
