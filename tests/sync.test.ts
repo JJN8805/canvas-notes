@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { FakeDatabase, fakeFs, useDevice } from './fakes';
+import { FakeDatabase, fakeFs, fakePath, useDevice } from './fakes';
 
 vi.mock('@tauri-apps/plugin-sql', () => ({ default: FakeDatabase }));
 vi.mock('@tauri-apps/plugin-fs', () => fakeFs);
-vi.mock('@tauri-apps/api/path', () => ({ appConfigDir: async () => '/config' }));
+vi.mock('@tauri-apps/api/path', () => fakePath);
 
 import { createTauriStorage } from '../src/storage/tauri';
 import type { NotesStorage, PageRecord } from '../src/storage/types';
@@ -199,6 +199,24 @@ describe('Wi-Fi sync', () => {
     await sync();
     const onLaptop = (await laptop.loadAll()).pages.find((p) => p.id === 'a');
     expect(onLaptop?.arrows).toEqual([{ id: 'arr1', from: 'b1', to: 'b2', heads: 'one', style: 'dashed', label: 'leads to', z: 1 }]);
+  });
+
+  it('syncs a frame block and its contained box like any other block', async () => {
+    await save(laptop, page('a', 'Board', {
+      blocks: [
+        { id: 'f1', type: 'frame', x: 0, y: 0, w: 400, h: 300, z: 1, title: 'Ideas', color: 'teal', collapsed: false },
+        { id: 'b1', type: 'text', x: 10, y: 40, w: 100, h: 40, z: 2, html: '<p>One</p>', frameId: 'f1' },
+      ],
+    }));
+    await sync();
+    const onPhone = (await phone.loadAll()).pages.find((p) => p.id === 'a');
+    expect(onPhone?.blocks.find((b) => b.id === 'f1')).toMatchObject({ type: 'frame', title: 'Ideas', collapsed: false });
+    expect(onPhone?.blocks.find((b) => b.id === 'b1')).toMatchObject({ frameId: 'f1' });
+
+    await save(phone, { ...onPhone!, blocks: onPhone!.blocks.map((b) => (b.id === 'f1' ? { ...b, collapsed: true } : b)) });
+    await sync();
+    const onLaptop = (await laptop.loadAll()).pages.find((p) => p.id === 'a');
+    expect(onLaptop?.blocks.find((b) => b.id === 'f1')).toMatchObject({ collapsed: true });
   });
 
   it('never lets the phone overwrite a laptop change it has not seen', async () => {

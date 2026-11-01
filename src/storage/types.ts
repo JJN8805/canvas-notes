@@ -1,4 +1,7 @@
-import type { Arrow, Block, Group, GroupColor, Page } from '../types';
+import { cleanColor } from '../lib/colors';
+import { cleanDate, kindOf } from '../lib/pages';
+import type { GraphMirror } from '../graph/mirror';
+import type { Arrow, Block, Group, GroupColor, NoteColor, Page, PageDrawing, PageKind } from '../types';
 
 export type SaveResult = { ok: true; rev: number } | { ok: false; reason: 'conflict' };
 
@@ -30,6 +33,13 @@ export interface PageRecord {
   tags: string[];
   blocks: Block[];
   arrows: Arrow[];
+  /** Absent in records from app versions before page drawings. */
+  drawing?: PageDrawing | null;
+  /** Absent in records from app versions before templates and daily pages. */
+  kind?: PageKind;
+  dailyDate?: string | null;
+  /** Absent in records from app versions before page colours. */
+  color?: NoteColor | null;
   created: number;
   updated: number;
 }
@@ -52,6 +62,16 @@ export interface ImagePayload {
   mime: string;
   /** base64 */
   data: string;
+}
+
+/** An earlier version of a page, kept on this device only (never synced). */
+export interface Snapshot {
+  id: string;
+  pageId: string;
+  taken: number;
+  title: string;
+  blocks: Block[];
+  arrows: Arrow[];
 }
 
 export interface SyncStore {
@@ -90,6 +110,19 @@ export interface NotesStorage {
   savePage(page: Page): Promise<SaveResult>;
   /** Marks a page deleted (kept as a tombstone so the deletion syncs). */
   deletePage(id: string): Promise<void>;
+  /** Deleted pages that can still be restored (not purged), newest deletion first; `updated` is the deletion time. */
+  listTrash(): Promise<Page[]>;
+  /** Empties a trashed page for good but keeps the tombstone, with a new etag so the purge syncs. */
+  purgePage(id: string): Promise<void>;
+  /** Purges trashed pages deleted before `cutoff` and drops history of purged pages. Returns how many pages were purged. */
+  purgeExpiredTrash(cutoff: number): Promise<number>;
+  /** Saved versions of a page, newest first. */
+  listSnapshots(pageId: string): Promise<Snapshot[]>;
+  /**
+   * Keeps the page as stored now as a version. Without `force` it happens at most once an hour.
+   * Blank pages and a copy of the newest version are skipped. Returns whether one was added.
+   */
+  snapshotPage(pageId: string, opts?: { force?: boolean }): Promise<boolean>;
   saveGroups(groups: Group[]): Promise<void>;
   /** Stores image bytes and returns an id to keep in the page. */
   putImage(blob: Blob): Promise<string>;
@@ -100,6 +133,8 @@ export interface NotesStorage {
   getSetting(key: string): Promise<string | null>;
   setSetting(key: string, value: string | null): Promise<void>;
   sync: SyncStore;
+  /** The graph layer (links, tags, groups as nodes and edges); null if it could not start. */
+  graph: GraphMirror | null;
 }
 
 export function normalizePage(p: Partial<Page> & { id: string }): Page {
@@ -110,6 +145,10 @@ export function normalizePage(p: Partial<Page> & { id: string }): Page {
     tags: Array.isArray(p.tags) ? p.tags : [],
     blocks: Array.isArray(p.blocks) ? p.blocks : [],
     arrows: Array.isArray(p.arrows) ? p.arrows : [],
+    drawing: p.drawing ?? null,
+    color: cleanColor(p.color),
+    kind: kindOf(p),
+    dailyDate: cleanDate(p.dailyDate),
     created: p.created ?? Date.now(),
     updated: p.updated ?? p.created ?? Date.now(),
     rev: p.rev ?? 0,

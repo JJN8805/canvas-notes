@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { isTauri } from '../storage';
-import { flushAll, getStorage, refreshFromDisk, useNotes } from '../store/notes';
+import { usePrefs } from '../store/prefs';
+import { flushAll, getStorage, refreshFromDisk, resolveDailyDuplicates, useNotes } from '../store/notes';
 import { toast } from '../store/ui';
 import { handleRequest, syncWithLaptop, type SyncReport, type SyncRequest } from './engine';
 
@@ -114,7 +115,8 @@ function refreshSoon() {
   if (refreshTimer !== null) clearTimeout(refreshTimer);
   refreshTimer = window.setTimeout(() => {
     refreshTimer = null;
-    void refreshFromDisk();
+    // The laptop is the one that settles two devices having made the same day's page (the phone then receives the fix).
+    void refreshFromDisk().then(() => resolveDailyDuplicates());
   }, 300);
 }
 
@@ -257,6 +259,8 @@ let running: Promise<void> | null = null;
 export function syncNow(opts: { quiet?: boolean } = {}): Promise<void> {
   const s = get();
   if (s.platform !== 'mobile' || !s.connected) return Promise.resolve();
+  // Background syncs (quiet) stop when automatic syncing is turned off in Settings; the Sync button still works.
+  if (opts.quiet && !usePrefs.getState().autoSync) return Promise.resolve();
   if (running) return running;
   running = (async () => {
     set({ busy: true });

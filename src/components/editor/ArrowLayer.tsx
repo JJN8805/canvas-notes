@@ -79,6 +79,24 @@ export function ArrowLayer({
         />
         {(a.heads === 'one' || a.heads === 'both') && <polygon points={headPolygon(route.to, ux, uy, headSize)} fill={color} />}
         {a.heads === 'both' && <polygon points={headPolygon(route.from, -ux, -uy, headSize)} fill={color} />}
+        {a.label && (
+          // The label sits on the middle of the line, with a halo in the page colour so the line doesn't run through the letters.
+          <text
+            x={(route.from.x + route.to.x) / 2}
+            y={(route.from.y + route.to.y) / 2}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize={13}
+            fill={sel ? 'var(--accent)' : 'var(--ink)'}
+            stroke="var(--desk)"
+            strokeWidth={5}
+            paintOrder="stroke"
+            strokeLinejoin="round"
+            style={{ pointerEvents: 'none', userSelect: 'none' }}
+          >
+            {a.label}
+          </text>
+        )}
         <line
           className="arrow-hit"
           x1={route.from.x}

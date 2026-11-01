@@ -3,8 +3,15 @@ import { useRoute } from './lib/route';
 import { initNotes, useNotes } from './store/notes';
 import { Library } from './components/library/Library';
 import { Editor } from './components/editor/Editor';
+import { Navigation } from './components/nav/Navigation';
 import { Overlays } from './components/ui/Overlays';
+import { TemplatePicker } from './components/library/TemplatePicker';
+import { SettingsDialog } from './components/ui/SettingsDialog';
 import { SyncPanel } from './components/sync/SyncPanel';
+import { goToDay } from './components/ui/Calendar';
+import { dateKey, isTodayShortcut } from './lib/daily';
+import { useDraw } from './store/draw';
+import { useUi } from './store/ui';
 import { initSync } from './sync/controller';
 
 export function App() {
@@ -15,6 +22,19 @@ export function App() {
   useEffect(() => {
     void initNotes();
   }, []);
+
+  // Ctrl+Alt+D opens today's page from anywhere (made from the daily template if it doesn't exist yet).
+  useEffect(() => {
+    if (status !== 'ready') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!isTodayShortcut(e)) return;
+      if (useUi.getState().dialog || useDraw.getState().open) return;
+      e.preventDefault();
+      goToDay(dateKey());
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [status]);
 
   useEffect(() => {
     if (status === 'ready') void initSync().catch((e) => console.error('Sync setup failed', e));
@@ -39,6 +59,9 @@ export function App() {
     <>
       {route.name === 'page' ? <Editor key={route.id} pageId={route.id} /> : <Library />}
       <SyncPanel />
+      <TemplatePicker />
+      <SettingsDialog />
+      <Navigation />
       <Overlays />
     </>
   );

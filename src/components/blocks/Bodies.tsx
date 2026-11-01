@@ -1,9 +1,12 @@
-import { useRef } from 'react';
+import { Fragment, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { Draft } from 'immer';
+import { dailyTitle } from '../../lib/daily';
 import type { ChecklistBlock, CodeBlock, ImageBlock, TableBlock } from '../../types';
 import { updateBlock } from '../../store/notes';
 import { newId } from '../../lib/util';
+import { dropIndex, moveItem } from '../../lib/reorder';
+import { useCanvas } from '../../store/canvas';
 import { useImageUrl } from '../../lib/useImageUrl';
 import { AutoTextarea } from '../ui/AutoTextarea';
 import { useCanvasCtx } from '../editor/context';
@@ -37,10 +40,63 @@ export function ChecklistBody({ block }: { block: ChecklistBlock }) {
     focusNow(ref.current, `[data-item="${id}"]`, 'start');
   };
 
+  // The item being dragged by its handle: how far it has moved, and the place it would land.
+  const [drag, setDrag] = useState<{ id: string; dy: number; to: number } | null>(null);
+
+  const startDrag = (e: React.PointerEvent<HTMLElement>, id: string) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const from = block.items.findIndex((x) => x.id === id);
+    const rows = Array.from(ref.current?.querySelectorAll<HTMLElement>('.ci') ?? []);
+    if (from < 0 || rows.length !== block.items.length) return;
+    const mids = rows.map((r) => {
+      const b = r.getBoundingClientRect();
+      return b.top + b.height / 2;
+    });
+    const y0 = e.clientY;
+    const zoom = useCanvas.getState().zoom;
+    let to = from;
+    const target = e.currentTarget;
+    target.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => {
+      to = dropIndex(mids, from, mids[from] + ev.clientY - y0);
+      setDrag({ id, dy: (ev.clientY - y0) / zoom, to });
+    };
+    const end = (ev: PointerEvent) => {
+      target.removeEventListener('pointermove', move);
+      target.removeEventListener('pointerup', end);
+      target.removeEventListener('pointercancel', end);
+      setDrag(null);
+      if (ev.type === 'pointerup' && to !== from) edit((b) => void (b.items = moveItem(b.items, from, to)));
+    };
+    target.addEventListener('pointermove', move);
+    target.addEventListener('pointerup', end);
+    target.addEventListener('pointercancel', end);
+  };
+
+  const others = drag ? block.items.filter((x) => x.id !== drag.id) : [];
+  const dropBefore = drag && drag.to !== block.items.findIndex((x) => x.id === drag.id) ? others[drag.to]?.id ?? null : null;
+  const dropAtEnd = !!drag && drag.to !== block.items.findIndex((x) => x.id === drag.id) && drag.to >= others.length;
+
   return (
     <div className="body" ref={ref}>
       {block.items.map((it, i) => (
-        <div key={it.id} className={'ci' + (it.done ? ' done' : '')}>
+        <Fragment key={it.id}>
+        {dropBefore === it.id && <div className="ci-drop" />}
+        <div
+          className={'ci' + (it.done ? ' done' : '') + (drag?.id === it.id ? ' lifted' : '')}
+          style={drag?.id === it.id ? { transform: `translateY(${drag.dy}px)` } : undefined}
+        >
+          <span
+            className="ci-grip"
+            role="button"
+            aria-label="Drag to reorder (or Alt + Up / Down in the item)"
+            title="Drag to reorder"
+            onPointerDown={(e) => startDrag(e, it.id)}
+          >
+            ⠿
+          </span>
           <input
             type="checkbox"
             checked={it.done}
@@ -66,7 +122,15 @@ export function ChecklistBody({ block }: { block: ChecklistBlock }) {
             }
             onKeyDown={(e) => {
               const ta = e.currentTarget;
-              if (e.key === 'Enter') {
+              if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+                // Alt + Up / Down moves the item, keeping the cursor in it.
+                e.preventDefault();
+                const to = i + (e.key === 'ArrowUp' ? -1 : 1);
+                if (to < 0 || to >= block.items.length) return;
+                const caret = ta.selectionStart;
+                flushSync(() => edit((b) => void (b.items = moveItem(b.items, i, to))));
+                focusNow(ref.current, `[data-item="${it.id}"]`, caret);
+              } else if (e.key === 'Enter') {
                 e.preventDefault();
                 const before = ta.value.slice(0, ta.selectionStart);
                 const after = ta.value.slice(ta.selectionEnd);
@@ -102,10 +166,17 @@ export function ChecklistBody({ block }: { block: ChecklistBlock }) {
             }}
           />
         </div>
+        </Fragment>
       ))}
+      {dropAtEnd && <div className="ci-drop" />}
       <button className="add-item" onClick={() => addAfter(block.items.length - 1)}>
         + Add item
       </button>
+      {block.track && (
+        <div className="track-note" title="Checks are saved for each day and cleared when a new day starts">
+          Tracked daily since {dailyTitle(block.track.start)}
+        </div>
+      )}
     </div>
   );
 }

@@ -188,6 +188,11 @@ async function syncRound(store: SyncStore, send: Send, report: SyncReport): Prom
           tags: r.tags,
           blocks: r.blocks,
           arrows: r.arrows,
+          drawing: r.drawing ?? null,
+          color: r.color ?? null,
+          // A conflicted copy of a template stays a template; it never keeps a daily page's date.
+          kind: r.kind ?? 'page',
+          dailyDate: null,
           created: Date.now(),
           updated: Date.now(),
         });

@@ -1,13 +1,23 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { Draft } from 'immer';
-import type { Arrow, Block, BlockType, Filter, Group, GroupColor, Page, SortKey } from '../types';
+import type { Arrow, Block, BlockType, Filter, Group, GroupColor, NoteColor, Page, PageDrawing, SortKey } from '../types';
 import { GROUP_COLORS } from '../types';
+import { dailyPageFor, dailyTitle, findDailyDuplicates, SECOND_COPY } from '../lib/daily';
+import { seedBuiltinTemplates } from '../lib/builtinTemplates';
+import { cloneContent, isTemplate, resolveDailyTemplate, templateFrom } from '../lib/pages';
+import { applyColor, DEFAULT_STICKY_COLOR, STICKY_SIZE } from '../lib/colors';
+import { loadPrefs, rememberStickyColor, setDailyTemplate, usePrefs } from './prefs';
 import { deepClone, newId } from '../lib/util';
+import { attendanceBlocks, attendanceLink, attendanceTitle, reconcile, rollover, startTracking, withAttendance } from '../lib/attendance';
+import { dateKey } from '../lib/daily';
 import { isTauri, openStorage, type NotesStorage } from '../storage';
 import { history } from './history';
 import { effectiveParents, validParents } from '../lib/groups';
+import { containingFrame, ungroupedAfterDelete } from '../lib/frames';
 import { toast } from './ui';
+import type { Snapshot } from '../storage/types';
+import type { ChecklistBlock } from '../types';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -17,6 +27,8 @@ interface NotesState {
   storageKind: 'desktop' | 'browser';
   storageLocation: string;
   pages: Record<string, Page>;
+  /** Deleted pages that can still be restored (`updated` is when they were deleted). */
+  trash: Page[];
   groups: Group[];
   save: { state: SaveState; message: string };
   filter: Filter;
@@ -35,6 +47,7 @@ export const useNotes = create<NotesState>()(
     storageKind: 'browser' as const,
     storageLocation: '',
     pages: {},
+    trash: [],
     groups: [],
     save: { state: 'idle' as SaveState, message: '' },
     filter: { kind: 'all' } as Filter,
@@ -68,6 +81,8 @@ export function initNotes(): Promise<void> {
 async function doInit() {
   try {
     storage = await openStorage();
+    // The starter templates are added once, before anything is read.
+    await seedBuiltinTemplates(storage).catch((e) => console.warn('Starter templates failed', e));
     const { pages, groups } = await storage.loadAll();
     const location = await storage.location().catch(() => '');
     let collapsed: string[] = [];
@@ -76,6 +91,7 @@ async function doInit() {
     } catch {
       /* ignore */
     }
+    await loadPrefs(storage);
     set((s) => {
       s.pages = Object.fromEntries(pages.map((p) => [p.id, p]));
       s.groups = groups;
@@ -84,6 +100,9 @@ async function doInit() {
       s.collapsed = Array.isArray(collapsed) ? collapsed : [];
       s.status = 'ready';
     });
+    // Pages deleted longer ago than the Trash setting allows (30 days unless changed) are emptied for good (their deletion still syncs).
+    await storage.purgeExpiredTrash(Date.now() - usePrefs.getState().trashDays * 24 * 3600_000).catch((e) => console.warn('Trash cleanup failed', e));
+    await loadTrash();
     // Images deleted from pages are kept until the next launch so undo can bring them back.
     storage.pruneImages(usedImageIds(pages)).catch((e) => console.warn('Image cleanup failed', e));
 
@@ -105,6 +124,53 @@ async function doInit() {
       s.error = e instanceof Error ? e.message : String(e);
     });
   }
+}
+
+/** Re-reads the Trash list from storage. */
+export async function loadTrash() {
+  try {
+    const trash = await getStorage().listTrash();
+    set((s) => {
+      s.trash = trash;
+    });
+  } catch (e) {
+    console.warn('Could not read the Trash', e);
+  }
+}
+
+/** Puts a trashed page back, the same way the delete toast's Undo does. */
+export function restoreFromTrash(id: string) {
+  const page = get().trash.find((p) => p.id === id);
+  if (!page) return;
+  set((s) => {
+    s.pages[id] = { ...deepClone(page), rev: 0, updated: Date.now() };
+    s.trash = s.trash.filter((p) => p.id !== id);
+  });
+  markDirty(id);
+  resolveDailyDuplicates(); // a restored daily page may clash with one made since
+  toast(`Restored “${page.title || 'Untitled'}”`);
+}
+
+/** Empties a trashed page for good. */
+export async function deleteForever(id: string) {
+  try {
+    await getStorage().purgePage(id);
+  } catch (e) {
+    console.error(e);
+  }
+  await loadTrash();
+}
+
+/** Replaces the page's boxes and arrows with an earlier version. Undo (Ctrl+Z) brings the current ones back. */
+export async function restoreSnapshot(pageId: string, snap: Snapshot) {
+  await flushPage(pageId);
+  // Keep what is there now too, so this stays reversible after undo history is gone.
+  await getStorage().snapshotPage(pageId, { force: true }).catch((e) => console.warn('History snapshot failed', e));
+  mutatePage(pageId, (p) => {
+    p.blocks = deepClone(snap.blocks) as Draft<Block>[];
+    p.arrows = deepClone(snap.arrows) as Draft<Arrow>[];
+  });
+  toast('Restored an earlier version. Undo brings back the one you had.');
 }
 
 function usedImageIds(pages: Page[]): Set<string> {
@@ -291,6 +357,8 @@ export function mutatePage(
     const p = s.pages[id];
     if (!p) return;
     recipe(p);
+    // A tracked checklist keeps today's record in line with its checks, in the same step (so undo restores both).
+    for (const b of p.blocks) if (b.type === 'checklist' && b.track) reconcile(b as ChecklistBlock);
     if (opts.touch !== false) p.updated = Date.now();
   });
   const after = get().pages[id];
@@ -300,6 +368,41 @@ export function mutatePage(
     bumpHistory();
   }
   markDirty(id);
+  if (after.blocks !== before.blocks && after.blocks.some((b) => b.type === 'checklist' && b.track)) refreshAttendanceSoon(id);
+}
+
+/** Replaces the page's drawing (null = nothing drawn). Excalidraw keeps its own undo while draw mode is open. */
+export function setPageDrawing(pageId: string, drawing: PageDrawing | null) {
+  mutatePage(
+    pageId,
+    (p) => {
+      p.drawing = drawing;
+    },
+    { history: 'none' },
+  );
+}
+
+/** Colours the given boxes (null = no colour) as one undo step, and marks the page changed so it syncs. */
+export function setColor(pageId: string, ids: readonly string[], color: NoteColor | null) {
+  const page = get().pages[pageId];
+  if (!page) return;
+  // Checked on a copy first, so choosing the colour a box already has records no undo step.
+  if (!applyColor(deepClone(page.blocks) as Block[], ids, color)) return;
+  mutatePage(pageId, (p) => void applyColor(p.blocks as Block[], ids, color));
+  // The next sticky starts with the colour last picked for a sticky.
+  if (color && page.blocks.some((b) => b.type === 'sticky' && ids.includes(b.id))) rememberStickyColor(color, storage);
+}
+
+/** The colour of the page's card in the library. Not part of the canvas undo history. */
+export function setPageColor(pageId: string, color: NoteColor | null) {
+  if ((get().pages[pageId]?.color ?? null) === color) return;
+  mutatePage(
+    pageId,
+    (p) => {
+      p.color = color;
+    },
+    { history: 'none' },
+  );
 }
 
 export function updateBlock<T extends Block>(
@@ -380,6 +483,8 @@ export const BLOCK_DEFAULTS: Record<Exclude<BlockType, 'image'>, () => NewBlockF
       ['', '', ''],
     ],
   }),
+  sticky: () => ({ w: STICKY_SIZE, h: STICKY_SIZE, html: '', tint: usePrefs.getState().stickyColor ?? DEFAULT_STICKY_COLOR }),
+  frame: () => ({ w: 360, h: 240, title: 'Frame', color: 'slate', collapsed: false }),
 };
 
 export const maxZ = (blocks: Block[]) => blocks.reduce((m, b) => Math.max(m, b.z || 0), 0);
@@ -394,10 +499,15 @@ export function addBlock(pageId: string, type: BlockType, pos: { x: number; y: n
     ...extra,
     id,
     type,
-    x: Math.max(0, Math.round(pos.x)),
-    y: Math.max(0, Math.round(pos.y)),
+    x: Math.round(pos.x),
+    y: Math.round(pos.y),
     z: maxZ(page.blocks) + 1,
   } as Block;
+  // A box created on top of a frame joins it automatically, same as dropping one in.
+  if (type !== 'frame') {
+    const dest = containingFrame(page.blocks, block, new Set());
+    if (dest) block.frameId = dest.id;
+  }
   mutatePage(pageId, (p) => {
     p.blocks.push(block as Draft<Block>);
   });
@@ -405,9 +515,15 @@ export function addBlock(pageId: string, type: BlockType, pos: { x: number; y: n
 }
 
 export function deleteBlocks(pageId: string, ids: string[]) {
+  const page = get().pages[pageId];
+  if (!page) return;
   const drop = new Set(ids);
+  // Deleting a frame ungroups its contents instead of orphaning them: anything whose
+  // frameId chain leads to a deleted frame is reparented to the nearest surviving ancestor.
+  const reparent = ungroupedAfterDelete(page.blocks, drop);
   mutatePage(pageId, (p) => {
     p.blocks = p.blocks.filter((b) => !drop.has(b.id));
+    for (const b of p.blocks) if (reparent.has(b.id)) b.frameId = reparent.get(b.id) ?? null;
     p.arrows = p.arrows.filter((a) => !drop.has(a.from) && !drop.has(a.to));
   });
 }
@@ -416,34 +532,59 @@ export function duplicateBlocks(pageId: string, ids: string[]): string[] {
   const page = get().pages[pageId];
   if (!page) return [];
   let z = maxZ(page.blocks);
-  const copies = page.blocks
-    .filter((b) => ids.includes(b.id))
-    .map((b) => {
-      const c = deepClone(b) as Block;
-      c.id = newId();
-      c.x = b.x + 24;
-      c.y = b.y + 24;
-      c.z = ++z;
-      if (c.type === 'checklist') c.items.forEach((i) => (i.id = newId()));
-      return c;
-    });
+  const selected = page.blocks.filter((b) => ids.includes(b.id));
+  const idMap = new Map(selected.map((b) => [b.id, newId()]));
+  const copies = selected.map((b) => {
+    const c = deepClone(b) as Block;
+    c.id = idMap.get(b.id)!;
+    c.x = b.x + 24;
+    c.y = b.y + 24;
+    c.z = ++z;
+    // Keep pointing at the original frame if it wasn't duplicated too; re-point at the
+    // new copy if it was, so a duplicated frame+contents stay grouped together.
+    if (c.frameId) c.frameId = idMap.get(c.frameId) ?? c.frameId;
+    if (c.type === 'checklist') {
+      c.items.forEach((i) => (i.id = newId()));
+      delete c.track; // a copy starts with no daily history
+    }
+    return c;
+  });
   mutatePage(pageId, (p) => {
     p.blocks.push(...(copies as Draft<Block>[]));
   });
   return copies.map((c) => c.id);
 }
 
-/** Raise the given blocks above everything else. Not an undo step. */
+/** Groups ids by the frameId of the block they currently belong to. */
+function byParent(blocks: Block[], ids: string[]): Map<string | null, string[]> {
+  const groups = new Map<string | null, string[]>();
+  for (const id of ids) {
+    const parent = blocks.find((b) => b.id === id)?.frameId ?? null;
+    if (!groups.has(parent)) groups.set(parent, []);
+    groups.get(parent)!.push(id);
+  }
+  return groups;
+}
+
+/** Raise the given blocks above their siblings (within the same frame, if any). Not an undo step. */
 export function bringToFront(pageId: string, ids: string[]) {
   const page = get().pages[pageId];
   if (!page || !ids.length) return;
-  const topIds = [...page.blocks].sort((a, b) => (b.z || 0) - (a.z || 0)).slice(0, ids.length).map((b) => b.id);
-  if (ids.every((id) => topIds.includes(id))) return;
-  let z = maxZ(page.blocks);
+  const groups = byParent(page.blocks, ids);
+  const needsChange = [...groups].some(([parent, group]) => {
+    const siblings = page.blocks.filter((b) => (b.frameId ?? null) === parent);
+    const topIds = [...siblings].sort((a, b) => (b.z || 0) - (a.z || 0)).slice(0, group.length).map((b) => b.id);
+    return !group.every((id) => topIds.includes(id));
+  });
+  if (!needsChange) return;
   mutatePage(
     pageId,
     (p) => {
-      for (const b of p.blocks) if (ids.includes(b.id)) b.z = ++z;
+      for (const [parent, group] of groups) {
+        const siblings = p.blocks.filter((b) => (b.frameId ?? null) === parent);
+        let z = siblings.reduce((m, b) => Math.max(m, b.z || 0), 0);
+        for (const b of p.blocks) if (group.includes(b.id)) b.z = ++z;
+      }
     },
     { history: 'none', touch: false },
   );
@@ -452,9 +593,13 @@ export function bringToFront(pageId: string, ids: string[]) {
 export function sendToBack(pageId: string, ids: string[]) {
   const page = get().pages[pageId];
   if (!page) return;
-  let z = page.blocks.reduce((m, b) => Math.min(m, b.z || 0), Infinity) - ids.length;
+  const groups = byParent(page.blocks, ids);
   mutatePage(pageId, (p) => {
-    for (const b of p.blocks) if (ids.includes(b.id)) b.z = ++z;
+    for (const [parent, group] of groups) {
+      const siblings = p.blocks.filter((b) => (b.frameId ?? null) === parent);
+      let z = siblings.reduce((m, b) => Math.min(m, b.z || 0), Infinity) - group.length;
+      for (const b of p.blocks) if (group.includes(b.id)) b.z = ++z;
+    }
   });
 }
 
@@ -520,21 +665,138 @@ export function createPage(partial: Partial<Page> = {}): Page {
   return page;
 }
 
+/**
+ * A new page that starts as an independent copy of a template (or blank for null): new ids throughout,
+ * titled with the template's name, in the group and tags of the current library view. Nothing links back to the template.
+ */
+export function createPageFromTemplate(templateId: string | null, partial: Partial<Page> = {}): Page | null {
+  if (templateId === null) return createPage(partial);
+  const tpl = get().pages[templateId];
+  if (!tpl || !isTemplate(tpl)) return null;
+  return createPage({ ...cloneContent(tpl), title: tpl.title, color: tpl.color ?? null, kind: 'page', dailyDate: null, ...partial });
+}
+
+/** Keeps a copy of the page's layout and boxes as a template. */
+export function saveAsTemplate(pageId: string, name: string): Page | null {
+  const src = get().pages[pageId];
+  if (!src) return null;
+  const tpl = templateFrom(src, name.trim() || src.title || 'Untitled template');
+  set((s) => {
+    s.pages[tpl.id] = tpl;
+  });
+  markDirty(tpl.id);
+  void flushPage(tpl.id);
+  return tpl;
+}
+
+/** A new, empty template, ready to be filled in. */
+export function createTemplate(name = 'New template'): Page {
+  const now = Date.now();
+  const tpl: Page = { id: newId(), kind: 'template', title: name, groupId: null, tags: [], blocks: [], arrows: [], created: now, updated: now, rev: 0 };
+  set((s) => {
+    s.pages[tpl.id] = tpl;
+  });
+  markDirty(tpl.id);
+  void flushPage(tpl.id);
+  return tpl;
+}
+
+export function renameTemplate(id: string, name: string) {
+  const t = get().pages[id];
+  if (!t || !isTemplate(t) || !name.trim() || t.title === name.trim()) return;
+  mutatePage(id, (p) => {
+    p.title = name.trim();
+  }, { history: 'none' });
+}
+
+export function duplicateTemplate(id: string): Page | null {
+  const src = get().pages[id];
+  if (!src || !isTemplate(src)) return null;
+  const copy = templateFrom(src, `${src.title || 'Untitled template'} copy`);
+  set((s) => {
+    s.pages[copy.id] = copy;
+  });
+  markDirty(copy.id);
+  void flushPage(copy.id);
+  return copy;
+}
+
+/**
+ * Deletes a template for good (the deletion syncs). Templates skip the trash: pages made from one
+ * are copies, so they are unaffected. If it was the daily template, the daily page goes back to its default.
+ */
+export async function deleteTemplate(id: string) {
+  const t = get().pages[id];
+  if (!t || !isTemplate(t)) return;
+  const timer = timers.get(id);
+  if (timer) clearTimeout(timer);
+  timers.delete(id);
+  dirty.delete(id);
+  set((s) => {
+    delete s.pages[id];
+  });
+  history.clear(id);
+  refreshSaveState();
+  if (usePrefs.getState().dailyTemplate === id) setDailyTemplate(null, storage);
+  try {
+    await getStorage().deletePage(id);
+    await getStorage().purgePage(id);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+export function chooseDailyTemplate(value: string | null) {
+  setDailyTemplate(value, storage);
+}
+
+export const DAILY_GROUP_ID = 'group-daily';
+
+/** The "Daily" group, created when first needed. It has the same id on every device, so two devices never make two. */
+function ensureDailyGroup(): string {
+  if (get().groups.some((g) => g.id === DAILY_GROUP_ID)) return DAILY_GROUP_ID;
+  set((s) => {
+    s.groups.push({ id: DAILY_GROUP_ID, name: 'Daily', color: 'ultra', parentId: null });
+  });
+  scheduleGroupsSave();
+  return DAILY_GROUP_ID;
+}
+
+/**
+ * The page for a day (YYYY-MM-DD): the one that already exists, or a new one made from the daily template,
+ * titled with the date and filed in the Daily group. Only ever called because you opened that day.
+ */
+export function openDailyPage(date: string): Page {
+  const existing = dailyPageFor(get().pages, date);
+  if (existing) return existing;
+  const fields = { title: dailyTitle(date), dailyDate: date, groupId: ensureDailyGroup(), tags: [] as string[] };
+  const tpl = resolveDailyTemplate(get().pages, usePrefs.getState().dailyTemplate);
+  return (tpl && createPageFromTemplate(tpl.id, fields)) || createPage(fields);
+}
+
+/**
+ * Where two live pages claim the same date, the oldest stays the daily page and the rest become ordinary pages
+ * titled "… (second copy)", still in the Daily group. Returns how many were changed.
+ */
+export function resolveDailyDuplicates(): number {
+  let n = 0;
+  for (const { losers } of findDailyDuplicates(Object.values(get().pages))) {
+    for (const id of losers) {
+      mutatePage(id, (p) => {
+        p.dailyDate = null;
+        if (!p.title.endsWith(SECOND_COPY)) p.title = `${p.title || 'Untitled'}${SECOND_COPY}`;
+      }, { history: 'none' });
+      n++;
+    }
+  }
+  return n;
+}
+
 export function duplicatePage(id: string): Page | null {
   const src = get().pages[id];
   if (!src) return null;
-  const c = deepClone(src);
-  const idMap = new Map<string, string>();
-  c.blocks.forEach((b) => {
-    const newBlockId = newId();
-    idMap.set(b.id, newBlockId);
-    b.id = newBlockId;
-    if (b.type === 'checklist') b.items.forEach((i) => (i.id = newId()));
-  });
-  c.arrows = c.arrows
-    .filter((a) => idMap.has(a.from) && idMap.has(a.to))
-    .map((a) => ({ ...a, id: newId(), from: idMap.get(a.from)!, to: idMap.get(a.to)! }));
-  return createPage({ ...c, id: newId(), title: `${src.title || 'Untitled'} copy`, created: Date.now(), rev: 0 });
+  // A copy is a normal page, even of a template, and never takes over a daily page's date.
+  return createPage({ ...deepClone(src), ...cloneContent(src), kind: 'page', dailyDate: null, id: newId(), title: `${src.title || 'Untitled'} copy`, created: Date.now(), rev: 0 });
 }
 
 /** Deletes a page and offers an undo toast. */
@@ -553,6 +815,7 @@ export async function deletePage(id: string) {
   refreshSaveState();
   try {
     await getStorage().deletePage(id);
+    await loadTrash();
   } catch (e) {
     console.error(e);
   }
@@ -561,6 +824,7 @@ export async function deletePage(id: string) {
     run: () => {
       set((s) => {
         s.pages[id] = { ...snapshot, rev: 0 };
+        s.trash = s.trash.filter((p) => p.id !== id);
       });
       markDirty(id);
     },
@@ -698,3 +962,125 @@ export function setSort(sort: SortKey) {
 }
 
 export { history };
+
+/* ---------------- Daily tracking and attendance ---------------- */
+
+const trackedLists = (p: Page) => p.blocks.filter((b): b is ChecklistBlock => b.type === 'checklist' && !!b.track);
+
+/** Starts or stops tracking a checklist day by day. Stopping forgets its daily record. */
+export function setTracking(pageId: string, blockId: string, on: boolean) {
+  const today = dateKey();
+  updateBlock<ChecklistBlock>(pageId, blockId, (b) => {
+    if (on) b.track = startTracking(b as ChecklistBlock, today);
+    else delete b.track;
+  });
+}
+
+/** The page that shows attendance for a checklist, if one was made. */
+export function findAttendancePage(sourceId: string, blockId: string): Page | null {
+  return (
+    Object.values(get().pages).find((p) => {
+      const l = attendanceLink(p);
+      return !isTemplate(p) && l?.pageId === sourceId && l.blockId === blockId;
+    }) ?? null
+  );
+}
+
+/** Opens the attendance page for a tracked checklist, making it the first time. Returns its id. */
+export function ensureAttendancePage(sourceId: string, blockId: string): string | null {
+  const src = get().pages[sourceId];
+  const list = src?.blocks.find((b): b is ChecklistBlock => b.id === blockId && b.type === 'checklist' && !!b.track);
+  if (!src || !list) return null;
+  const existing = findAttendancePage(sourceId, blockId);
+  if (existing) {
+    void refreshAttendance(existing.id);
+    return existing.id;
+  }
+  // The heatmap pictures are drawn and stored just after (they need the image store), so the page starts without them.
+  const { blocks } = attendanceBlocks(list, { pageId: sourceId, blockId }, src.title, dateKey());
+  const page = createPage({
+    title: attendanceTitle(src.title),
+    groupId: src.groupId,
+    tags: [],
+    kind: 'page',
+    blocks: blocks.filter((b) => b.type !== 'image'),
+  });
+  void refreshAttendance(page.id);
+  return page.id;
+}
+
+/** How a heatmap drawing is stored as a picture. Replaceable so tests need no image store. */
+let writeHeatmap = (svg: string): Promise<string> => getStorage().putImage(new Blob([svg], { type: 'image/svg+xml' }));
+export function setHeatmapWriter(fn: (svg: string) => Promise<string>) {
+  writeHeatmap = fn;
+}
+
+const refreshing = new Map<string, boolean>();
+/**
+ * Rewrites an attendance page from its checklist (the checklist may have changed on another device, or a day may have passed).
+ * A heatmap picture is only drawn and stored again when it differs from the one already on the page.
+ */
+export async function refreshAttendance(attendancePageId: string): Promise<void> {
+  if (refreshing.has(attendancePageId)) {
+    refreshing.set(attendancePageId, true); // changed again meanwhile: go round once more
+    return;
+  }
+  try {
+    do {
+      refreshing.set(attendancePageId, false);
+      await refreshAttendanceOnce(attendancePageId);
+    } while (refreshing.get(attendancePageId));
+  } catch (e) {
+    console.warn('Could not update the attendance page', e);
+  } finally {
+    refreshing.delete(attendancePageId);
+  }
+}
+
+async function refreshAttendanceOnce(attendancePageId: string) {
+  const att = get().pages[attendancePageId];
+  const link = att && attendanceLink(att);
+  const src = link && get().pages[link.pageId];
+  const list = src && src.blocks.find((b): b is ChecklistBlock => b.id === link.blockId && b.type === 'checklist' && !!b.track);
+  if (!att || !link || !src || !list) return;
+  const { blocks, svgs } = attendanceBlocks(list, link, src.title, dateKey());
+  for (const g of blocks) {
+    if (g.type !== 'image') continue;
+    const old = att.blocks.find((b) => b.id === g.id);
+    g.imageId = old?.type === 'image' && old.heat === g.heat && old.imageId ? old.imageId : await writeHeatmap(svgs[g.id]);
+  }
+  const current = get().pages[attendancePageId];
+  const next = current && withAttendance(current.blocks, blocks);
+  if (!next) return;
+  mutatePage(attendancePageId, (p) => void (p.blocks = next as Draft<Block>[]), { history: 'none' });
+}
+
+const attendanceTimers = new Map<string, number>();
+/** Updates every attendance page built from this page's lists, a moment after the last change. */
+function refreshAttendanceSoon(sourceId: string) {
+  clearTimeout(attendanceTimers.get(sourceId));
+  attendanceTimers.set(
+    sourceId,
+    window.setTimeout(() => {
+      attendanceTimers.delete(sourceId);
+      for (const p of Object.values(get().pages)) if (attendanceLink(p)?.pageId === sourceId) void refreshAttendance(p.id);
+    }, 400),
+  );
+}
+
+/**
+ * Starts the new day for a page's tracked lists: their checks are cleared (yesterday's are already in the record).
+ * Called when a page is open, never in the background. Returns whether anything was cleared.
+ */
+export function rolloverTracked(pageId: string, today = dateKey()): boolean {
+  const p = get().pages[pageId];
+  if (!p || isTemplate(p) || !trackedLists(p).some((b) => b.track!.day < today)) return false;
+  mutatePage(
+    pageId,
+    (d) => {
+      for (const b of d.blocks) if (b.type === 'checklist') rollover(b as ChecklistBlock, today);
+    },
+    { history: 'none' },
+  );
+  return true;
+}

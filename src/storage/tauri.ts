@@ -1,8 +1,15 @@
 import Database from '@tauri-apps/plugin-sql';
 import { BaseDirectory, mkdir, readFile, remove, writeFile } from '@tauri-apps/plugin-fs';
-import { appConfigDir } from '@tauri-apps/api/path';
-import type { Group, GroupColor, Page } from '../types';
+import { appConfigDir, join } from '@tauri-apps/api/path';
+import type { Block, Group, GroupColor, Page } from '../types';
+import { cleanColor } from '../lib/colors';
+import { cleanDate, kindOf } from '../lib/pages';
+import { shouldSnapshot, snapshotsToDrop } from '../lib/history';
 import { newId } from '../lib/util';
+import { pluginDb } from '../graph/db';
+import { GRAPH_SCHEMA } from '../graph/schema';
+import { openGraph } from '../graph/open';
+import type { GraphMirror } from '../graph/mirror';
 import {
   base64ToBytes,
   bytesToBase64,
@@ -12,6 +19,7 @@ import {
   type NotesStorage,
   type PageRecord,
   type SaveResult,
+  type Snapshot,
   type SyncKind,
   type SyncRecord,
   type SyncStore,
@@ -31,6 +39,10 @@ type PageRow = {
   tags: string;
   blocks: string;
   arrows: string;
+  drawing: string;
+  color: string | null;
+  kind: string | null;
+  daily_date: string | null;
   created: number;
   updated: number;
   rev: number;
@@ -39,6 +51,7 @@ type PageRow = {
   deleted: number;
 };
 type GroupRow = { id: string; name: string; color: string; position: number; etag: string; synced: string | null; deleted: number; parent_id: string | null };
+type SnapshotRow = { id: string; page_id: string; taken: number; title: string; blocks: string; arrows: string };
 type ImageRow = { id: string; file: string; mime: string; created: number };
 
 /** Each entry runs once, in order; progress is kept in SQLite's user_version. */
@@ -85,6 +98,30 @@ const MIGRATIONS: string[][] = [
   [`ALTER TABLE page_groups ADD COLUMN parent_id TEXT`],
   // v4: connector arrows
   [`ALTER TABLE pages ADD COLUMN arrows TEXT NOT NULL DEFAULT '[]'`],
+  // v5: graph layer (nodes, edges, blocks, connectors, assets, search). Filled by graph/open.ts.
+  GRAPH_SCHEMA,
+  // v6: page history. Local to this device, never synced.
+  [
+    `CREATE TABLE IF NOT EXISTS page_snapshots (
+       id TEXT PRIMARY KEY,
+       page_id TEXT NOT NULL,
+       taken INTEGER NOT NULL,
+       title TEXT NOT NULL DEFAULT '',
+       blocks TEXT NOT NULL,
+       arrows TEXT NOT NULL DEFAULT '[]'
+     )`,
+    `CREATE INDEX IF NOT EXISTS page_snapshots_page ON page_snapshots(page_id, taken)`,
+  ],
+  // v7: ink drawn over the whole page (JSON, '' = none)
+  [`ALTER TABLE pages ADD COLUMN drawing TEXT NOT NULL DEFAULT ''`],
+  // v8: colour of the page's card in the library (NULL = none)
+  [`ALTER TABLE pages ADD COLUMN color TEXT`],
+  // v9: templates live in the pages table (kind), and a daily page records its date
+  [
+    `ALTER TABLE pages ADD COLUMN kind TEXT NOT NULL DEFAULT 'page'`,
+    `ALTER TABLE pages ADD COLUMN daily_date TEXT`,
+    `CREATE INDEX IF NOT EXISTS pages_daily ON pages(daily_date)`,
+  ],
 ];
 
 async function migrate(db: Database) {
@@ -120,6 +157,10 @@ function rowToPage(r: PageRow): Page {
     tags: parseJson(r.tags, []),
     blocks: parseJson(r.blocks, []),
     arrows: parseJson(r.arrows, []),
+    drawing: r.drawing ? parseJson(r.drawing, null) : null,
+    color: cleanColor(r.color),
+    kind: kindOf({ kind: r.kind }),
+    dailyDate: cleanDate(r.daily_date),
     created: r.created,
     updated: r.updated,
     rev: r.rev,
@@ -136,6 +177,10 @@ function rowToPageRecord(r: PageRow): PageRecord {
     tags: parseJson(r.tags, []),
     blocks: parseJson(r.blocks, []),
     arrows: parseJson(r.arrows, []),
+    drawing: r.drawing ? parseJson(r.drawing, null) : null,
+    color: cleanColor(r.color),
+    kind: kindOf({ kind: r.kind }),
+    dailyDate: cleanDate(r.daily_date),
     created: r.created,
     updated: r.updated,
   };
@@ -155,6 +200,14 @@ const EXT: Record<string, string> = {
   'image/bmp': 'bmp',
 };
 
+/** A consistent copy of the whole database (VACUUM INTO also folds in the WAL file). */
+async function backupDatabase(db: Database) {
+  await mkdir('backups', { ...fsOpts, recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const file = await join(await appConfigDir(), 'backups', `before-graph-${stamp}.db`);
+  await db.execute('VACUUM INTO $1', [file]);
+}
+
 const TABLE: Record<SyncKind, string> = { page: 'pages', group: 'page_groups' };
 
 export async function createTauriStorage(): Promise<NotesStorage> {
@@ -162,6 +215,7 @@ export async function createTauriStorage(): Promise<NotesStorage> {
   await migrate(db);
   await mkdir(IMG_DIR, { ...fsOpts, recursive: true });
   const urlCache = new Map<string, Promise<string>>();
+  let graph: GraphMirror | null = null;
 
   async function selectIn<T>(sql: (placeholders: string) => string, ids: string[]): Promise<T[]> {
     const out: T[] = [];
@@ -178,12 +232,105 @@ export async function createTauriStorage(): Promise<NotesStorage> {
     return rows[0]?.etag ?? null;
   }
 
+  /** Drops history this page no longer needs (see `snapshotsToDrop`). */
+  async function thinSnapshots(pageId: string) {
+    const rows = await db.select<{ id: string; taken: number }[]>('SELECT id, taken FROM page_snapshots WHERE page_id = $1', [pageId]);
+    for (const id of snapshotsToDrop(rows, Date.now())) await db.execute('DELETE FROM page_snapshots WHERE id = $1', [id]);
+  }
+
+  /**
+   * Copies the page as stored now into page_snapshots (one statement, so no content passes through JS).
+   * Skips blank pages and a copy of the newest snapshot. Without `force`, at most one an hour.
+   */
+  async function takeSnapshot(pageId: string, force: boolean): Promise<boolean> {
+    const now = Date.now();
+    if (!force) {
+      const last = await db.select<{ t: number | null }[]>('SELECT MAX(taken) AS t FROM page_snapshots WHERE page_id = $1', [pageId]);
+      if (!shouldSnapshot(last[0]?.t ?? null, now)) return false;
+    }
+    const r = await db.execute(
+      `INSERT INTO page_snapshots (id, page_id, taken, title, blocks, arrows)
+       SELECT $1, p.id, $2, p.title, p.blocks, p.arrows FROM pages p
+       WHERE p.id = $3 AND p.deleted = 0 AND NOT (p.title = '' AND p.blocks = '[]' AND p.arrows = '[]')
+         AND NOT EXISTS (
+           SELECT 1 FROM page_snapshots s WHERE s.page_id = p.id AND s.title = p.title AND s.blocks = p.blocks AND s.arrows = p.arrows
+             AND s.taken = (SELECT MAX(taken) FROM page_snapshots WHERE page_id = p.id))`,
+      [newId(), now, pageId],
+    );
+    if (r.rowsAffected === 0) return false;
+    await thinSnapshots(pageId);
+    return true;
+  }
+  /** A history problem must never fail a save or a sync. */
+  const safeSnapshot = (pageId: string, force: boolean) => takeSnapshot(pageId, force).catch((e) => void console.error('history snapshot failed', e));
+
+  /** Before a synced copy replaces a live local page with different content, keep the local version. */
+  async function snapshotIfReplacing(rec: PageRecord) {
+    const cur = await db.select<{ title: string; blocks: string; arrows: string }[]>('SELECT title, blocks, arrows FROM pages WHERE id = $1 AND deleted = 0', [rec.id]);
+    if (!cur[0]) return;
+    if (cur[0].title === rec.title && cur[0].blocks === JSON.stringify(rec.blocks) && cur[0].arrows === JSON.stringify(rec.arrows ?? [])) return;
+    await safeSnapshot(rec.id, true);
+  }
+
+  async function purgePage(id: string) {
+    await db.execute(
+      `UPDATE pages SET title = '', tags = '[]', blocks = '[]', arrows = '[]', drawing = '', color = NULL, daily_date = NULL, etag = $2, rev = rev + 1 WHERE id = $1 AND deleted = 1`,
+      [id, newEtag()],
+    );
+    await db.execute('DELETE FROM page_snapshots WHERE page_id = $1', [id]);
+  }
+
   /** Values in the order used by the page INSERT/UPDATE statements below. */
   const pageValues = (r: PageRecord) => [
     r.id, r.title, r.groupId, JSON.stringify(r.tags), JSON.stringify(r.blocks), JSON.stringify(r.arrows ?? []),
-    r.created, r.updated, r.etag, r.deleted ? 1 : 0,
+    r.created, r.updated, r.etag, r.deleted ? 1 : 0, r.drawing ? JSON.stringify(r.drawing) : '', r.color ?? null,
+    kindOf(r), cleanDate(r.dailyDate),
   ];
   const groupValues = (r: GroupRecord) => [r.id, r.name, r.color, r.position, r.etag, r.deleted ? 1 : 0, r.parentId ?? null];
+
+  /** Keeps the graph tables in step. The graph is a copy for now, so a failure here must never fail the save. */
+  const mirror = (job: (g: GraphMirror) => Promise<void>) => {
+    if (graph) job(graph).catch((e) => console.error('graph mirror failed', e));
+  };
+  const mirrorPages = async (ids: string[]) => {
+    try {
+      for (const r of await selectIn<PageRow>((ph) => `SELECT * FROM pages WHERE id IN (${ph})`, ids)) {
+        const rec = rowToPageRecord(r);
+        if (rec.kind === 'template') continue; // templates stay out of the graph, so out of search and links
+        mirror((g) => g.page(rec));
+      }
+    } catch (e) {
+      console.error('graph mirror failed', e);
+    }
+  };
+  const mirrorRemote = async (kind: SyncKind, rec: SyncRecord) => {
+    if (kind === 'page') return mirrorPages([rec.id]);
+    const r = rec as GroupRecord;
+    mirror((g) => g.group({ id: r.id, name: r.name, color: r.color, parentId: r.parentId, deleted: r.deleted }));
+    // Pages may have arrived before their group did: give them their IN_GROUP edge now.
+    const members = await db.select<{ id: string }[]>('SELECT id FROM pages WHERE group_id = $1 AND deleted = 0', [r.id]).catch(() => []);
+    if (members.length) await mirrorPages(members.map((m) => m.id));
+  };
+
+  const toLegacyGroup = (g: GroupRow) => ({ id: g.id, name: g.name, color: g.color, parentId: g.parent_id ?? null });
+  try {
+    graph = await openGraph(pluginDb(db), {
+      getSetting: async (key) => (await db.select<{ value: string }[]>('SELECT value FROM settings WHERE key = $1', [key]))[0]?.value ?? null,
+      setSetting: async (key, value) => void (await db.execute('INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = excluded.value', [key, value])),
+      deviceName: /android/i.test(globalThis.navigator?.userAgent ?? '') ? 'Phone' : 'Laptop',
+      backup: () => backupDatabase(db),
+      loadLegacy: async () => ({
+        pages: (await db.select<PageRow[]>("SELECT * FROM pages WHERE deleted = 0 AND kind = 'page'")).map(rowToPageRecord),
+        groups: (await db.select<GroupRow[]>('SELECT * FROM page_groups WHERE deleted = 0')).map(toLegacyGroup),
+      }),
+      loadGroups: async () => (await db.select<GroupRow[]>('SELECT * FROM page_groups WHERE deleted = 0')).map(toLegacyGroup),
+      listEtags: () => db.select<{ id: string; etag: string }[]>("SELECT id, etag FROM pages WHERE deleted = 0 AND kind = 'page'"),
+      loadPages: async (ids) => (await selectIn<PageRow>((ph) => `SELECT * FROM pages WHERE id IN (${ph})`, ids)).map(rowToPageRecord),
+    });
+  } catch (e) {
+    // The graph is a copy of the pages for now, so the app still works without it.
+    console.error('graph layer unavailable', e);
+  }
 
   const sync: SyncStore = {
     async listMeta(kind) {
@@ -204,11 +351,12 @@ export async function createTauriStorage(): Promise<NotesStorage> {
 
     async applyRemote(kind, rec) {
       if (kind === 'page') {
+        await snapshotIfReplacing(rec as PageRecord);
         await db.execute(
-          `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, etag, deleted, rev, synced)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1, $9)
+          `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, etag, deleted, drawing, color, kind, daily_date, rev, synced)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 1, $9)
            ON CONFLICT(id) DO UPDATE SET
-             title = excluded.title, group_id = excluded.group_id, tags = excluded.tags, blocks = excluded.blocks, arrows = excluded.arrows,
+             title = excluded.title, group_id = excluded.group_id, tags = excluded.tags, blocks = excluded.blocks, arrows = excluded.arrows, drawing = excluded.drawing, color = excluded.color, kind = excluded.kind, daily_date = excluded.daily_date,
              created = excluded.created, updated = excluded.updated, etag = excluded.etag, deleted = excluded.deleted,
              synced = excluded.etag, rev = pages.rev + 1`,
           pageValues(rec as PageRecord),
@@ -223,16 +371,18 @@ export async function createTauriStorage(): Promise<NotesStorage> {
           groupValues(rec as GroupRecord),
         );
       }
+      await mirrorRemote(kind, rec);
     },
 
     async applyRemoteIf(kind, rec, base) {
+      if (kind === 'page' && base !== null) await snapshotIfReplacing(rec as PageRecord);
       let affected: number;
       if (base === null) {
         if (kind === 'page') {
           affected = (
             await db.execute(
-              `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, etag, deleted, rev, synced)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1, $9) ON CONFLICT(id) DO NOTHING`,
+              `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, etag, deleted, drawing, color, kind, daily_date, rev, synced)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 1, $9) ON CONFLICT(id) DO NOTHING`,
               pageValues(rec as PageRecord),
             )
           ).rowsAffected;
@@ -249,8 +399,8 @@ export async function createTauriStorage(): Promise<NotesStorage> {
         affected = (
           await db.execute(
             `UPDATE pages SET title = $2, group_id = $3, tags = $4, blocks = $5, arrows = $6, created = $7, updated = $8,
-               etag = $9, deleted = $10, synced = $9, rev = rev + 1
-             WHERE id = $1 AND etag = $11`,
+               etag = $9, deleted = $10, drawing = $11, color = $12, kind = $13, daily_date = $14, synced = $9, rev = rev + 1
+             WHERE id = $1 AND etag = $15`,
             [...pageValues(rec as PageRecord), base],
           )
         ).rowsAffected;
@@ -264,7 +414,9 @@ export async function createTauriStorage(): Promise<NotesStorage> {
         ).rowsAffected;
       }
       // A retried request whose first attempt already landed also counts as accepted.
-      return affected > 0 || (await currentEtag(kind, rec.id)) === rec.etag;
+      const accepted = affected > 0 || (await currentEtag(kind, rec.id)) === rec.etag;
+      if (accepted) await mirrorRemote(kind, rec);
+      return accepted;
     },
 
     async markSynced(kind, id, etag) {
@@ -273,10 +425,11 @@ export async function createTauriStorage(): Promise<NotesStorage> {
 
     async insertLocalPage(r) {
       await db.execute(
-        `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, etag, deleted, rev, synced)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, 1, NULL)`,
-        [r.id, r.title, r.groupId, JSON.stringify(r.tags), JSON.stringify(r.blocks), JSON.stringify(r.arrows ?? []), r.created, r.updated, newEtag()],
+        `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, etag, deleted, drawing, color, kind, daily_date, rev, synced)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $10, $11, $12, $13, 1, NULL)`,
+        [r.id, r.title, r.groupId, JSON.stringify(r.tags), JSON.stringify(r.blocks), JSON.stringify(r.arrows ?? []), r.created, r.updated, newEtag(), r.drawing ? JSON.stringify(r.drawing) : '', r.color ?? null, kindOf(r), cleanDate(r.dailyDate)],
       );
+      await mirrorPages([r.id]);
     },
 
     async listImageIds() {
@@ -306,6 +459,7 @@ export async function createTauriStorage(): Promise<NotesStorage> {
   return {
     kind: 'desktop',
     sync,
+    graph,
 
     async location() {
       return appConfigDir();
@@ -329,31 +483,41 @@ export async function createTauriStorage(): Promise<NotesStorage> {
       const tags = JSON.stringify(page.tags);
       const blocks = JSON.stringify(page.blocks);
       const arrows = JSON.stringify(page.arrows);
+      const drawing = page.drawing ? JSON.stringify(page.drawing) : '';
+      const color = page.color ?? null;
+      const kind = kindOf(page);
+      const dailyDate = cleanDate(page.dailyDate);
       const etag = newEtag();
+      await safeSnapshot(page.id, false); // the page as it was before this save
       const upd = await db.execute(
-        `UPDATE pages SET title = $1, group_id = $2, tags = $3, blocks = $4, arrows = $5, updated = $6, etag = $9, rev = rev + 1
+        `UPDATE pages SET title = $1, group_id = $2, tags = $3, blocks = $4, arrows = $5, updated = $6, etag = $9, drawing = $10, color = $11, kind = $12, daily_date = $13, rev = rev + 1
          WHERE id = $7 AND rev = $8 AND deleted = 0`,
-        [page.title, page.groupId, tags, blocks, arrows, page.updated, page.id, page.rev, etag],
+        [page.title, page.groupId, tags, blocks, arrows, page.updated, page.id, page.rev, etag, drawing, color, kind, dailyDate],
       );
-      if (upd.rowsAffected > 0) return { ok: true, rev: page.rev + 1 };
+      if (upd.rowsAffected > 0) {
+        await mirrorPages([page.id]);
+        return { ok: true, rev: page.rev + 1 };
+      }
 
       const existing = await db.select<{ rev: number; deleted: number }[]>('SELECT rev, deleted FROM pages WHERE id = $1', [page.id]);
       if (existing.length && !existing[0].deleted) return { ok: false, reason: 'conflict' };
       if (existing.length) {
         // Deleted here or on the other device, but edited again: the edit brings the page back.
         await db.execute(
-          `UPDATE pages SET title = $1, group_id = $2, tags = $3, blocks = $4, arrows = $5, updated = $6, etag = $7, deleted = 0, rev = rev + 1
+          `UPDATE pages SET title = $1, group_id = $2, tags = $3, blocks = $4, arrows = $5, updated = $6, etag = $7, deleted = 0, drawing = $9, color = $10, kind = $11, daily_date = $12, rev = rev + 1
            WHERE id = $8`,
-          [page.title, page.groupId, tags, blocks, arrows, page.updated, etag, page.id],
+          [page.title, page.groupId, tags, blocks, arrows, page.updated, etag, page.id, drawing, color, kind, dailyDate],
         );
         const r = await db.select<{ rev: number }[]>('SELECT rev FROM pages WHERE id = $1', [page.id]);
+        await mirrorPages([page.id]);
         return { ok: true, rev: r[0]?.rev ?? existing[0].rev + 1 };
       }
       await db.execute(
-        `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, rev, etag, synced, deleted)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, NULL, 0)`,
-        [page.id, page.title, page.groupId, tags, blocks, arrows, page.created, page.updated, etag],
+        `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, rev, etag, synced, deleted, drawing, color, kind, daily_date)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, NULL, 0, $10, $11, $12, $13)`,
+        [page.id, page.title, page.groupId, tags, blocks, arrows, page.created, page.updated, etag, drawing, color, kind, dailyDate],
       );
+      await mirrorPages([page.id]);
       return { ok: true, rev: 1 };
     },
 
@@ -363,6 +527,41 @@ export async function createTauriStorage(): Promise<NotesStorage> {
         newEtag(),
         Date.now(),
       ]);
+      mirror((g) => g.removePage(id));
+    },
+
+    async listTrash() {
+      const rows = await db.select<PageRow[]>(
+        `SELECT * FROM pages WHERE deleted = 1 AND kind = 'page' AND NOT (title = '' AND blocks = '[]' AND arrows = '[]' AND tags = '[]') ORDER BY updated DESC`,
+      );
+      return rows.map(rowToPage);
+    },
+
+    purgePage,
+
+    async purgeExpiredTrash(cutoff) {
+      const old = await db.select<{ id: string }[]>(
+        `SELECT id FROM pages WHERE deleted = 1 AND updated < $1 AND NOT (title = '' AND blocks = '[]' AND arrows = '[]' AND tags = '[]')`,
+        [cutoff],
+      );
+      for (const r of old) await purgePage(r.id);
+      // History of pages whose tombstone is empty (purged here or on another device) has nothing to come back to.
+      await db.execute(
+        `DELETE FROM page_snapshots WHERE page_id IN (SELECT id FROM pages WHERE deleted = 1 AND title = '' AND blocks = '[]' AND arrows = '[]' AND tags = '[]')`,
+      );
+      return old.length;
+    },
+
+    async listSnapshots(pageId) {
+      const rows = await db.select<SnapshotRow[]>('SELECT * FROM page_snapshots WHERE page_id = $1 ORDER BY taken DESC', [pageId]);
+      return rows.map((r): Snapshot => ({
+        id: r.id, pageId: r.page_id, taken: r.taken, title: r.title,
+        blocks: parseJson<Block[]>(r.blocks, []), arrows: parseJson(r.arrows, []),
+      }));
+    },
+
+    snapshotPage(pageId, opts) {
+      return takeSnapshot(pageId, !!opts?.force);
     },
 
     async saveGroups(groups: Group[]) {
@@ -387,6 +586,7 @@ export async function createTauriStorage(): Promise<NotesStorage> {
       for (const r of rows) {
         if (!keep.has(r.id)) await db.execute('UPDATE page_groups SET deleted = 1, etag = $2 WHERE id = $1', [r.id, newEtag()]);
       }
+      mirror((g) => g.groups(groups.map((x) => ({ id: x.id, name: x.name, color: x.color, parentId: x.parentId }))));
     },
 
     async putImage(blob) {
@@ -414,7 +614,14 @@ export async function createTauriStorage(): Promise<NotesStorage> {
       return p;
     },
 
-    async pruneImages(used) {
+    async pruneImages(usedByLivePages) {
+      // Trashed pages and saved versions can come back, so their images stay too.
+      const used = new Set(usedByLivePages);
+      const keep = [
+        ...(await db.select<{ blocks: string }[]>(`SELECT blocks FROM pages WHERE deleted = 1 AND blocks <> '[]'`)),
+        ...(await db.select<{ blocks: string }[]>('SELECT blocks FROM page_snapshots')),
+      ];
+      for (const r of keep) for (const b of parseJson<Block[]>(r.blocks, [])) if (b.type === 'image') used.add(b.imageId);
       const rows = await db.select<ImageRow[]>('SELECT * FROM images');
       const cutoff = Date.now() - 10 * 60 * 1000;
       let n = 0;

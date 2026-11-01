@@ -1,21 +1,27 @@
 import { memo, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
-import type { Block, TableBlock, TextBlock } from '../../types';
-import { deleteBlocks, duplicateBlocks, sendToBack, updateBlock } from '../../store/notes';
-import { setSelected } from '../../store/canvas';
-import { BLOCK_LABEL, newId } from '../../lib/util';
+import type { Block, FrameBlock, NoteColor, TableBlock, TextBlock } from '../../types';
+import { deleteBlocks, duplicateBlocks, ensureAttendancePage, sendToBack, setColor, setTracking, updateBlock } from '../../store/notes';
+import { navigate } from '../../lib/route';
+import { canvasApi, setSelected } from '../../store/canvas';
+import { BLOCK_LABEL, isFixedHeight, newId } from '../../lib/util';
 import { Icon, type IconName } from '../ui/Icon';
 import { TextBody } from '../blocks/TextBody';
 import { ChecklistBody, CodeBody, ImageBody, TableBody } from '../blocks/Bodies';
+import { colorOf, noteVar, tintVars } from '../../lib/colors';
+import { confirmDanger, openMenu, toast } from '../../store/ui';
 import { useCanvasCtx } from './context';
 
 const LABEL = BLOCK_LABEL;
+
+/** Every block type except frames, which render through FrameChrome instead. */
+type NonFrameBlock = Exclude<Block, FrameBlock>;
 
 export const BlockFrame = memo(function BlockFrame({
   block,
   selected,
   single,
 }: {
-  block: Block;
+  block: NonFrameBlock;
   selected: boolean;
   /** True when this is the only selected block (shows the resize handle). */
   single: boolean;
@@ -34,16 +40,19 @@ export const BlockFrame = memo(function BlockFrame({
     left: block.x,
     top: block.y,
     width: block.w,
-    zIndex: block.z,
-    ...(block.type === 'image' ? { height: block.h } : { minHeight: block.h }),
-  };
+    ...(isFixedHeight(block) ? { height: block.h } : { minHeight: block.h }),
+    ...tintVars(block),
+  } as CSSProperties;
 
   const cls = ['block', `b-${block.type}`];
   if (selected) cls.push('sel');
   if (block.type === 'text' && block.fill) cls.push('fill');
 
   return (
-    <div ref={ref} className={cls.join(' ')} data-id={block.id} style={style} onPointerDownCapture={(e) => ctx.pointerDownBlock(e, block.id)}>
+    <div ref={ref} className={cls.join(' ')} data-id={block.id} style={style} onPointerDownCapture={(e) => ctx.pointerDownBlock(e, block.id)}
+      onDoubleClick={block.type === 'sticky' ? () => canvasApi.current?.focusBlock(block.id) : undefined}>
+      {/* A band just outside and inside the box's edge that moves it, so it can be grabbed without the bar. */}
+      <div className="grab" aria-hidden="true" title="Drag to move" onPointerDown={(e) => ctx.startMove(e, block.id)} />
       <div className="bar-wrap">
         <BlockBar block={block} />
       </div>
@@ -63,7 +72,7 @@ export const BlockFrame = memo(function BlockFrame({
   );
 });
 
-function Body({ block }: { block: Block }) {
+function Body({ block }: { block: NonFrameBlock }) {
   switch (block.type) {
     case 'text':
       return <TextBody block={block} />;
@@ -75,10 +84,12 @@ function Body({ block }: { block: Block }) {
       return <TableBody block={block} />;
     case 'image':
       return <ImageBody block={block} />;
+    case 'sticky':
+      return <TextBody block={block} />;
   }
 }
 
-function BlockBar({ block }: { block: Block }) {
+function BlockBar({ block }: { block: NonFrameBlock }) {
   const { pageId, startMove } = useCanvasCtx();
   const btn = (label: string, content: ReactNode, run: () => void) => (
     <button
@@ -116,15 +127,40 @@ function BlockBar({ block }: { block: Block }) {
     );
   }
   if (block.type === 'checklist') {
+    // A tracked list keeps its items (their history is kept per item), so it has no "Clear done".
+    if (!block.track) {
+      extra.push(
+        btn('Clear completed', 'Clear done', () =>
+          updateBlock(pageId, block.id, (b) => {
+            if (b.type !== 'checklist') return;
+            const left = b.items.filter((i) => !i.done);
+            b.items = left.length ? left : [{ id: newId(), text: '', done: false }];
+          }),
+        ),
+      );
+    }
     extra.push(
-      btn('Clear completed', 'Clear done', () =>
-        updateBlock(pageId, block.id, (b) => {
-          if (b.type !== 'checklist') return;
-          const left = b.items.filter((i) => !i.done);
-          b.items = left.length ? left : [{ id: newId(), text: '', done: false }];
-        }),
-      ),
+      btn(block.track ? 'Stop tracking daily' : 'Track daily', block.track ? 'Tracking ✓' : 'Track daily', () => {
+        if (!block.track) {
+          setTracking(pageId, block.id, true);
+          toast('Tracking daily. Your checks are saved each day and cleared at the start of the next. Open Attendance to see them.');
+          return;
+        }
+        void confirmDanger(
+          'Stop tracking this list?',
+          'Its daily record is forgotten and the checks stay as they are. An attendance page you already made keeps what it shows but stops updating.',
+          'Stop tracking',
+        ).then((ok) => ok && setTracking(pageId, block.id, false));
+      }),
     );
+    if (block.track) {
+      extra.push(
+        btn('Open the attendance page', 'Attendance', () => {
+          const id = ensureAttendancePage(pageId, block.id);
+          if (id) navigate({ name: 'page', id });
+        }),
+      );
+    }
   }
 
   return (
@@ -134,6 +170,19 @@ function BlockBar({ block }: { block: Block }) {
         {LABEL[block.type]}
       </span>
       {extra}
+      <button
+        aria-label="Color"
+        title={block.type === 'image' ? 'Border color' : 'Color'}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          openMenu(e.currentTarget, [
+            { colors: true, title: block.type === 'image' ? 'Border color' : 'Color', current: colorOf(block), pick: (c: NoteColor | null) => setColor(pageId, [block.id], c) },
+          ]);
+        }}
+      >
+        <span className="swatch-dot" style={{ background: block.tint ? noteVar(block.tint) : 'transparent' }} />
+      </button>
       {btn('Send to back', icon('layer'), () => sendToBack(pageId, [block.id]))}
       {btn('Duplicate', icon('copy'), () => setSelected(duplicateBlocks(pageId, [block.id])))}
       {btn('Delete', icon('trash'), () => {

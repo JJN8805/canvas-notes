@@ -1,35 +1,50 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useEditorState, type Editor as TipTapEditor } from '@tiptap/react';
 import type { BlockType } from '../../types';
 import { navigate } from '../../lib/route';
+import { CalendarButton, goToDay } from '../ui/Calendar';
+import { addDays, dailyTitle, dateKey } from '../../lib/daily';
+import { isTemplate, libraryPages } from '../../lib/pages';
+import { STICKY_SIZE } from '../../lib/colors';
 import { MOD_LABEL, normTag } from '../../lib/util';
 import {
   addBlock,
   createGroup,
   flushPage,
+  getStorage,
   history,
   mutatePage,
   redo,
+  refreshAttendance,
+  rolloverTracked,
+  saveAsTemplate,
+  setFilter,
   setPageGroup,
   undo,
   useNotes,
 } from '../../store/notes';
 import { addImages } from '../../store/images';
 import { canvasApi, resetCanvas, setSelectMode, setSelected, useCanvas } from '../../store/canvas';
-import { ask, openMenu } from '../../store/ui';
+import { ask, openMenu, toast } from '../../store/ui';
 import { EXPORT_ITEMS } from '../../export/export';
 import { groupTree } from '../../lib/groups';
 import { Icon } from '../ui/Icon';
 import { Canvas } from './Canvas';
+import { HistoryPanel } from './HistoryPanel';
+import { openNav } from '../../store/nav';
+import { DrawOverlay } from './DrawOverlay';
+import { closeDraw, toggleDraw, useDraw } from '../../store/draw';
 
 export function Editor({ pageId }: { pageId: string }) {
   const exists = useNotes((s) => !!s.pages[pageId]);
+  const template = useNotes((s) => isTemplate(s.pages[pageId] ?? {}));
 
   useEffect(() => {
     resetCanvas();
     return () => {
       void flushPage(pageId);
+      closeDraw();
       resetCanvas();
     };
   }, [pageId]);
@@ -38,12 +53,31 @@ export function Editor({ pageId }: { pageId: string }) {
     if (!exists) navigate({ name: 'library' });
   }, [exists]);
 
+  // Start a new day for tracked checklists, and keep an attendance page current, while this page is open
+  // (on opening, when the window comes back, and each minute so a page left open past midnight rolls over).
+  useEffect(() => {
+    const tick = () => {
+      rolloverTracked(pageId);
+      void refreshAttendance(pageId);
+    };
+    tick();
+    const timer = window.setInterval(tick, 60_000);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [pageId]);
+
   if (!exists) return null;
   return (
     <div className="editor">
       <EditorHeader pageId={pageId} />
+      {template && <TemplateBanner />}
+      <DailyBar pageId={pageId} />
       <div className="ed-body">
         <Canvas pageId={pageId} />
+        <DrawOverlay pageId={pageId} />
         <AddToolbar pageId={pageId} />
         <FormatBar />
         <ZoomControls />
@@ -52,17 +86,99 @@ export function Editor({ pageId }: { pageId: string }) {
   );
 }
 
+/** On a daily page: the previous and next day, the date's calendar, and a way back to today. */
+function DailyBar({ pageId }: { pageId: string }) {
+  const date = useNotes((s) => {
+    const p = s.pages[pageId];
+    return p && !isTemplate(p) ? p.dailyDate ?? null : null;
+  });
+  if (!date) return null;
+  return (
+    <div className="daily-bar" role="navigation" aria-label="Daily page">
+      <button className="icon-btn" aria-label="Previous day" title="Previous day" onClick={() => goToDay(addDays(date, -1))}>
+        <Icon name="back" />
+      </button>
+      <CalendarButton selected={date} label={dailyTitle(date)} align="left" />
+      <button className="icon-btn" aria-label="Next day" title="Next day" onClick={() => goToDay(addDays(date, 1))}>
+        <span style={{ display: 'inline-flex', transform: 'scaleX(-1)' }}><Icon name="back" /></span>
+      </button>
+      {date !== dateKey() && (
+        <button className="btn" onClick={() => goToDay(dateKey())}>
+          Today
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Shown while a template is open, so it can't be mistaken for a page. */
+function TemplateBanner() {
+  return (
+    <div className="tpl-banner" role="status">
+      <strong>Editing template</strong>
+      <span>Changes only affect new pages made from it. Pages you already made are not changed.</span>
+      <button
+        className="btn"
+        onClick={() => {
+          setFilter({ kind: 'templates' });
+          navigate({ name: 'library' });
+        }}
+      >
+        Done
+      </button>
+    </div>
+  );
+}
+
 /* ---------------- Header ---------------- */
+
+/** Pages that mention this one as [[its title]]. Hidden when there are none (or the graph is unavailable). */
+function Backlinks({ pageId }: { pageId: string }) {
+  const title = useNotes((s) => s.pages[pageId]?.title);
+  const updated = useNotes((s) => s.pages[pageId]?.updated);
+  const titles = useNotes((s) => s.pages);
+  const [links, setLinks] = useState<{ pageId: string; title: string }[]>([]);
+  useEffect(() => {
+    const graph = getStorage().graph;
+    if (!graph) return;
+    let live = true;
+    // Saves reach the graph a moment after the store changes.
+    const t = setTimeout(() => {
+      void graph.idle().then(() => graph.backlinks(pageId)).then((l) => live && setLinks(l.filter((b) => titles[b.pageId])));
+    }, 800);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+    // titles changes on every edit of any page, which is when backlinks may change
+  }, [pageId, title, updated, titles]);
+  if (!links.length) return null;
+  return (
+    <button
+      className="btn ed-backlinks"
+      onClick={(e) =>
+        openMenu(e.currentTarget, [
+          { heading: 'Linked from' },
+          ...links.map((l) => ({ label: titles[l.pageId]?.title || 'Untitled', action: () => navigate({ name: 'page', id: l.pageId }) })),
+        ])
+      }
+    >
+      Linked from {links.length}
+    </button>
+  );
+}
 
 function EditorHeader({ pageId }: { pageId: string }) {
   const title = useNotes((s) => s.pages[pageId]?.title ?? '');
   const groupId = useNotes((s) => s.pages[pageId]?.groupId ?? null);
   const blockCount = useNotes((s) => s.pages[pageId]?.blocks.length ?? 0);
   const groups = useNotes((s) => s.groups);
+  const template = useNotes((s) => isTemplate(s.pages[pageId] ?? {}));
   useNotes((s) => s.historyVersion); // re-render when undo/redo availability changes
   const canUndo = history.canUndo(pageId);
   const canRedo = history.canRedo(pageId);
   const titleRef = useRef<HTMLInputElement>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
     if (!title && !blockCount) titleRef.current?.focus();
@@ -72,16 +188,22 @@ function EditorHeader({ pageId }: { pageId: string }) {
 
   return (
     <header className="ed-head">
-      <button className="btn ed-back" onClick={() => navigate({ name: 'library' })}>
+      <button
+        className="btn ed-back"
+        onClick={() => {
+          if (template) setFilter({ kind: 'templates' });
+          navigate({ name: 'library' });
+        }}
+      >
         <Icon name="back" />
-        Library
+        {template ? 'Templates' : 'Library'}
       </button>
       <input
         ref={titleRef}
         className="ed-title"
         value={title}
-        placeholder="Untitled"
-        aria-label="Page title"
+        placeholder={template ? 'Untitled template' : 'Untitled'}
+        aria-label={template ? 'Template name' : 'Page title'}
         maxLength={120}
         onChange={(e) =>
           mutatePage(pageId, (p) => {
@@ -100,6 +222,8 @@ function EditorHeader({ pageId }: { pageId: string }) {
           <Icon name="redo" />
         </button>
       </div>
+      {!template && (
+        <>
       <select
         className="field ed-group"
         aria-label="Group"
@@ -122,12 +246,34 @@ function EditorHeader({ pageId }: { pageId: string }) {
         <option value="__new">New group…</option>
       </select>
       <TagEditor pageId={pageId} />
+      <Backlinks pageId={pageId} />
+      <button
+        className="btn ed-template"
+        title="Keep this page's layout and boxes as a template for new pages"
+        onClick={async () => {
+          const name = await ask({ title: 'Save as template', initial: title, okLabel: 'Save template', placeholder: 'Template name', text: 'New pages made from it are independent copies.' });
+          if (name !== null && saveAsTemplate(pageId, name)) toast(`Saved template “${name.trim() || title || 'Untitled template'}”`);
+        }}
+      >
+        Save as template
+      </button>
+        </>
+      )}
+      <button className="btn ed-outline" title="Headings, frames and links of this page" onClick={() => openNav('outline')}>
+        Outline
+      </button>
+      <button className="btn ed-history" onClick={() => setShowHistory(true)}>
+        History
+      </button>
+      {showHistory && <HistoryPanel pageId={pageId} onClose={() => setShowHistory(false)} />}
+      {!template && (
       <button
         className="btn ed-export"
         onClick={(e) => openMenu(e.currentTarget, [{ heading: 'Export this page as' }, ...EXPORT_ITEMS(pageId)])}
       >
         Export
       </button>
+      )}
       <SaveStatus />
     </header>
   );
@@ -152,7 +298,7 @@ function TagEditor({ pageId }: { pageId: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const known = useMemo(() => {
     const all = new Set<string>();
-    for (const p of Object.values(pages)) p.tags.forEach((t) => all.add(t));
+    for (const p of libraryPages(pages)) p.tags.forEach((t) => all.add(t));
     return [...all].sort();
   }, [pages]);
 
@@ -215,10 +361,12 @@ function TagEditor({ pageId }: { pageId: string }) {
 
 const TOOLS: { type: BlockType; label: string }[] = [
   { type: 'text', label: 'Text' },
+  { type: 'sticky', label: 'Sticky' },
   { type: 'image', label: 'Image' },
   { type: 'checklist', label: 'List' },
   { type: 'code', label: 'Code' },
   { type: 'table', label: 'Table' },
+  { type: 'frame', label: 'Frame' },
 ];
 
 function AddToolbar({ pageId }: { pageId: string }) {
@@ -230,14 +378,16 @@ function AddToolbar({ pageId }: { pageId: string }) {
       fileRef.current?.click();
       return;
     }
+    const spot = type === 'frame' ? api.visibleSpot(360, 240) : type === 'sticky' ? api.visibleSpot(STICKY_SIZE, STICKY_SIZE) : api.visibleSpot(type === 'code' ? 432 : 300, 80);
     let id = '';
     flushSync(() => {
-      id = addBlock(pageId, type, api.visibleSpot(type === 'code' ? 432 : 300, 80));
+      id = addBlock(pageId, type, spot);
       setSelected([id]);
     });
-    api.focusBlock(id);
+    if (type !== 'frame') api.focusBlock(id);
   };
   const selectMode = useCanvas((s) => s.selectMode);
+  const drawing = useDraw((s) => s.open);
   return (
     <div className="tools" role="toolbar" aria-label="Add to page">
       <button
@@ -250,11 +400,20 @@ function AddToolbar({ pageId }: { pageId: string }) {
         Select
       </button>
       {TOOLS.map((t) => (
-        <button key={t.type} className="tool" title={`Add ${t.label.toLowerCase()}`} onClick={() => add(t.type)}>
+        <button key={t.type} className="tool" title={`Add ${t.label.toLowerCase()}${t.type === 'sticky' ? ' (S)' : ''}`} onClick={() => add(t.type)}>
           <Icon name={t.type} />
           {t.label}
         </button>
       ))}
+      <button
+        className={'tool' + (drawing ? ' on' : '')}
+        aria-pressed={drawing}
+        title="Draw on the page, among the boxes"
+        onClick={toggleDraw}
+      >
+        <Icon name="draw" />
+        Draw
+      </button>
       <input
         ref={fileRef}
         type="file"
@@ -335,23 +494,38 @@ function FormatButtons({ editor }: { editor: TipTapEditor }) {
     if (!url.trim()) editor.chain().focus().extendMarkRange('link').unsetLink().run();
     else editor.chain().focus().extendMarkRange('link').setLink({ href: url.trim() }).run();
   };
+  // A sticky's editor only has some of these; buttons for missing ones are left out.
+  const has = (name: string) => !!(editor.schema.marks[name] || editor.schema.nodes[name]);
+  const sections = [
+    [
+      has('bold') && b('Bold', 'B', st.bold, () => chain().toggleBold().run()),
+      has('italic') && b('Italic', 'I', st.italic, () => chain().toggleItalic().run(), { fontStyle: 'italic' }),
+      has('underline') && b('Underline', 'U', st.underline, () => chain().toggleUnderline().run(), { textDecoration: 'underline' }),
+      has('strike') && b('Strikethrough', 'S', st.strike, () => chain().toggleStrike().run(), { textDecoration: 'line-through' }),
+      has('code') && b('Inline code', '</>', st.code, () => chain().toggleCode().run()),
+    ],
+    [
+      has('heading') && b('Heading', 'H1', st.h1, () => chain().toggleHeading({ level: 1 }).run()),
+      has('heading') && b('Subheading', 'H2', st.h2, () => chain().toggleHeading({ level: 2 }).run()),
+      has('blockquote') && b('Quote', '❝', st.quote, () => chain().toggleBlockquote().run()),
+    ],
+    [
+      has('bulletList') && b('Bulleted list', '• List', st.bullet, () => chain().toggleBulletList().run()),
+      has('orderedList') && b('Numbered list', '1. List', st.ordered, () => chain().toggleOrderedList().run()),
+    ],
+    [
+      has('link') && b('Link', <Icon name="link" size={16} />, st.link, () => void editLink()),
+      b('Clear formatting', 'Clear', false, () => chain().unsetAllMarks().clearNodes().run(), { fontWeight: 500 }),
+    ],
+  ].map((items) => items.filter(Boolean)).filter((items) => items.length);
   return (
     <div className="fmt" role="toolbar" aria-label="Text formatting">
-      {b('Bold', 'B', st.bold, () => chain().toggleBold().run())}
-      {b('Italic', 'I', st.italic, () => chain().toggleItalic().run(), { fontStyle: 'italic' })}
-      {b('Underline', 'U', st.underline, () => chain().toggleUnderline().run(), { textDecoration: 'underline' })}
-      {b('Strikethrough', 'S', st.strike, () => chain().toggleStrike().run(), { textDecoration: 'line-through' })}
-      {b('Inline code', '</>', st.code, () => chain().toggleCode().run())}
-      <span className="sep" />
-      {b('Heading', 'H1', st.h1, () => chain().toggleHeading({ level: 1 }).run())}
-      {b('Subheading', 'H2', st.h2, () => chain().toggleHeading({ level: 2 }).run())}
-      {b('Quote', '❝', st.quote, () => chain().toggleBlockquote().run())}
-      <span className="sep" />
-      {b('Bulleted list', '• List', st.bullet, () => chain().toggleBulletList().run())}
-      {b('Numbered list', '1. List', st.ordered, () => chain().toggleOrderedList().run())}
-      <span className="sep" />
-      {b('Link', <Icon name="link" size={16} />, st.link, () => void editLink())}
-      {b('Clear formatting', 'Clear', false, () => chain().unsetAllMarks().clearNodes().run(), { fontWeight: 500 })}
+      {sections.map((items, i) => (
+        <Fragment key={i}>
+          {i > 0 && <span className="sep" />}
+          {items}
+        </Fragment>
+      ))}
     </div>
   );
 }

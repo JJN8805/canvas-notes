@@ -8,6 +8,9 @@ function parse(): Route {
 }
 
 let current = parse();
+
+/** The route right now, for code that isn't a component. */
+export const currentRoute = (): Route => current;
 const listeners = new Set<() => void>();
 window.addEventListener('hashchange', () => {
   current = parse();

@@ -86,10 +86,49 @@ describe('Markdown export', () => {
     const md = pageToMarkdown(withArrows, (b) => `images/${b.imageId}.png`);
     expect(md).toContain('## Connections\n\n- Goals → print("hi")\n- Image ↔ Model RMSE GBM 0.41 a|b (depends on)');
   });
+
+  it('turns a frame into a heading with its contents nested underneath, nesting depth as heading depth', () => {
+    const framed: Page = {
+      id: 'p2', title: 'Project', groupId: null, tags: [], created: 1, updated: 1, rev: 1,
+      arrows: [],
+      blocks: [
+        { id: 'f1', type: 'frame', x: 0, y: 0, w: 400, h: 300, z: 1, title: 'Research', color: 'slate', collapsed: false, frameId: null },
+        { id: 't1', type: 'text', x: 10, y: 40, w: 200, h: 40, z: 1, html: '<p>Inside the frame</p>', frameId: 'f1' },
+        { id: 'f2', type: 'frame', x: 20, y: 100, w: 200, h: 150, z: 1, title: 'Sub frame', color: 'teal', collapsed: false, frameId: 'f1' },
+        { id: 't2', type: 'text', x: 25, y: 140, w: 150, h: 30, z: 1, html: '<p>Nested</p>', frameId: 'f2' },
+        { id: 't3', type: 'text', x: 500, y: 0, w: 150, h: 30, z: 1, html: '<p>Outside</p>', frameId: null },
+      ],
+    };
+    const md = pageToMarkdown(framed, () => '');
+    expect(md).toBe(['# Project', '## Research', 'Inside the frame', '### Sub frame', 'Nested', 'Outside'].join('\n\n') + '\n');
+  });
+
+  it('leaves a collapsed frame’s contents out of the export, like the live canvas', () => {
+    const framed: Page = {
+      id: 'p3', title: 'Project', groupId: null, tags: [], created: 1, updated: 1, rev: 1,
+      arrows: [],
+      blocks: [
+        { id: 'f1', type: 'frame', x: 0, y: 0, w: 400, h: 300, z: 1, title: 'Research', color: 'slate', collapsed: true, frameId: null },
+        { id: 't1', type: 'text', x: 10, y: 40, w: 200, h: 40, z: 1, html: '<p>Hidden</p>', frameId: 'f1' },
+      ],
+    };
+    const md = pageToMarkdown(framed, () => '');
+    expect(md).toBe(['# Project', '## Research'].join('\n\n') + '\n');
+  });
 });
 
+const haveImageMagick = (() => {
+  try {
+    execFileSync('convert', ['-version'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
 describe('PDF export', () => {
-  it('writes a valid one-page PDF that a real PDF tool can read and render', () => {
+  // Needs ImageMagick (to make a test JPEG) and poppler (to read the PDF back); skipped where they aren't installed.
+  it.skipIf(!haveImageMagick)('writes a valid one-page PDF that a real PDF tool can read and render', () => {
     // A tiny real JPEG, made with ImageMagick.
     const dir = mkdtempSync(join(tmpdir(), 'pdf-'));
     execFileSync('convert', ['-size', '64x40', 'xc:#2b47c9', join(dir, 'a.jpg')]);

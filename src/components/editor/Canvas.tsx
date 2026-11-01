@@ -17,14 +17,21 @@ import {
   useNotes,
 } from '../../store/notes';
 import { addImages, imageFiles } from '../../store/images';
-import { canvasApi, editorRegistry, setSelectMode, setSelected, setSelectedArrow, useCanvas, type Point } from '../../store/canvas';
+import { canvasApi, editorRegistry, setSelectMode, setSelected, setSelectedArrow, useCanvas, type CanvasView, type Point } from '../../store/canvas';
 import { useUi } from '../../store/ui';
-import { blockHeight, clamp, isEditableTarget, modKey, sanitizeHtml, snap, textToHtml } from '../../lib/util';
+import { useDraw } from '../../store/draw';
+import { dragsStickyBody, isStickyKey, STICKY_SIZE, stickyCorner } from '../../lib/colors';
+import { liveDrawing, svgSrc } from '../../lib/drawing';
+import { blockHeight, clamp, isFixedHeight, isEditableTarget, modKey, sanitizeHtml, snap, textToHtml } from '../../lib/util';
 import { BlockFrame } from './BlockFrame';
+import { FrameChrome } from './FrameChrome';
+import { usePrefs } from '../../store/prefs';
 import { boundsOf, guideLines, nearestShift, type Guide, type Rect as BoxRect } from '../../lib/guides';
+import { containingFrame, frameDescendants, hiddenBlockIds, paintOrder } from '../../lib/frames';
 import { sidePoint, type Side } from '../../lib/arrows';
 import { ArrowLayer, type ConnectingLine } from './ArrowLayer';
 import { CanvasCtx, type CanvasCtxValue } from './context';
+import { contentBounds, EDGE_PX, fitView, growOrigin, initialOrigin, scrollShift, toCanvas } from '../../lib/viewport';
 
 const EMPTY: Block[] = [];
 const MIN_ZOOM = 0.25;
@@ -46,7 +53,14 @@ export function Canvas({ pageId }: { pageId: string }) {
   const heights = useRef(new Map<string, number>());
   const blocksRef = useRef(blocks);
   blocksRef.current = blocks;
+  const drawing = useNotes((s) => s.pages[pageId]?.drawing ?? null);
+  const drawingRef = useRef(drawing);
+  drawingRef.current = drawing;
+  const drawMode = useDraw((s) => s.open);
   const pendingScroll = useRef<Point | null>(null);
+  /** The canvas coordinate at scroll position 0 (see lib/viewport.ts), and the furthest right/bottom the page has been opened up to. */
+  const origin = useRef<Point | null>(null);
+  const reach = useRef<Point>({ x: 0, y: 0 });
   const spaceDown = useRef(false);
   const cascade = useRef(0);
 
@@ -69,7 +83,16 @@ export function Canvas({ pageId }: { pageId: string }) {
     const v = viewportRef.current!;
     const r = v.getBoundingClientRect();
     const z = useCanvas.getState().zoom;
-    return { x: (clientX - r.left + v.scrollLeft) / z, y: (clientY - r.top + v.scrollTop) / z };
+    const o = origin.current ?? { x: 0, y: 0 };
+    return { x: toCanvas(clientX - r.left, v.scrollLeft, o.x, z), y: toCanvas(clientY - r.top, v.scrollTop, o.y, z) };
+  }, []);
+
+  /** The canvas coordinate at the top-left of the view. Unlike scrollLeft/scrollTop it doesn't change when the origin moves. */
+  const viewCorner = useCallback((): Point => {
+    const v = viewportRef.current!;
+    const z = useCanvas.getState().zoom;
+    const o = origin.current ?? { x: 0, y: 0 };
+    return { x: v.scrollLeft / z + o.x, y: v.scrollTop / z + o.y };
   }, []);
 
   const heightOf = (b: Block) => heights.current.get(b.id) ?? blockHeight(b);
@@ -78,18 +101,46 @@ export function Canvas({ pageId }: { pageId: string }) {
     const v = viewportRef.current, world = worldRef.current, sizer = sizerRef.current;
     if (!v || !world || !sizer) return;
     const z = useCanvas.getState().zoom;
-    let mx = 0, my = 0;
-    for (const b of blocksRef.current) {
-      mx = Math.max(mx, b.x + b.w);
-      my = Math.max(my, b.y + (heights.current.get(b.id) ?? blockHeight(b)));
-    }
-    const W = Math.max(v.clientWidth / z, mx + MARGIN);
-    const H = Math.max(v.clientHeight / z, my + MARGIN);
-    world.style.width = W + 'px';
-    world.style.height = H + 'px';
-    world.style.transform = `scale(${z})`;
+    const boxes: Rect[] = blocksRef.current.map((b) => ({ x: b.x, y: b.y, w: b.w, h: heights.current.get(b.id) ?? blockHeight(b) }));
+    const ink = liveDrawing(drawingRef.current);
+    if (ink) boxes.push(ink);
+    const content = contentBounds(boxes);
+
+    // The page has no edges: the scrollable area always reaches well past the content and the view, in every direction.
+    const first = origin.current === null;
+    const old = origin.current ?? initialOrigin(content, z);
+    const o = first ? old : { x: growOrigin(old.x, content?.minX ?? null, v.scrollLeft, z), y: growOrigin(old.y, content?.minY ?? null, v.scrollTop, z) };
+    origin.current = o;
+    const left = first ? -o.x * z : v.scrollLeft;
+    const top = first ? -o.y * z : v.scrollTop;
+    const r = reach.current;
+    r.x = Math.max(r.x, (content?.maxX ?? 0) + MARGIN, toCanvas(v.clientWidth, left, o.x, z) + EDGE_PX / z);
+    r.y = Math.max(r.y, (content?.maxY ?? 0) + MARGIN, toCanvas(v.clientHeight, top, o.y, z) + EDGE_PX / z);
+
+    const W = Math.max(v.clientWidth / z, r.x - o.x);
+    const H = Math.max(v.clientHeight / z, r.y - o.y);
+    // Boxes sit at their real coordinates inside the world; the transform slides the origin to the scroll area's corner.
+    world.style.width = Math.max(1, r.x) + 'px';
+    world.style.height = Math.max(1, r.y) + 'px';
+    world.style.transform = `translate(${-o.x * z}px, ${-o.y * z}px) scale(${z})`;
     sizer.style.width = W * z + 'px';
     sizer.style.height = H * z + 'px';
+    // The dotted background lives on the sizer (the world can't cover negative coordinates) and is kept lined up with the canvas grid.
+    sizer.style.backgroundImage = `radial-gradient(var(--dot) ${1.1 * z}px, transparent ${1.4 * z}px)`;
+    sizer.style.backgroundSize = `${24 * z}px ${24 * z}px`;
+    sizer.style.backgroundPosition = `${(4 - o.x) * z}px ${(4 - o.y) * z}px`;
+
+    if (first) {
+      v.scrollLeft = left;
+      v.scrollTop = top;
+    } else {
+      const sx = scrollShift(old.x, o.x, z), sy = scrollShift(old.y, o.y, z);
+      if (sx || sy) {
+        v.scrollLeft += sx;
+        v.scrollTop += sy;
+        if (pendingScroll.current) pendingScroll.current = { x: pendingScroll.current.x + sx, y: pendingScroll.current.y + sy };
+      }
+    }
   }, []);
 
   useLayoutEffect(() => {
@@ -100,12 +151,18 @@ export function Canvas({ pageId }: { pageId: string }) {
       v.scrollTop = pendingScroll.current.y;
       pendingScroll.current = null;
     }
-  }, [blocks, zoom, updateExtent]);
+  }, [blocks, drawing, zoom, updateExtent]);
 
   useEffect(() => {
     const ro = new ResizeObserver(() => updateExtent());
     ro.observe(viewportRef.current!);
-    return () => ro.disconnect();
+    // Scrolling towards any edge opens up more canvas, so the page never runs out.
+    const v = viewportRef.current!;
+    v.addEventListener('scroll', updateExtent, { passive: true });
+    return () => {
+      ro.disconnect();
+      v.removeEventListener('scroll', updateExtent);
+    };
   }, [updateExtent]);
 
   // Leave select mode once the last selected box is tapped off.
@@ -141,11 +198,15 @@ export function Canvas({ pageId }: { pageId: string }) {
     const z = useCanvas.getState().zoom;
     cascade.current = (cascade.current + 1) % 6;
     const off = cascade.current * 24;
+    const c = viewCorner();
     return {
-      x: snap(Math.max(24, (v.scrollLeft + v.clientWidth / 2) / z - w / 2 + off)),
-      y: snap(Math.max(24, (v.scrollTop + v.clientHeight / 2.5) / z - h / 2 + off)),
+      x: snap(c.x + v.clientWidth / 2 / z - w / 2 + off),
+      y: snap(c.y + v.clientHeight / 2.5 / z - h / 2 + off),
     };
-  }, []);
+  }, [viewCorner]);
+
+  /** Where the pointer last was (screen coordinates), so "S" can drop a sticky under it. */
+  const pointer = useRef<Point | null>(null);
 
   const focusBlock = useCallback((id: string) => {
     const ed = editorRegistry.get(id);
@@ -157,12 +218,47 @@ export function Canvas({ pageId }: { pageId: string }) {
     el?.focus();
   }, []);
 
+  const getView = useCallback((): CanvasView => {
+    const v = viewportRef.current;
+    const z = useCanvas.getState().zoom;
+    const o = origin.current ?? { x: 0, y: 0 };
+    // `left`/`top` are the canvas coordinate at the view's top-left edge, in screen pixels (so they can be negative).
+    return { zoom: z, left: (v?.scrollLeft ?? 0) + o.x * z, top: (v?.scrollTop ?? 0) + o.y * z };
+  }, []);
+
+  const setView = useCallback((next: CanvasView) => {
+    const v = viewportRef.current;
+    if (!v) return;
+    const z = clamp(next.zoom, MIN_ZOOM, MAX_ZOOM);
+    const o = origin.current ?? { x: 0, y: 0 };
+    const at = { x: next.left - o.x * z, y: next.top - o.y * z };
+    if (z === useCanvas.getState().zoom) {
+      v.scrollLeft = at.x;
+      v.scrollTop = at.y;
+    } else {
+      pendingScroll.current = at;
+      useCanvas.setState({ zoom: z });
+    }
+  }, []);
+
+  /** Zooms and scrolls so everything on the page is in view (or goes back to the start of an empty page). */
+  const fitContent = useCallback(() => {
+    const v = viewportRef.current;
+    if (!v) return;
+    const boxes: Rect[] = blocksRef.current.map((b) => ({ x: b.x, y: b.y, w: b.w, h: heights.current.get(b.id) ?? blockHeight(b) }));
+    const ink = liveDrawing(drawingRef.current);
+    if (ink) boxes.push(ink);
+    const content = contentBounds(boxes) ?? { minX: 0, minY: 0, maxX: v.clientWidth, maxY: v.clientHeight };
+    const f = fitView(content, v.clientWidth, v.clientHeight, MIN_ZOOM);
+    setView({ zoom: f.zoom, left: f.x * f.zoom, top: f.y * f.zoom });
+  }, [setView]);
+
   useEffect(() => {
-    canvasApi.current = { worldPoint, visibleSpot, focusBlock, zoomTo };
+    canvasApi.current = { worldPoint, visibleSpot, focusBlock, zoomTo, getView, setView };
     return () => {
       canvasApi.current = null;
     };
-  }, [worldPoint, visibleSpot, focusBlock, zoomTo]);
+  }, [worldPoint, visibleSpot, focusBlock, zoomTo, getView, setView]);
 
   const blurInside = () => {
     const a = document.activeElement as HTMLElement | null;
@@ -182,21 +278,26 @@ export function Canvas({ pageId }: { pageId: string }) {
         setSelected(sel);
       }
       blurInside();
-      bringToFront(pageId, sel);
 
       const page = useNotes.getState().pages[pageId];
       if (!page) return;
-      const starts = new Map(page.blocks.filter((b) => sel.includes(b.id)).map((b) => [b.id, { x: b.x, y: b.y }]));
+      // Dragging a frame also drags everything nested inside it.
+      const dragIds = new Set(sel);
+      for (const sid of sel) {
+        const b = page.blocks.find((x) => x.id === sid);
+        if (b?.type === 'frame') for (const d of frameDescendants(page.blocks, sid)) dragIds.add(d);
+      }
+      bringToFront(pageId, [...dragIds]);
+
+      const starts = new Map(page.blocks.filter((b) => dragIds.has(b.id)).map((b) => [b.id, { x: b.x, y: b.y }]));
       const anchor = starts.get(id)!;
-      const minX = Math.min(...[...starts.values()].map((p) => p.x));
-      const minY = Math.min(...[...starts.values()].map((p) => p.y));
       const rectOf = (b: Block): BoxRect => ({ x: b.x, y: b.y, w: b.w, h: heights.current.get(b.id) ?? blockHeight(b) });
       const group = boundsOf(page.blocks.filter((b) => starts.has(b.id)).map(rectOf));
       const others = page.blocks.filter((b) => !starts.has(b.id)).map(rectOf);
       beginGesture(pageId);
 
       const v = viewportRef.current!;
-      const s0 = { x: e.clientX, y: e.clientY, sl: v.scrollLeft, st: v.scrollTop };
+      const s0 = { x: e.clientX, y: e.clientY, c: viewCorner() };
       const target = e.currentTarget as HTMLElement;
       target.setPointerCapture(e.pointerId);
       const frame = worldRef.current?.querySelector(`[data-id="${id}"]`);
@@ -210,10 +311,12 @@ export function Canvas({ pageId }: { pageId: string }) {
       const apply = () => {
         raf = 0;
         const z = useCanvas.getState().zoom;
-        let dx = (last.clientX - s0.x + v.scrollLeft - s0.sl) / z;
-        let dy = (last.clientY - s0.y + v.scrollTop - s0.st) / z;
+        // Measured against the canvas coordinate at the view's corner, so the page opening up further left or up mid-drag doesn't move the box.
+        const c = viewCorner();
+        let dx = (last.clientX - s0.x) / z + (c.x - s0.c.x);
+        let dy = (last.clientY - s0.y) / z + (c.y - s0.c.y);
         let lines: Guide[] = [];
-        if (!last.altKey) {
+        if (!last.altKey && usePrefs.getState().snap) {
           // Line up with other boxes when close; otherwise snap to the 8 px grid.
           const moved = { ...group, x: group.x + dx, y: group.y + dy };
           const sx = nearestShift(moved, others, SNAP_PX / z, 'x');
@@ -222,8 +325,6 @@ export function Canvas({ pageId }: { pageId: string }) {
           dy = sy !== null ? dy + sy : snap(anchor.y + dy) - anchor.y;
           lines = guideLines({ ...group, x: group.x + dx, y: group.y + dy }, others);
         }
-        dx = Math.max(dx, -minX);
-        dy = Math.max(dy, -minY);
         setGuides(lines);
         mutatePage(
           pageId,
@@ -277,6 +378,32 @@ export function Canvas({ pageId }: { pageId: string }) {
         }
         frame?.classList.remove('dragging');
         setGuides([]);
+        if (moved) {
+          // Re-test which frame (if any) each originally-dragged item now sits inside,
+          // so dropping a box into/out of a frame updates its membership. A moved frame
+          // can't be dropped into itself or one of its own descendants.
+          const latest = useNotes.getState().pages[pageId];
+          if (latest) {
+            const updates = new Map<string, string | null>();
+            for (const sid of sel) {
+              const b = latest.blocks.find((x) => x.id === sid);
+              if (!b) continue;
+              const rect: BoxRect = { x: b.x, y: b.y, w: b.w, h: heights.current.get(b.id) ?? blockHeight(b) };
+              const dest = containingFrame(latest.blocks, rect, dragIds);
+              const next = dest?.id ?? null;
+              if (next !== (b.frameId ?? null)) updates.set(sid, next);
+            }
+            if (updates.size) {
+              mutatePage(
+                pageId,
+                (p) => {
+                  for (const b of p.blocks) if (updates.has(b.id)) b.frameId = updates.get(b.id) ?? null;
+                },
+                { history: 'none', touch: false },
+              );
+            }
+          }
+        }
         endGesture(pageId);
         if (!moved) opts.onTap?.();
       };
@@ -284,7 +411,7 @@ export function Canvas({ pageId }: { pageId: string }) {
       target.addEventListener('pointerup', up);
       target.addEventListener('pointercancel', up);
     },
-    [pageId, setGuides],
+    [pageId, setGuides, viewCorner],
   );
 
   const startResize = useCallback(
@@ -295,7 +422,7 @@ export function Canvas({ pageId }: { pageId: string }) {
       const b = useNotes.getState().pages[pageId]?.blocks.find((x) => x.id === id);
       if (!b) return;
       const el = worldRef.current?.querySelector<HTMLElement>(`[data-id="${id}"]`);
-      const startH = b.type === 'image' ? b.h : Math.max(b.h, el?.offsetHeight ?? b.h);
+      const startH = isFixedHeight(b) ? b.h : Math.max(b.h, el?.offsetHeight ?? b.h);
       const aspect = b.type === 'image' && b.aspect ? b.aspect : b.w / startH;
       const s0 = { x: e.clientX, y: e.clientY, w: b.w, h: startH };
       const others: BoxRect[] = (useNotes.getState().pages[pageId]?.blocks ?? [])
@@ -314,7 +441,7 @@ export function Canvas({ pageId }: { pageId: string }) {
         let h = Math.max(32, s0.h + (last.clientY - s0.y) / z);
         const keepRatio = b.type === 'image' && !last.shiftKey;
         let lines: Guide[] = [];
-        if (!last.altKey) {
+        if (!last.altKey && usePrefs.getState().snap) {
           // The right and bottom edges line up with other boxes when close.
           const sx = nearestShift({ x: b.x, y: b.y, w, h }, others, SNAP_PX / z, 'x', ['end']);
           w = sx !== null ? w + sx : snap(w);
@@ -453,14 +580,29 @@ export function Canvas({ pageId }: { pageId: string }) {
           window.removeEventListener('pointercancel', cancelLongPress);
         };
       }
+      // A sticky is dragged by its text like a real note; double-click (or Enter) to type in it.
+      const target = e.target as HTMLElement;
+      const text = target.closest('.text-editor');
+      if (
+        dragsStickyBody({
+          type: useNotes.getState().pages[pageId]?.blocks.find((b) => b.id === id)?.type ?? '',
+          pointerType: e.pointerType,
+          shiftKey: e.shiftKey,
+          editing: !!text?.contains(document.activeElement),
+          onText: !!text,
+        })
+      ) {
+        startMove(e, id);
+        return;
+      }
       if (e.shiftKey) {
         // Shift-click toggles a block in the selection without starting to edit it.
-        if ((e.target as HTMLElement).closest('.grip')) return;
+        if ((e.target as HTMLElement).closest('.grip, .grab')) return;
         e.preventDefault();
         setSelected(sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]);
         return;
       }
-      if ((e.target as HTMLElement).closest('.grip, .resize, .bar button, .dot')) return;
+      if ((e.target as HTMLElement).closest('.grip, .grab, .resize, .bar button, .dot, .ci-grip')) return;
       if (!(sel.length === 1 && sel[0] === id)) setSelected([id]);
       bringToFront(pageId, [id]);
     },
@@ -472,7 +614,7 @@ export function Canvas({ pageId }: { pageId: string }) {
       heights.current.set(id, h);
       updateExtent();
       const b = useNotes.getState().pages[pageId]?.blocks.find((x) => x.id === id);
-      if (b && b.type !== 'image' && Math.abs((b.ah ?? 0) - h) > 2) {
+      if (b && !isFixedHeight(b) && Math.abs((b.ah ?? 0) - h) > 2) {
         mutatePage(
           pageId,
           (p) => {
@@ -539,8 +681,9 @@ export function Canvas({ pageId }: { pageId: string }) {
       if (!started && r.w < 4 && r.h < 4) return;
       started = true;
       setMarquee(r);
+      const hidden = hiddenBlockIds(blocksRef.current);
       const hits = blocksRef.current
-        .filter((b) => b.x < r.x + r.w && b.x + b.w > r.x && b.y < r.y + r.h && b.y + heightOf(b) > r.y)
+        .filter((b) => !hidden.has(b.id) && b.x < r.x + r.w && b.x + b.w > r.x && b.y < r.y + r.h && b.y + heightOf(b) > r.y)
         .map((b) => b.id);
       setSelected([...new Set([...base, ...hits])]);
     };
@@ -618,7 +761,7 @@ export function Canvas({ pageId }: { pageId: string }) {
   /* ---------- keyboard & clipboard ---------- */
 
   useEffect(() => {
-    const blocked = () => !!(useUi.getState().dialog || useUi.getState().menu);
+    const blocked = () => !!(useUi.getState().dialog || useUi.getState().menu || useDraw.getState().open);
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (blocked()) return;
@@ -661,6 +804,11 @@ export function Canvas({ pageId }: { pageId: string }) {
         zoomTo(useCanvas.getState().zoom / 1.2);
         return;
       }
+      if (mod && e.key === '1') {
+        e.preventDefault();
+        fitContent();
+        return;
+      }
       if (mod && e.key === '0') {
         e.preventDefault();
         zoomTo(1);
@@ -668,7 +816,24 @@ export function Canvas({ pageId }: { pageId: string }) {
       }
       if (mod && key === 'a') {
         e.preventDefault();
-        setSelected(blocksRef.current.map((b) => b.id));
+        const hidden = hiddenBlockIds(blocksRef.current);
+        setSelected(blocksRef.current.filter((b) => !hidden.has(b.id)).map((b) => b.id));
+        return;
+      }
+
+      if (isStickyKey(e)) {
+        // At the pointer if it is over the canvas, otherwise in the middle of what is visible.
+        e.preventDefault();
+        const r = viewportRef.current?.getBoundingClientRect();
+        const m = pointer.current;
+        const over = !!(r && m && m.x >= r.left && m.x <= r.right && m.y >= r.top && m.y <= r.bottom);
+        const at = over ? stickyCorner(worldPoint(m!.x, m!.y)) : visibleSpot(STICKY_SIZE, STICKY_SIZE);
+        let id = '';
+        flushSync(() => {
+          id = addBlock(pageId, 'sticky', at);
+          setSelected([id]);
+        });
+        focusBlock(id);
         return;
       }
 
@@ -688,7 +853,7 @@ export function Canvas({ pageId }: { pageId: string }) {
         e.preventDefault();
         deleteBlocks(pageId, sel);
         setSelected([]);
-      } else if (mod && key === 'd') {
+      } else if (mod && key === 'd' && !e.altKey) {
         e.preventDefault();
         setSelected(duplicateBlocks(pageId, sel));
       } else if (e.key === 'Escape') {
@@ -701,13 +866,19 @@ export function Canvas({ pageId }: { pageId: string }) {
         const step = e.shiftKey ? 1 : 8;
         const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
         const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+        // Nudging a frame also nudges everything nested inside it.
+        const nudgeIds = new Set(sel);
+        for (const sid of sel) {
+          const b = blocksRef.current.find((x) => x.id === sid);
+          if (b?.type === 'frame') for (const d of frameDescendants(blocksRef.current, sid)) nudgeIds.add(d);
+        }
         mutatePage(
           pageId,
           (p) => {
             for (const b of p.blocks) {
-              if (!sel.includes(b.id)) continue;
-              b.x = Math.max(0, b.x + dx);
-              b.y = Math.max(0, b.y + dy);
+              if (!nudgeIds.has(b.id)) continue;
+              b.x += dx;
+              b.y += dy;
             }
           },
           { history: { key: 'nudge:' + sel.join(',') } },
@@ -744,17 +915,22 @@ export function Canvas({ pageId }: { pageId: string }) {
       setSelected([id]);
     };
 
+    const onPointer = (e: PointerEvent) => {
+      pointer.current = { x: e.clientX, y: e.clientY };
+    };
+    window.addEventListener('pointermove', onPointer);
     document.addEventListener('keydown', onKeyDown);
     document.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', onBlur);
     document.addEventListener('paste', onPaste);
     return () => {
+      window.removeEventListener('pointermove', onPointer);
       document.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('paste', onPaste);
     };
-  }, [pageId, focusBlock, visibleSpot, zoomTo]);
+  }, [pageId, focusBlock, visibleSpot, zoomTo, worldPoint, fitContent]);
 
   /* ---------- file drop ---------- */
 
@@ -765,6 +941,9 @@ export function Canvas({ pageId }: { pageId: string }) {
 
   const selSet = useMemo(() => new Set(selected), [selected]);
   const single = selected.length === 1;
+  const hidden = useMemo(() => hiddenBlockIds(blocks), [blocks]);
+  const ordered = useMemo(() => paintOrder(blocks).filter((b) => !hidden.has(b.id)), [blocks, hidden]);
+  const visibleBlocks = useMemo(() => blocks.filter((b) => !hidden.has(b.id)), [blocks, hidden]);
 
   return (
     <CanvasCtx.Provider value={ctx}>
@@ -808,10 +987,23 @@ export function Canvas({ pageId }: { pageId: string }) {
       >
         <div ref={sizerRef} className="sizer">
           <div ref={worldRef} className="world">
-            {blocks.map((b) => (
-              <BlockFrame key={b.id} block={b} selected={selSet.has(b.id)} single={single && selSet.has(b.id)} />
-            ))}
-            <ArrowLayer pageId={pageId} blocks={blocks} heights={heights} connecting={connecting} />
+            {ordered.map((b) =>
+              b.type === 'frame' ? (
+                <FrameChrome key={b.id} block={b} selected={selSet.has(b.id)} single={single && selSet.has(b.id)} />
+              ) : (
+                <BlockFrame key={b.id} block={b} selected={selSet.has(b.id)} single={single && selSet.has(b.id)} />
+              ),
+            )}
+            {!drawMode && liveDrawing(drawing) && (
+              <img
+                className="ink"
+                alt=""
+                draggable={false}
+                src={svgSrc(drawing!.preview)}
+                style={{ left: drawing!.x, top: drawing!.y, width: drawing!.w, height: drawing!.h }}
+              />
+            )}
+            <ArrowLayer pageId={pageId} blocks={visibleBlocks} heights={heights} connecting={connecting} />
             {guides.map((g, i) =>
               g.axis === 'x' ? (
                 <div key={i} className="guide" style={{ left: g.pos, top: g.from, height: g.to - g.from, borderLeftWidth: 1 / zoom }} />
