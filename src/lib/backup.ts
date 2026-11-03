@@ -1,6 +1,8 @@
-/** Whole-library backup: every page, group and image in one JSON file, and putting one back. */
+/** Whole-library backup: every page, group and file (pictures, audio, PDFs) in one JSON file, and putting one back. */
 import { normalizePage, type NotesStorage, type PageRecord } from '../storage/types';
 import type { Group } from '../types';
+import { isKnownFileType, isSafeId } from '../storage/validate';
+import { fileIdsOf } from './files';
 
 const FORMAT = 'canvas-notes-backup';
 
@@ -24,7 +26,7 @@ export async function buildBackup(storage: NotesStorage, now = Date.now()): Prom
   const { pages, groups } = await storage.loadAll();
   const records = (await storage.sync.getRecords('page', pages.map((p) => p.id))) as PageRecord[];
   const used = new Set<string>();
-  for (const r of records) for (const b of r.blocks) if (b.type === 'image') used.add(b.imageId);
+  for (const r of records) for (const id of fileIdsOf(r.blocks)) used.add(id);
   const images: BackupImage[] = [];
   for (const id of used) {
     const img = await storage.sync.readImage(id);
@@ -50,7 +52,7 @@ export function parseBackup(text: string): Backup {
     exported: Number(raw.exported) || 0,
     groups: (Array.isArray(raw.groups) ? raw.groups : []).filter((g) => g && str(g.id) && typeof g.name === 'string'),
     pages: raw.pages.filter((p) => p && str(p.id)),
-    images: (Array.isArray(raw.images) ? raw.images : []).filter((i) => i && str(i.id) && str(i.data)),
+    images: (Array.isArray(raw.images) ? raw.images : []).filter((i) => i && isSafeId(i.id) && isKnownFileType(i.mime) && str(i.data)),
   };
 }
 

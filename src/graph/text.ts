@@ -28,7 +28,10 @@ export function blockPlainText(b: Block): string {
     case 'frame':
       return b.title ?? '';
     case 'image':
-      return b.alt ?? '';
+      return [b.alt, b.ocr].filter(Boolean).join('\n');
+    case 'audio':
+    case 'pdf':
+      return b.name ?? '';
   }
 }
 

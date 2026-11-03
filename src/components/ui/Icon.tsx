@@ -22,6 +22,31 @@ const PATHS = {
       <path d="M3 8h14M3 12h14M8 4v12" />
     </>
   ),
+  audio: (
+    <>
+      <path d="M4 8v4M7 5.5v9M10 3.5v13M13 6.5v7M16 8.5v3" />
+    </>
+  ),
+  mic: (
+    <>
+      <rect x="7.5" y="3" width="5" height="9" rx="2.5" />
+      <path d="M5 10a5 5 0 0 0 10 0M10 15v2.5" />
+    </>
+  ),
+  pdf: (
+    <>
+      <path d="M5 3h6l4 4v10H5z" />
+      <path d="M11 3v4h4" />
+      <path d="M7.5 13.5h5M7.5 11h5" />
+    </>
+  ),
+  sparkle: (
+    <>
+      <path d="M10 3l1.6 4.4L16 9l-4.4 1.6L10 15l-1.6-4.4L4 9l4.4-1.6L10 3z" />
+      <path d="M15.5 14.5v3M14 16h3" />
+    </>
+  ),
+  puzzle: <path d="M4 8h3a1.5 1.5 0 1 1 3 0h3v3a1.5 1.5 0 1 1 0 3v3H4v-3a1.5 1.5 0 1 0 0-3V8z" />,
   back: <path d="M12 5l-5 5 5 5" />,
   plus: <path d="M10 4v12M4 10h12" />,
   minus: <path d="M4 10h12" />,
@@ -148,6 +173,13 @@ const PATHS = {
     </>
   ),
   edit: <path d="M4 16l1-4L14 3l3 3-9 9zM12 5l3 3" />,
+  pin: <path d="M7.5 3h5l-.7 4.2 2.7 2.8v1.5H5.5V10l2.7-2.8zM10 11.5V17" />,
+  card: (
+    <>
+      <rect x="3" y="3.5" width="14" height="13" rx="1.8" />
+      <path d="M3 11l3.6-3.2 3 2.7 2.2-1.8L17 12M6.5 14.2h4" />
+    </>
+  ),
   close: <path d="M5 5l10 10M15 5L5 15" />,
   check: <path d="M4 10.5l4 4 8-9" />,
   keyboard: (

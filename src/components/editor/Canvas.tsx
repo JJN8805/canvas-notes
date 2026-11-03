@@ -7,22 +7,33 @@ import {
   addBlock,
   beginGesture,
   bringToFront,
-  deleteArrows,
   deleteBlocks,
   duplicateBlocks,
   endGesture,
   mutatePage,
-  redo,
-  undo,
   useNotes,
 } from '../../store/notes';
-import { addImages, imageFiles } from '../../store/images';
-import { canvasApi, editorRegistry, setSelectMode, setSelected, setSelectedArrow, useCanvas, type CanvasView, type Point } from '../../store/canvas';
-import { useUi } from '../../store/ui';
+import { addMediaFiles } from '../../store/media';
+import {
+  canvasApi,
+  editorRegistry,
+  freshText,
+  setSelectMode,
+  setSelected,
+  setSelectedArrow,
+  useCanvas,
+  type CanvasView,
+  type Point,
+} from '../../store/canvas';
 import { useDraw } from '../../store/draw';
-import { dragsStickyBody, isStickyKey, STICKY_SIZE, stickyCorner } from '../../lib/colors';
+import { dragsStickyBody } from '../../lib/colors';
 import { liveDrawing, svgSrc } from '../../lib/drawing';
-import { blockHeight, clamp, isFixedHeight, isEditableTarget, modKey, sanitizeHtml, snap, textToHtml } from '../../lib/util';
+import {
+  blockHeight,
+  clamp,
+  isFixedHeight,
+  snap,
+} from '../../lib/util';
 import { BlockFrame } from './BlockFrame';
 import { FrameChrome } from './FrameChrome';
 import { usePrefs } from '../../store/prefs';
@@ -30,8 +41,21 @@ import { boundsOf, guideLines, nearestShift, type Guide, type Rect as BoxRect } 
 import { containingFrame, frameDescendants, hiddenBlockIds, paintOrder } from '../../lib/frames';
 import { sidePoint, type Side } from '../../lib/arrows';
 import { ArrowLayer, type ConnectingLine } from './ArrowLayer';
-import { CanvasCtx, type CanvasCtxValue } from './context';
-import { contentBounds, EDGE_PX, fitView, growOrigin, initialOrigin, scrollShift, toCanvas } from '../../lib/viewport';
+import { pinBlocks } from '../../widgets';
+import { useWidgetsAvailable } from '../../widgets/useWidgetsAvailable';
+import { useViewportZoom } from './canvas/useViewportZoom';
+import { useEmptyBoxCleanup } from './canvas/useEmptyBoxCleanup';
+import { useCanvasKeyboard } from './canvas/useCanvasKeyboard';
+import { CanvasCtx, type CanvasCtxValue, type ResizeDir } from './context';
+import {
+  contentBounds,
+  EDGE_PX,
+  fitView,
+  growOrigin,
+  initialOrigin,
+  scrollShift,
+  toCanvas,
+} from '../../lib/viewport';
 
 const EMPTY: Block[] = [];
 const MIN_ZOOM = 0.25;
@@ -415,7 +439,7 @@ export function Canvas({ pageId }: { pageId: string }) {
   );
 
   const startResize = useCallback(
-    (e: React.PointerEvent, id: string) => {
+    (e: React.PointerEvent, id: string, dir: ResizeDir = 'se') => {
       if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
@@ -437,27 +461,49 @@ export function Canvas({ pageId }: { pageId: string }) {
         raf = 0;
         if (!last) return;
         const z = useCanvas.getState().zoom;
-        let w = Math.max(64, s0.w + (last.clientX - s0.x) / z);
-        let h = Math.max(32, s0.h + (last.clientY - s0.y) / z);
-        const keepRatio = b.type === 'image' && !last.shiftKey;
+        const dx = (last.clientX - s0.x) / z;
+        const dy = (last.clientY - s0.y) / z;
+        const east = dir.includes('e');
+        const west = dir.includes('w');
+        const south = dir.includes('s');
+        const north = dir.includes('n');
+        let w = east ? Math.max(64, s0.w + dx) : west ? Math.max(64, s0.w - dx) : s0.w;
+        let h = south ? Math.max(32, s0.h + dy) : north ? Math.max(32, s0.h - dy) : s0.h;
+        // Dragging a west/north edge moves the box so the opposite edge stays put.
+        const right = b.x + s0.w;
+        const bottom = b.y + s0.h;
+        const keepRatio = b.type === 'image' && dir.length === 2 && !last.shiftKey;
         let lines: Guide[] = [];
         if (!last.altKey && usePrefs.getState().snap) {
-          // The right and bottom edges line up with other boxes when close.
-          const sx = nearestShift({ x: b.x, y: b.y, w, h }, others, SNAP_PX / z, 'x', ['end']);
-          w = sx !== null ? w + sx : snap(w);
-          if (!keepRatio) {
-            const sy = nearestShift({ x: b.x, y: b.y, w, h }, others, SNAP_PX / z, 'y', ['end']);
+          const x0 = west ? right - w : b.x;
+          const y0 = north ? bottom - h : b.y;
+          if (east) {
+            const sx = nearestShift({ x: x0, y: y0, w, h }, others, SNAP_PX / z, 'x', ['end']);
+            w = sx !== null ? w + sx : snap(w);
+          } else if (west) {
+            const sx = nearestShift({ x: x0, y: y0, w, h }, others, SNAP_PX / z, 'x', ['start']);
+            w = sx !== null ? w - sx : snap(w);
+          }
+          if (!keepRatio && south) {
+            const sy = nearestShift({ x: x0, y: y0, w, h }, others, SNAP_PX / z, 'y', ['end']);
             h = sy !== null ? h + sy : snap(h);
+          } else if (!keepRatio && north) {
+            const sy = nearestShift({ x: x0, y: y0, w, h }, others, SNAP_PX / z, 'y', ['start']);
+            h = sy !== null ? h - sy : snap(h);
           }
         }
         if (keepRatio) h = Math.round(w / aspect);
-        if (!last.altKey) lines = guideLines({ x: b.x, y: b.y, w, h }, others, ['end'], keepRatio ? [] : ['end']);
+        const nx = west ? right - w : b.x;
+        const ny = north ? bottom - h : b.y;
+        if (!last.altKey) lines = guideLines({ x: nx, y: ny, w, h }, others, west ? ['start'] : east ? ['end'] : [], keepRatio ? [] : north ? ['start'] : south ? ['end'] : []);
         setGuides(lines);
         mutatePage(
           pageId,
           (p) => {
             const t = p.blocks.find((x) => x.id === id);
             if (t) {
+              t.x = nx;
+              t.y = ny;
               t.w = w;
               t.h = h;
             }
@@ -547,6 +593,8 @@ export function Canvas({ pageId }: { pageId: string }) {
 
   const pointerDownBlock = useCallback(
     (e: React.PointerEvent, id: string) => {
+      // Right/middle clicks and Space-drag panning pass over boxes without selecting, raising or editing them.
+      if (e.button !== 0 || spaceDown.current) return;
       const sel = useCanvas.getState().selected;
       if (e.pointerType === 'touch') {
         if (useCanvas.getState().selectMode) {
@@ -702,235 +750,21 @@ export function Canvas({ pageId }: { pageId: string }) {
     // The marquee captures the pointer on the viewport, so the double-click can arrive there too.
     const t = e.target;
     if (t !== worldRef.current && t !== sizerRef.current && t !== viewportRef.current) return;
+    if (spaceDown.current) return;
     const p = worldPoint(e.clientX, e.clientY);
     // Render the new box synchronously so typing goes straight into it.
     let id = '';
     flushSync(() => {
       id = addBlock(pageId, 'text', { x: snap(p.x - 8), y: snap(p.y - 16) });
+      freshText.add(id);
       setSelected([id]);
     });
     focusBlock(id);
   };
 
-  // Ctrl/⌘ + wheel (and trackpad pinch) zooms around the pointer.
-  useEffect(() => {
-    const v = viewportRef.current!;
-    const onWheel = (e: WheelEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
-      e.preventDefault();
-      const r = v.getBoundingClientRect();
-      zoomTo(useCanvas.getState().zoom * Math.exp(-e.deltaY * 0.0022), { x: e.clientX - r.left, y: e.clientY - r.top });
-    };
-    v.addEventListener('wheel', onWheel, { passive: false });
-    return () => v.removeEventListener('wheel', onWheel);
-  }, [zoomTo]);
-
-  // Two-finger pinch zooms on phones; one finger keeps scrolling natively.
-  useEffect(() => {
-    const v = viewportRef.current!;
-    let start: { dist: number; zoom: number } | null = null;
-    const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
-    const onStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) start = { dist: dist(e.touches), zoom: useCanvas.getState().zoom };
-    };
-    const onMove = (e: TouchEvent) => {
-      if (!start || e.touches.length !== 2) return;
-      e.preventDefault();
-      const r = v.getBoundingClientRect();
-      const mid = {
-        x: (e.touches[0].clientX + e.touches[1].clientX) / 2 - r.left,
-        y: (e.touches[0].clientY + e.touches[1].clientY) / 2 - r.top,
-      };
-      zoomTo(start.zoom * (dist(e.touches) / start.dist), mid);
-    };
-    const onEnd = (e: TouchEvent) => {
-      if (e.touches.length < 2) start = null;
-    };
-    v.addEventListener('touchstart', onStart, { passive: true });
-    v.addEventListener('touchmove', onMove, { passive: false });
-    v.addEventListener('touchend', onEnd);
-    v.addEventListener('touchcancel', onEnd);
-    return () => {
-      v.removeEventListener('touchstart', onStart);
-      v.removeEventListener('touchmove', onMove);
-      v.removeEventListener('touchend', onEnd);
-      v.removeEventListener('touchcancel', onEnd);
-    };
-  }, [zoomTo]);
-
-  /* ---------- keyboard & clipboard ---------- */
-
-  useEffect(() => {
-    const blocked = () => !!(useUi.getState().dialog || useUi.getState().menu || useDraw.getState().open);
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (blocked()) return;
-      const a = document.activeElement;
-      if (isEditableTarget(a)) {
-        if (e.key === 'Escape' && a instanceof HTMLElement && worldRef.current?.contains(a)) {
-          a.blur();
-          const id = a.closest<HTMLElement>('[data-id]')?.dataset.id;
-          if (id) setSelected([id]);
-        }
-        return;
-      }
-      const mod = modKey(e);
-      const key = e.key.toLowerCase();
-
-      if (e.key === ' ' && !e.repeat) {
-        e.preventDefault();
-        spaceDown.current = true;
-        setPanMode((m) => (m === 'panning' ? m : 'ready'));
-        return;
-      }
-      if (mod && key === 'z') {
-        e.preventDefault();
-        if (e.shiftKey) redo(pageId);
-        else undo(pageId);
-        return;
-      }
-      if (mod && key === 'y') {
-        e.preventDefault();
-        redo(pageId);
-        return;
-      }
-      if (mod && (e.key === '=' || e.key === '+')) {
-        e.preventDefault();
-        zoomTo(useCanvas.getState().zoom * 1.2);
-        return;
-      }
-      if (mod && e.key === '-') {
-        e.preventDefault();
-        zoomTo(useCanvas.getState().zoom / 1.2);
-        return;
-      }
-      if (mod && e.key === '1') {
-        e.preventDefault();
-        fitContent();
-        return;
-      }
-      if (mod && e.key === '0') {
-        e.preventDefault();
-        zoomTo(1);
-        return;
-      }
-      if (mod && key === 'a') {
-        e.preventDefault();
-        const hidden = hiddenBlockIds(blocksRef.current);
-        setSelected(blocksRef.current.filter((b) => !hidden.has(b.id)).map((b) => b.id));
-        return;
-      }
-
-      if (isStickyKey(e)) {
-        // At the pointer if it is over the canvas, otherwise in the middle of what is visible.
-        e.preventDefault();
-        const r = viewportRef.current?.getBoundingClientRect();
-        const m = pointer.current;
-        const over = !!(r && m && m.x >= r.left && m.x <= r.right && m.y >= r.top && m.y <= r.bottom);
-        const at = over ? stickyCorner(worldPoint(m!.x, m!.y)) : visibleSpot(STICKY_SIZE, STICKY_SIZE);
-        let id = '';
-        flushSync(() => {
-          id = addBlock(pageId, 'sticky', at);
-          setSelected([id]);
-        });
-        focusBlock(id);
-        return;
-      }
-
-      const sel = useCanvas.getState().selected;
-      if (!sel.length) {
-        const arrowSel = useCanvas.getState().selectedArrow;
-        if (arrowSel && (e.key === 'Delete' || e.key === 'Backspace')) {
-          e.preventDefault();
-          deleteArrows(pageId, [arrowSel]);
-          setSelectedArrow(null);
-        } else if (arrowSel && e.key === 'Escape') {
-          setSelectedArrow(null);
-        }
-        return;
-      }
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault();
-        deleteBlocks(pageId, sel);
-        setSelected([]);
-      } else if (mod && key === 'd' && !e.altKey) {
-        e.preventDefault();
-        setSelected(duplicateBlocks(pageId, sel));
-      } else if (e.key === 'Escape') {
-        setSelected([]);
-      } else if (e.key === 'Enter' && sel.length === 1) {
-        e.preventDefault();
-        focusBlock(sel[0]);
-      } else if (e.key.startsWith('Arrow')) {
-        e.preventDefault();
-        const step = e.shiftKey ? 1 : 8;
-        const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
-        const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
-        // Nudging a frame also nudges everything nested inside it.
-        const nudgeIds = new Set(sel);
-        for (const sid of sel) {
-          const b = blocksRef.current.find((x) => x.id === sid);
-          if (b?.type === 'frame') for (const d of frameDescendants(blocksRef.current, sid)) nudgeIds.add(d);
-        }
-        mutatePage(
-          pageId,
-          (p) => {
-            for (const b of p.blocks) {
-              if (!nudgeIds.has(b.id)) continue;
-              b.x += dx;
-              b.y += dy;
-            }
-          },
-          { history: { key: 'nudge:' + sel.join(',') } },
-        );
-      }
-    };
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === ' ') {
-        spaceDown.current = false;
-        setPanMode((m) => (m === 'panning' ? m : 'off'));
-      }
-    };
-    const onBlur = () => {
-      spaceDown.current = false;
-      setPanMode('off');
-    };
-
-    const onPaste = (e: ClipboardEvent) => {
-      if (blocked() || isEditableTarget(document.activeElement)) return;
-      const files = imageFiles(e.clipboardData);
-      if (files.length) {
-        e.preventDefault();
-        void addImages(pageId, files, visibleSpot(360, 260)).then((ids) => ids.length && setSelected(ids));
-        return;
-      }
-      const html = e.clipboardData?.getData('text/html');
-      const text = e.clipboardData?.getData('text/plain');
-      if (!html && !text) return;
-      e.preventDefault();
-      const id = addBlock(pageId, 'text', visibleSpot(320, 80), {
-        w: 320,
-        html: html ? sanitizeHtml(html) : textToHtml(text ?? ''),
-      });
-      setSelected([id]);
-    };
-
-    const onPointer = (e: PointerEvent) => {
-      pointer.current = { x: e.clientX, y: e.clientY };
-    };
-    window.addEventListener('pointermove', onPointer);
-    document.addEventListener('keydown', onKeyDown);
-    document.addEventListener('keyup', onKeyUp);
-    window.addEventListener('blur', onBlur);
-    document.addEventListener('paste', onPaste);
-    return () => {
-      window.removeEventListener('pointermove', onPointer);
-      document.removeEventListener('keydown', onKeyDown);
-      document.removeEventListener('keyup', onKeyUp);
-      window.removeEventListener('blur', onBlur);
-      document.removeEventListener('paste', onPaste);
-    };
-  }, [pageId, focusBlock, visibleSpot, zoomTo, worldPoint, fitContent]);
+  useViewportZoom(viewportRef, zoomTo);
+  useEmptyBoxCleanup(pageId, selected);
+  useCanvasKeyboard({ pageId, viewportRef, worldRef, blocksRef, pointer, spaceDown, setPanMode, focusBlock, visibleSpot, zoomTo, worldPoint, fitContent });
 
   /* ---------- file drop ---------- */
 
@@ -939,6 +773,7 @@ export function Canvas({ pageId }: { pageId: string }) {
 
   /* ---------- render ---------- */
 
+  const canPin = useWidgetsAvailable();
   const selSet = useMemo(() => new Set(selected), [selected]);
   const single = selected.length === 1;
   const hidden = useMemo(() => hiddenBlockIds(blocks), [blocks]);
@@ -980,7 +815,7 @@ export function Canvas({ pageId }: { pageId: string }) {
           dragDepth.current = 0;
           setDropping(false);
           const p = worldPoint(e.clientX, e.clientY);
-          void addImages(pageId, Array.from(e.dataTransfer.files), { x: snap(p.x - 40), y: snap(p.y - 40) }).then(
+          void addMediaFiles(pageId, Array.from(e.dataTransfer.files), { x: snap(p.x - 40), y: snap(p.y - 40) }).then(
             (ids) => ids.length && setSelected(ids),
           );
         }}
@@ -1027,6 +862,11 @@ export function Canvas({ pageId }: { pageId: string }) {
           <button className="btn" disabled={!selected.length} onClick={() => setSelected(duplicateBlocks(pageId, selected))}>
             Duplicate
           </button>
+          {canPin && (
+            <button className="btn" disabled={!selected.length} onClick={() => void pinBlocks(pageId, blocks.filter((b) => selSet.has(b.id)))}>
+              Pin to desktop
+            </button>
+          )}
           <button
             className="btn"
             disabled={!selected.length}

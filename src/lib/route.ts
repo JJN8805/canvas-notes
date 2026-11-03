@@ -1,11 +1,9 @@
 import { useSyncExternalStore } from 'react';
+import { parseRoute, type Route } from './routeParse';
 
-export type Route = { name: 'library' } | { name: 'page'; id: string };
+export type { Route };
 
-function parse(): Route {
-  const m = location.hash.match(/^#\/page\/([\w-]+)/);
-  return m ? { name: 'page', id: m[1] } : { name: 'library' };
-}
+const parse = (): Route => parseRoute(location.search, location.hash);
 
 let current = parse();
 
@@ -28,6 +26,7 @@ export function useRoute(): Route {
 }
 
 export function navigate(to: Route) {
+  if (to.name === 'widget') return; // a widget is its own window, never navigated to
   const hash = to.name === 'page' ? `#/page/${to.id}` : '#/';
   if (location.hash !== hash) location.hash = hash;
 }

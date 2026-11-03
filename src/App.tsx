@@ -13,6 +13,7 @@ import { dateKey, isTodayShortcut } from './lib/daily';
 import { useDraw } from './store/draw';
 import { useUi } from './store/ui';
 import { initSync } from './sync/controller';
+import { setupDesktopWidgets } from './widgets';
 
 export function App() {
   const status = useNotes((s) => s.status);
@@ -38,6 +39,11 @@ export function App() {
 
   useEffect(() => {
     if (status === 'ready') void initSync().catch((e) => console.error('Sync setup failed', e));
+  }, [status]);
+
+  // Bring back the desktop widgets (laptop app only).
+  useEffect(() => {
+    if (status === 'ready') void setupDesktopWidgets();
   }, [status]);
 
   if (status === 'loading') return <div className="loading">Opening your notes…</div>;

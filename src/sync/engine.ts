@@ -16,6 +16,7 @@
  */
 import type { Block } from '../types';
 import { newId } from '../lib/util';
+import { fileIdsOf } from '../lib/files';
 import type { GroupRecord, ImagePayload, PageRecord, SyncKind, SyncMeta, SyncRecord, SyncStore } from '../storage/types';
 
 export const PROTOCOL_VERSION = 1;
@@ -52,7 +53,7 @@ const chunks = <T,>(arr: T[], n: number): T[][] => {
   return out;
 };
 
-const imageIdsOf = (blocks: Block[]) => blocks.filter((b) => b.type === 'image').map((b) => (b as { imageId: string }).imageId);
+const imageIdsOf = (blocks: Block[]) => fileIdsOf(blocks);
 
 /* ------------------------------------------------------------------ */
 /* Laptop side                                                         */

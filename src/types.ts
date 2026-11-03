@@ -1,4 +1,4 @@
-export type BlockType = 'text' | 'image' | 'checklist' | 'code' | 'table' | 'frame' | 'sticky';
+export type BlockType = 'text' | 'image' | 'checklist' | 'code' | 'table' | 'frame' | 'sticky' | 'audio' | 'pdf';
 
 /** The muted colours offered for boxes, stickies and page cards. Their light and dark values are
  *  the `--n-*` tokens in styles.css; each has a matching `--n-*-ink` for text on top of it. */
@@ -34,6 +34,8 @@ export interface ImageBlock extends BlockBase {
   imageId: string;
   aspect: number;
   alt?: string;
+  /** Text read from the picture by the OCR add-on, so search can find it. Absent = none. Older app versions ignore it. */
+  ocr?: string;
   /** Set on the heatmap pictures of an attendance page: a fingerprint of the drawing, so it is only redrawn when it changes. */
   heat?: string;
 }
@@ -81,7 +83,24 @@ export interface StickyBlock extends BlockBase {
   type: 'sticky';
   html: string;
 }
-export type Block = TextBlock | ImageBlock | ChecklistBlock | CodeBlock | TableBlock | FrameBlock | StickyBlock;
+/** An audio clip (a file added or a recording). The bytes live in the file store under `fileId`, like pictures do. */
+export interface AudioBlock extends BlockBase {
+  type: 'audio';
+  fileId: string;
+  /** Shown above the player and searched. */
+  name: string;
+  /** Length in seconds, when it could be read. */
+  duration?: number;
+}
+/** A PDF shown one page at a time (which page is being looked at isn't saved). The bytes live in the file store under `fileId`. */
+export interface PdfBlock extends BlockBase {
+  type: 'pdf';
+  fileId: string;
+  name: string;
+  /** Number of pages, read when the file was added. */
+  pages?: number;
+}
+export type Block = TextBlock | ImageBlock | ChecklistBlock | CodeBlock | TableBlock | FrameBlock | StickyBlock | AudioBlock | PdfBlock;
 
 export type ArrowheadMode = 'none' | 'one' | 'both';
 export type LineStyle = 'solid' | 'dashed';
@@ -112,8 +131,8 @@ export interface PageDrawing {
   h: number;
 }
 
-/** A page is either a normal page or a template (a page kept for starting new pages from). */
-export type PageKind = 'page' | 'template';
+/** A page is a normal page, a template (kept for starting new pages from) or a card (a cover picture, a label and details, shown in the Cards gallery). */
+export type PageKind = 'page' | 'template' | 'card';
 
 export interface Page {
   id: string;
@@ -122,7 +141,7 @@ export interface Page {
   tags: string[];
   blocks: Block[];
   arrows: Arrow[];
-  /** Absent means 'page'. Templates live in the same table and sync like pages but never show in the library. */
+  /** Absent means 'page'. Templates and cards live in the same table and sync like pages but never show in the page library. */
   kind?: PageKind;
   /** For a daily page, its local calendar date as YYYY-MM-DD. At most one live page per date. */
   dailyDate?: string | null;
@@ -150,7 +169,10 @@ export interface Group {
 export type Filter =
   | { kind: 'all' }
   | { kind: 'ungrouped' }
+  | { kind: 'groups' }
   | { kind: 'group'; id: string }
+  | { kind: 'tags' }
+  | { kind: 'cards' }
   | { kind: 'tag'; tag: string }
   | { kind: 'trash' }
   | { kind: 'templates' };

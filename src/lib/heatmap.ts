@@ -1,8 +1,8 @@
 /** A GitHub-style contribution calendar, drawn as a small SVG picture (a column per week, a row per weekday, Monday first). */
 import { addDays, fromKey } from './daily';
 
-/** What a day looks like: not drawn, an empty outline (today, not done yet), missed, or a shade from 1 (a little) to 4 (everything). */
-export type Level = -1 | -2 | 0 | 1 | 2 | 3 | 4;
+/** What a day looks like: not drawn (-3, still to come), a faint empty square (-1, not tracked), an outline (-2, today, not done yet), missed, or a shade from 1 (a little) to 4 (everything). */
+export type Level = -3 | -1 | -2 | 0 | 1 | 2 | 3 | 4;
 
 /** Light to dark green, readable on both the light and the dark page. Missed days are a translucent grey. */
 export const SHADES = ['#9be9a8', '#40c463', '#30a14e', '#216e39'] as const;
@@ -19,24 +19,15 @@ const TOP = 20;
 const TITLE_H = 24;
 const FOOT = 26;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-/** Weeks drawn at most (a year) and at least (so a new list isn't a sliver). */
+/** Weeks drawn: always a full year, like GitHub, so a new list shows a whole calendar of empty squares to fill. */
 export const MAX_WEEKS = 53;
-const MIN_WEEKS = 12;
 
 /** The Monday on or before a date. */
 export const mondayOf = (key: string): string => addDays(key, -((fromKey(key).getDay() + 6) % 7));
 
-/** The first Monday and the number of weeks to draw, ending with the week of `today`. */
-export function heatWindow(trackStart: string, today: string): { start: string; weeks: number } {
-  const lastMonday = mondayOf(today);
-  const earliest = mondayOf(addDays(today, -(MAX_WEEKS - 1) * 7));
-  let start = mondayOf(trackStart) < earliest ? earliest : mondayOf(trackStart);
-  let weeks = Math.round((fromKey(lastMonday).getTime() - fromKey(start).getTime()) / (7 * 86400000)) + 1;
-  if (weeks < MIN_WEEKS) {
-    start = addDays(lastMonday, -(MIN_WEEKS - 1) * 7);
-    weeks = MIN_WEEKS;
-  }
-  return { start, weeks };
+/** The first Monday and the number of weeks to draw: a year ending with the week of `today`, whenever tracking started. */
+export function heatWindow(_trackStart: string, today: string): { start: string; weeks: number } {
+  return { start: mondayOf(addDays(today, -(MAX_WEEKS - 1) * 7)), weeks: MAX_WEEKS };
 }
 
 export interface HeatmapSpec {
@@ -73,10 +64,11 @@ export function heatmapSvg(spec: HeatmapSpec): { svg: string; width: number; hei
     lastMonth = month;
     for (let d = 0; d < 7; d++) {
       const level = spec.levelOf(addDays(monday, d));
-      if (level === -1) continue;
+      if (level === -3) continue;
       const x = LEFT + w * STEP;
       const y = top + d * STEP;
-      if (level === -2) out.push(`<rect x="${x + 0.5}" y="${y + 0.5}" width="${CELL - 1}" height="${CELL - 1}" rx="2" fill="none" stroke="${MISSED}" stroke-opacity="0.6"/>`);
+      if (level === -1) out.push(`<rect x="${x}" y="${y}" width="${CELL}" height="${CELL}" rx="2" fill="${MISSED}" fill-opacity="0.12"/>`);
+      else if (level === -2) out.push(`<rect x="${x + 0.5}" y="${y + 0.5}" width="${CELL - 1}" height="${CELL - 1}" rx="2" fill="none" stroke="${MISSED}" stroke-opacity="0.6"/>`);
       else if (level === 0) out.push(`<rect x="${x}" y="${y}" width="${CELL}" height="${CELL}" rx="2" fill="${MISSED}" fill-opacity="0.28"/>`);
       else out.push(`<rect x="${x}" y="${y}" width="${CELL}" height="${CELL}" rx="2" fill="${SHADES[level - 1]}"/>`);
     }

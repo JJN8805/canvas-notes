@@ -1,3 +1,5 @@
+import { openAddonPanel, useAddons } from '../../addons/store';
+import type { AddOnId } from '../../addons/types';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useEditorState, type Editor as TipTapEditor } from '@tiptap/react';
@@ -25,7 +27,10 @@ import {
   useNotes,
 } from '../../store/notes';
 import { addImages } from '../../store/images';
-import { canvasApi, resetCanvas, setSelectMode, setSelected, useCanvas } from '../../store/canvas';
+import { addAudio, addMediaFiles } from '../../store/media';
+import { canRecord, startRecording, type Recording } from '../../lib/recorder';
+import { formatDuration } from '../../lib/media';
+import { canvasApi, freshText, resetCanvas, setSelectMode, setSelected, useCanvas } from '../../store/canvas';
 import { ask, openMenu, toast } from '../../store/ui';
 import { EXPORT_ITEMS } from '../../export/export';
 import { groupTree } from '../../lib/groups';
@@ -81,9 +86,18 @@ export function Editor({ pageId }: { pageId: string }) {
         <AddToolbar pageId={pageId} />
         <FormatBar />
         <ZoomControls />
+        <AddonPanel key={pageId} pageId={pageId} />
       </div>
     </div>
   );
+}
+
+/** The open add-on's side panel, if any. It starts fresh on each page, so a chat is forgotten when you leave the page. */
+function AddonPanel({ pageId }: { pageId: string }) {
+  const loaded = useAddons((s) => s.loaded);
+  const open = useAddons((s) => s.panel);
+  const Panel = open ? loaded[open]?.Panel : undefined;
+  return Panel ? <Panel pageId={pageId} onClose={() => openAddonPanel(null)} /> : null;
 }
 
 /** On a daily page: the previous and next day, the date's calendar, and a way back to today. */
@@ -180,6 +194,8 @@ function EditorHeader({ pageId }: { pageId: string }) {
   const canRedo = history.canRedo(pageId);
   const titleRef = useRef<HTMLInputElement>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const addons = useAddons((s) => s.loaded);
+  const openAddon = useAddons((s) => s.panel);
 
   useEffect(() => {
     if (!title && !blockCount) titleRef.current?.focus();
@@ -270,6 +286,12 @@ function EditorHeader({ pageId }: { pageId: string }) {
         History
       </button>
       {showHistory && <HistoryPanel pageId={pageId} onClose={() => setShowHistory(false)} />}
+      {Object.entries(addons).filter(([, m]) => m.Panel).map(([id, m]) => (
+        <button key={id} className={'btn' + (openAddon === id ? ' on' : '')} aria-pressed={openAddon === id} onClick={() => openAddonPanel(openAddon === id ? null : (id as AddOnId))}>
+          <Icon name={m.panelIcon ?? 'puzzle'} size={16} />
+          {m.panelLabel ?? id}
+        </button>
+      ))}
       {!template && (
       <button
         className="btn ed-export"
@@ -368,6 +390,8 @@ const TOOLS: { type: BlockType; label: string }[] = [
   { type: 'text', label: 'Text' },
   { type: 'sticky', label: 'Sticky' },
   { type: 'image', label: 'Image' },
+  { type: 'audio', label: 'Audio' },
+  { type: 'pdf', label: 'PDF' },
   { type: 'checklist', label: 'List' },
   { type: 'code', label: 'Code' },
   { type: 'table', label: 'Table' },
@@ -376,6 +400,47 @@ const TOOLS: { type: BlockType; label: string }[] = [
 
 function AddToolbar({ pageId }: { pageId: string }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const audioRef = useRef<HTMLInputElement>(null);
+  const pdfRef = useRef<HTMLInputElement>(null);
+  const recorder = useRef<Recording | null>(null);
+  const [recSeconds, setRecSeconds] = useState<number | null>(null); // null = not recording
+  const place = (files: File[], size: [number, number] = [360, 260]) => {
+    const spot = canvasApi.current?.visibleSpot(...size) ?? { x: 120, y: 120 };
+    void addMediaFiles(pageId, files, spot).then((ids) => ids.length && setSelected(ids));
+  };
+
+  // Elapsed time while recording; leaving the page throws an unfinished recording away.
+  useEffect(() => {
+    if (recSeconds === null) return;
+    const t = setInterval(() => setRecSeconds((s) => (s === null ? s : s + 1)), 1000);
+    return () => clearInterval(t);
+  }, [recSeconds === null]);
+  useEffect(() => () => recorder.current?.cancel(), []);
+
+  const toggleRecord = async () => {
+    if (recorder.current) {
+      const rec = recorder.current;
+      recorder.current = null;
+      setRecSeconds(null);
+      try {
+        const blob = await rec.stop();
+        const spot = canvasApi.current?.visibleSpot(320, 88) ?? { x: 120, y: 120 };
+        const stamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const id = await addAudio(pageId, blob, spot, `Recording ${stamp}`);
+        if (id) setSelected([id]);
+      } catch (e) {
+        toast(e instanceof Error ? e.message : 'The recording failed.');
+      }
+      return;
+    }
+    try {
+      recorder.current = await startRecording();
+      setRecSeconds(0);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Recording isn’t available here.');
+    }
+  };
+
   const add = (type: BlockType) => {
     const api = canvasApi.current;
     if (!api) return;
@@ -383,10 +448,19 @@ function AddToolbar({ pageId }: { pageId: string }) {
       fileRef.current?.click();
       return;
     }
+    if (type === 'audio') {
+      audioRef.current?.click();
+      return;
+    }
+    if (type === 'pdf') {
+      pdfRef.current?.click();
+      return;
+    }
     const spot = type === 'frame' ? api.visibleSpot(360, 240) : type === 'sticky' ? api.visibleSpot(STICKY_SIZE, STICKY_SIZE) : api.visibleSpot(type === 'code' ? 432 : 300, 80);
     let id = '';
     flushSync(() => {
       id = addBlock(pageId, type, spot);
+      if (type === 'text') freshText.add(id);
       setSelected([id]);
     });
     if (type !== 'frame') api.focusBlock(id);
@@ -410,6 +484,17 @@ function AddToolbar({ pageId }: { pageId: string }) {
           {t.label}
         </button>
       ))}
+      {canRecord() && (
+        <button
+          className={'tool' + (recSeconds !== null ? ' on' : '')}
+          aria-pressed={recSeconds !== null}
+          title={recSeconds !== null ? 'Stop recording and add it to the page' : 'Record audio from the microphone'}
+          onClick={() => void toggleRecord()}
+        >
+          <Icon name="mic" />
+          {recSeconds !== null ? `Stop ${formatDuration(recSeconds)}` : 'Record'}
+        </button>
+      )}
       <button
         className={'tool' + (drawing ? ' on' : '')}
         aria-pressed={drawing}
@@ -432,6 +517,34 @@ function AddToolbar({ pageId }: { pageId: string }) {
           e.target.value = '';
           const spot = canvasApi.current?.visibleSpot(360, 260) ?? { x: 120, y: 120 };
           void addImages(pageId, files, spot).then((ids) => ids.length && setSelected(ids));
+        }}
+      />
+      <input
+        ref={audioRef}
+        type="file"
+        accept="audio/*,.mp3,.m4a,.aac,.ogg,.opus,.wav,.flac,.weba"
+        multiple
+        className="sr"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = '';
+          place(files, [320, 88]);
+        }}
+      />
+      <input
+        ref={pdfRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        multiple
+        className="sr"
+        tabIndex={-1}
+        aria-hidden="true"
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = '';
+          place(files, [360, 480]);
         }}
       />
     </div>
@@ -481,6 +594,7 @@ function FormatButtons({ editor }: { editor: TipTapEditor }) {
   const chain = () => editor.chain().focus();
   const b = (label: string, content: React.ReactNode, active: boolean, run: () => void, style?: React.CSSProperties) => (
     <button
+      key={label}
       aria-label={label}
       title={label}
       aria-pressed={active}

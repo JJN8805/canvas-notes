@@ -1,20 +1,23 @@
+import { blockActionsFor, useAddons } from '../../addons/store';
 import { memo, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
-import type { Block, FrameBlock, NoteColor, TableBlock, TextBlock } from '../../types';
+import { ResizeHandles } from './ResizeHandles';
+import type { NoteColor, TableBlock, TextBlock } from '../../types';
 import { deleteBlocks, duplicateBlocks, ensureAttendancePage, sendToBack, setColor, setTracking, updateBlock } from '../../store/notes';
 import { navigate } from '../../lib/route';
 import { canvasApi, setSelected } from '../../store/canvas';
 import { BLOCK_LABEL, isFixedHeight, newId } from '../../lib/util';
 import { Icon, type IconName } from '../ui/Icon';
-import { TextBody } from '../blocks/TextBody';
-import { ChecklistBody, CodeBody, ImageBody, TableBody } from '../blocks/Bodies';
+import { BlockBody } from '../blocks/BlockBody';
 import { colorOf, noteVar, tintVars } from '../../lib/colors';
 import { confirmDanger, openMenu, toast } from '../../store/ui';
 import { useCanvasCtx } from './context';
+import { pinBlock } from '../../widgets';
+import { useWidgetsAvailable } from '../../widgets/useWidgetsAvailable';
 
 const LABEL = BLOCK_LABEL;
 
 /** Every block type except frames, which render through FrameChrome instead. */
-type NonFrameBlock = Exclude<Block, FrameBlock>;
+import type { NonFrameBlock } from '../blocks/BlockBody';
 
 export const BlockFrame = memo(function BlockFrame({
   block,
@@ -56,7 +59,7 @@ export const BlockFrame = memo(function BlockFrame({
       <div className="bar-wrap">
         <BlockBar block={block} />
       </div>
-      <Body block={block} />
+      <BlockBody block={block} />
       {(['top', 'right', 'bottom', 'left'] as const).map((side) => (
         <div
           key={side}
@@ -66,31 +69,15 @@ export const BlockFrame = memo(function BlockFrame({
         />
       ))}
       {selected && single && (
-        <div className="resize" aria-hidden="true" title="Drag to resize" onPointerDown={(e) => ctx.startResize(e, block.id)} />
+        <ResizeHandles onStart={(e, dir) => ctx.startResize(e, block.id, dir)} />
       )}
     </div>
   );
 });
 
-function Body({ block }: { block: NonFrameBlock }) {
-  switch (block.type) {
-    case 'text':
-      return <TextBody block={block} />;
-    case 'checklist':
-      return <ChecklistBody block={block} />;
-    case 'code':
-      return <CodeBody block={block} />;
-    case 'table':
-      return <TableBody block={block} />;
-    case 'image':
-      return <ImageBody block={block} />;
-    case 'sticky':
-      return <TextBody block={block} />;
-  }
-}
-
 function BlockBar({ block }: { block: NonFrameBlock }) {
   const { pageId, startMove } = useCanvasCtx();
+  const canPin = useWidgetsAvailable();
   const btn = (label: string, content: ReactNode, run: () => void) => (
     <button
       key={label}
@@ -108,6 +95,7 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
   const icon = (n: IconName) => <Icon name={n} size={15} />;
 
   const extra: ReactNode[] = [];
+  useAddons((s) => s.loaded); // re-render when an add-on starts or stops, so its buttons appear
   if (block.type === 'text') {
     extra.push(
       btn(block.fill ? 'Remove background' : 'Add background', 'Fill', () =>
@@ -170,6 +158,7 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
         {LABEL[block.type]}
       </span>
       {extra}
+      {blockActionsFor(block, pageId).map((a) => btn(a.label, a.label, () => void a.run()))}
       <button
         aria-label="Color"
         title={block.type === 'image' ? 'Border color' : 'Color'}
@@ -183,6 +172,7 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
       >
         <span className="swatch-dot" style={{ background: block.tint ? noteVar(block.tint) : 'transparent' }} />
       </button>
+      {canPin && btn('Pin to desktop', icon('pin'), () => void pinBlock(pageId, block))}
       {btn('Send to back', icon('layer'), () => sendToBack(pageId, [block.id]))}
       {btn('Duplicate', icon('copy'), () => setSelected(duplicateBlocks(pageId, [block.id])))}
       {btn('Delete', icon('trash'), () => {

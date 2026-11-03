@@ -2,8 +2,12 @@ import { currentRoute, navigate } from '../../lib/route';
 import { dateKey } from '../../lib/daily';
 import { isDarkTheme } from '../../lib/settings';
 import { goToDay } from '../ui/Calendar';
+import { createCard } from '../../store/cards';
+import { pinPage } from '../../widgets';
+import { widgetsAvailableNow } from '../../widgets/host';
 import { createGroup, getStorage, redo, setFilter, undo, useNotes } from '../../store/notes';
 import { openNav } from '../../store/nav';
+import { addonCommands } from '../../addons/store';
 import { openTemplatePicker } from '../../store/picker';
 import { openSettings } from '../../store/settingsUi';
 import { setPalette, setTheme, usePrefs } from '../../store/prefs';
@@ -40,6 +44,43 @@ export function buildCommands(): Command[] {
       },
     },
     {
+      id: 'groups',
+      icon: 'folder',
+      title: 'Browse groups',
+      run: () => {
+        setFilter({ kind: 'groups' });
+        navigate({ name: 'library' });
+      },
+    },
+    {
+      id: 'tags',
+      icon: 'tag',
+      title: 'Browse tags',
+      run: () => {
+        setFilter({ kind: 'tags' });
+        navigate({ name: 'library' });
+      },
+    },
+    {
+      id: 'cards',
+      icon: 'card',
+      title: 'Browse cards',
+      run: () => {
+        setFilter({ kind: 'cards' });
+        navigate({ name: 'library' });
+      },
+    },
+    {
+      id: 'new-card',
+      icon: 'card',
+      title: 'New card',
+      run: () => {
+        setFilter({ kind: 'cards' });
+        navigate({ name: 'library' });
+        createCard();
+      },
+    },
+    {
       id: 'new-group',
       icon: 'folder',
       title: 'New group',
@@ -65,10 +106,11 @@ export function buildCommands(): Command[] {
   ];
   if (onPage && useNotes.getState().pages[onPage]) {
     list.push(
+      ...(widgetsAvailableNow() ? [{ id: 'pin-page', icon: 'pin' as const, title: 'Pin this page to the desktop', run: () => void pinPage(useNotes.getState().pages[onPage]) }] : []),
       { id: 'outline', icon: 'outline', title: 'Show outline and links of this page', run: () => openNav('outline') },
       { id: 'undo', icon: 'undo', title: 'Undo', keys: `${MOD_LABEL}+Z`, run: () => void undo(onPage) },
       { id: 'redo', icon: 'redo', title: 'Redo', keys: `${MOD_LABEL}+Shift+Z`, run: () => void redo(onPage) },
     );
   }
-  return list;
+  return [...list, ...addonCommands(onPage)];
 }

@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { ResizeHandles } from './ResizeHandles';
 import type { FrameBlock, GroupColor, NoteColor } from '../../types';
 import { colorOf, frameInk } from '../../lib/colors';
 import { deleteBlocks, duplicateBlocks, setColor, updateBlock } from '../../store/notes';
@@ -114,7 +115,7 @@ export function FrameChrome({
         </button>
       </div>
       {selected && single && !block.collapsed && (
-        <div className="resize" aria-hidden="true" title="Drag to resize" onPointerDown={(e) => startResize(e, block.id)} />
+        <ResizeHandles onStart={(e, dir) => startResize(e, block.id, dir)} />
       )}
     </div>
   );

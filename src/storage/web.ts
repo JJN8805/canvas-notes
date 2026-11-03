@@ -1,4 +1,6 @@
 import { openDB, type DBSchema } from 'idb';
+import { assertSafeImage } from './validate';
+import { fileIdsOf } from '../lib/files';
 import type { Group, GroupColor, Page } from '../types';
 import { cleanDate, kindOf } from '../lib/pages';
 import { isBlankPage, shouldSnapshot, snapshotsToDrop } from '../lib/history';
@@ -80,12 +82,12 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
   const mirror = (job: (g: GraphMirror) => Promise<void>) => {
     if (graph) job(graph).catch((e) => console.error('graph mirror failed', e));
   };
-  // The graph only knows real pages: templates stay out of search and links.
+  // The graph only knows real pages: templates and cards stay out of search and links.
   const livePages = async () => (await db.getAll('pages')).filter((p) => !p.deleted && kindOf(p) === 'page').map(pageRecord);
   const liveGroups = async () => (await db.getAll('groups')).filter((g) => !g.deleted).map(groupRecord);
   const mirrorPage = async (id: string) => {
     const r = await db.get('pages', id);
-    if (r && kindOf(r) !== 'template') mirror((g) => g.page(pageRecord(r)));
+    if (r && kindOf(r) === 'page') mirror((g) => g.page(pageRecord(r)));
   };
   const mirrorRemote = async (kind: 'page' | 'group', rec: PageRecord | GroupRecord) => {
     if (kind === 'page') return mirrorPage(rec.id);
@@ -225,6 +227,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
       return { id, mime: row.blob.type || 'image/png', data: bytesToBase64(new Uint8Array(await row.blob.arrayBuffer())) };
     },
     async writeImage(img) {
+      assertSafeImage(img);
       if (await db.get('images', img.id)) return;
       await db.put('images', { id: img.id, blob: new Blob([base64ToBytes(img.data)], { type: img.mime }), created: Date.now() });
     },
@@ -282,7 +285,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
 
     async listTrash() {
       return (await db.getAll('pages'))
-        .filter((p) => p.deleted && kindOf(p) === 'page' && !isBlankPage(p))
+        .filter((p) => p.deleted && kindOf(p) !== 'template' && !isBlankPage(p))
         .sort((a, b) => b.updated - a.updated)
         .map(rowToPage);
     },
@@ -347,7 +350,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
       // Trashed pages and saved versions can come back, so their images stay too.
       const used = new Set(usedByLivePages);
       const keep = [...(await db.getAll('pages')).filter((p) => p.deleted), ...(await db.getAll('snapshots'))];
-      for (const r of keep) for (const b of r.blocks) if (b.type === 'image') used.add(b.imageId);
+      for (const r of keep) for (const id of fileIdsOf(r.blocks)) used.add(id);
       const cutoff = Date.now() - 10 * 60 * 1000;
       let n = 0;
       for (const row of await db.getAll('images')) {

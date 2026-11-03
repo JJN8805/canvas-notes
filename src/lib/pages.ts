@@ -1,11 +1,18 @@
 import type { Block, Page, PageKind } from '../types';
 import { deepClone, newId } from './util';
 
-export const kindOf = (p: { kind?: PageKind | string | null }): PageKind => (p.kind === 'template' ? 'template' : 'page');
+export const kindOf = (p: { kind?: PageKind | string | null }): PageKind => (p.kind === 'template' || p.kind === 'card' ? p.kind : 'page');
 export const isTemplate = (p: { kind?: PageKind | string | null }) => kindOf(p) === 'template';
+export const isCard = (p: { kind?: PageKind | string | null }) => kindOf(p) === 'card';
 
-/** The pages that belong in the library, search, tag lists and counts: everything except templates. */
-export const libraryPages = (pages: Record<string, Page>): Page[] => Object.values(pages).filter((p) => !isTemplate(p));
+/** The pages that belong in the library, search, tag lists and counts: everything except templates and cards. */
+export const libraryPages = (pages: Record<string, Page>): Page[] => Object.values(pages).filter((p) => kindOf(p) === 'page');
+
+/** The cards, by label. */
+export const cardsOf = (pages: Record<string, Page>): Page[] =>
+  Object.values(pages)
+    .filter(isCard)
+    .sort((a, b) => (a.title || 'Untitled card').localeCompare(b.title || 'Untitled card'));
 
 /** The templates, by name. */
 export const templatesOf = (pages: Record<string, Page>): Page[] =>

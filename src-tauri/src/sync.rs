@@ -23,6 +23,8 @@ use chacha20poly1305::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::guard::check_peer_url;
+
 pub const PORT: u16 = 47821;
 const MAX_BODY: u64 = 256 * 1024 * 1024;
 const MAX_SKEW_MS: i64 = 5 * 60 * 1000;
@@ -113,6 +115,8 @@ fn client_request(url: &str, code: &str, body: String) -> Result<String, String>
     use std::io::Read;
     use std::time::Duration;
 
+    // The address comes from the UI; only a laptop on the local network is allowed.
+    check_peer_url(url)?;
     let key = derive_key(code);
     let sealed = seal(&key, body)?;
     let agent = ureq::AgentBuilder::new()
@@ -156,6 +160,7 @@ fn client_request(url: &str, code: &str, body: String) -> Result<String, String>
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod server {
     use super::*;
+    use crate::guard::{Limiter, Permit, ReplayGuard};
     use std::collections::HashMap;
     use std::io::Read;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -177,11 +182,27 @@ mod server {
         key: Arc<Mutex<[u8; 32]>>,
     }
 
-    #[derive(Default)]
+    /// Requests handled at the same time. A phone syncs one request at a time; this only limits floods.
+    const MAX_PARALLEL: usize = 4;
+
     pub struct SyncState {
         running: Mutex<Option<Running>>,
         pending: Arc<Mutex<HashMap<u64, mpsc::Sender<String>>>>,
         next_id: Arc<AtomicU64>,
+        replay: Arc<ReplayGuard>,
+        slots: Arc<Limiter>,
+    }
+
+    impl Default for SyncState {
+        fn default() -> Self {
+            Self {
+                running: Mutex::new(None),
+                pending: Arc::default(),
+                next_id: Arc::default(),
+                replay: Arc::new(ReplayGuard::new(MAX_SKEW_MS)),
+                slots: Limiter::new(MAX_PARALLEL),
+            }
+        }
     }
 
     #[derive(Serialize)]
@@ -216,11 +237,19 @@ mod server {
             let server = Arc::new(server);
             let key = Arc::new(Mutex::new(key));
             let (srv, k, pending, next_id) = (server.clone(), key.clone(), state.pending.clone(), state.next_id.clone());
+            let (replay, slots) = (state.replay.clone(), state.slots.clone());
             thread::spawn(move || {
                 for req in srv.incoming_requests() {
+                    let Some(permit) = Limiter::try_acquire(&slots) else {
+                        respond_text(req, 429, "Too many requests");
+                        continue;
+                    };
                     let key = *k.lock().unwrap();
-                    let (app, pending, next_id) = (app.clone(), pending.clone(), next_id.clone());
-                    thread::spawn(move || handle(&app, req, key, &pending, &next_id));
+                    let (app, pending, next_id, replay) = (app.clone(), pending.clone(), next_id.clone(), replay.clone());
+                    thread::spawn(move || {
+                        let _permit: Permit = permit;
+                        handle(&app, req, key, &pending, &next_id, &replay)
+                    });
                 }
             });
             *running = Some(Running { server, key });
@@ -251,6 +280,7 @@ mod server {
         key: [u8; 32],
         pending: &Mutex<HashMap<u64, mpsc::Sender<String>>>,
         next_id: &AtomicU64,
+        replay: &ReplayGuard,
     ) {
         if req.method() != &tiny_http::Method::Post || req.url() != "/v1" {
             return respond_text(req, 404, "Canvas Notes sync");
@@ -264,6 +294,10 @@ mod server {
             Err(OpenError::Stale) => return respond_text(req, 408, "Clock difference too large"),
             Err(OpenError::BadKey) => return respond_text(req, 401, "Wrong pairing code"),
         };
+        // Authenticated, so the nonce is genuine: a repeat is a captured message being sent again.
+        if !replay.first_time(&buf[..12], now_ms()) {
+            return respond_text(req, 409, "Repeated request");
+        }
 
         let id = next_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = mpsc::channel();

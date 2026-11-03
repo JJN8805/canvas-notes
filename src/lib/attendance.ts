@@ -114,6 +114,7 @@ export function dayShare(b: ChecklistBlock, key: string, today: string, only?: s
 
 /** The look of a day in the heatmap. Today shows as an empty outline until something is done (it isn't over yet). */
 export function dayLevel(b: ChecklistBlock, key: string, today: string, only?: string): Level {
+  if (key > today) return -3;
   const share = dayShare(b, key, today, only);
   if (share === null) return -1;
   if (share === 0) return key === today ? -2 : 0;
@@ -180,7 +181,7 @@ export function attendanceBlocks(source: ChecklistBlock, link: { pageId: string;
   let x = LEFT;
   let rowH = 0;
   for (const it of written(source)) {
-    const probe = heatmapSvg({ ...win, title: it.text.trim(), levelOf: () => -1, legend: 'single' });
+    const probe = heatmapSvg({ ...win, title: it.text.trim(), levelOf: () => -3, legend: 'single' });
     const w = Math.round(probe.width * HEAT_SCALE);
     if (x > LEFT && x + w > RIGHT_LIMIT) {
       x = LEFT;

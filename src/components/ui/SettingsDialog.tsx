@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, type IconName } from './Icon';
 import { chooseDailyTemplate, getStorage, refreshFromDisk, useNotes } from '../../store/notes';
 import {
@@ -16,16 +16,20 @@ import { closeSettings, useSettingsUi } from '../../store/settingsUi';
 import { resolveDailyTemplate, templatesOf } from '../../lib/pages';
 import { MAX_NAME, PROFILE_COLORS, TRASH_CHOICES, type Theme } from '../../lib/settings';
 import { buildBackup, parseBackup, restoreBackup } from '../../lib/backup';
+import { decryptBackupText, encryptBackupText, isEncryptedBackup } from '../../lib/backupCrypto';
 import { saveBytes } from '../../export/export';
 import { openSyncPanel, useSync } from '../../sync/controller';
-import { confirmDanger, toast } from '../../store/ui';
+import { ask, confirmDanger, toast } from '../../store/ui';
 import { Avatar } from './Avatar';
+import { Section, Switch } from './SettingsParts';
+import { DesktopTab } from './SettingsDesktop';
+import { AddonsTab } from './SettingsAddons';
 import { CUSTOM_PALETTE, DEFAULT_CUSTOM, DEFAULT_PALETTE, isReadable, PRESETS, type ThemeColors } from '../../lib/themes';
 import { version } from '../../../package.json';
 
-const TABS = ['Profile', 'Appearance', 'Editor', 'Sync', 'Data', 'About'] as const;
+const TABS = ['Profile', 'Appearance', 'Editor', 'Sync', 'Desktop', 'Add-ons', 'Data', 'About'] as const;
 type Tab = (typeof TABS)[number];
-const TAB_ICONS: Record<Tab, IconName> = { Profile: 'user', Appearance: 'palette', Editor: 'edit', Sync: 'sync', Data: 'database', About: 'info' };
+const TAB_ICONS: Record<Tab, IconName> = { Profile: 'user', Appearance: 'palette', Editor: 'edit', Sync: 'sync', Desktop: 'monitor', 'Add-ons': 'puzzle', Data: 'database', About: 'info' };
 
 export function SettingsDialog() {
   const open = useSettingsUi((s) => s.open);
@@ -71,6 +75,8 @@ function Dialog() {
           {tab === 'Appearance' && <AppearanceTab />}
           {tab === 'Editor' && <EditorTab />}
           {tab === 'Sync' && <SyncTab />}
+          {tab === 'Desktop' && <DesktopTab />}
+          {tab === 'Add-ons' && <AddonsTab />}
           {tab === 'Data' && <DataTab />}
           {tab === 'About' && <AboutTab />}
         </div>
@@ -81,24 +87,6 @@ function Dialog() {
         </div>
       </div>
     </div>
-  );
-}
-
-function Switch({ label, on, onChange }: { label: string; on: boolean; onChange: (on: boolean) => void }) {
-  return (
-    <button className="switch-row" role="switch" aria-checked={on} onClick={() => onChange(!on)}>
-      <span>{label}</span>
-      <span className="switch" aria-hidden="true" />
-    </button>
-  );
-}
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section>
-      <h3>{title}</h3>
-      {children}
-    </section>
   );
 }
 
@@ -336,13 +324,33 @@ function DataTab() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
 
-  async function exportAll() {
+  async function exportAll(encrypted: boolean) {
     setBusy(true);
     try {
+      let passphrase = '';
+      if (encrypted) {
+        const first = await ask({
+          title: 'Passphrase for this backup',
+          text: 'You will need it to open the backup. It is not saved anywhere, and nobody can recover it for you.',
+          placeholder: 'Passphrase',
+          okLabel: 'Next',
+          secret: true,
+        });
+        if (!first) return;
+        const again = await ask({ title: 'Type the passphrase again', placeholder: 'Passphrase', okLabel: 'Encrypt and save', secret: true });
+        if (again === null) return;
+        if (again !== first) {
+          toast('The two passphrases didn’t match. Nothing was saved.');
+          return;
+        }
+        passphrase = first;
+      }
       const backup = await buildBackup(getStorage());
-      const bytes = new TextEncoder().encode(JSON.stringify(backup)) as Uint8Array<ArrayBuffer>;
+      const json = JSON.stringify(backup);
+      const text = encrypted ? await encryptBackupText(json, passphrase) : json;
+      const bytes = new TextEncoder().encode(text) as Uint8Array<ArrayBuffer>;
       const day = new Date().toISOString().slice(0, 10);
-      const saved = await saveBytes(`canvas-notes-backup-${day}`, 'json', bytes);
+      const saved = await saveBytes(`canvas-notes-backup-${day}${encrypted ? '-encrypted' : ''}`, 'json', bytes);
       if (saved) toast(`Saved ${backup.pages.length} page${backup.pages.length === 1 ? '' : 's'} to ${saved}`);
     } catch (e) {
       toast(`The backup couldn’t be saved: ${e instanceof Error ? e.message : e}`);
@@ -354,7 +362,13 @@ function DataTab() {
   async function importFile(file: File) {
     setBusy(true);
     try {
-      const backup = parseBackup(await file.text());
+      let text = await file.text();
+      if (isEncryptedBackup(text)) {
+        const passphrase = await ask({ title: 'This backup is encrypted', text: 'Enter the passphrase you chose when you made it.', placeholder: 'Passphrase', okLabel: 'Open', secret: true });
+        if (passphrase === null) return;
+        text = await decryptBackupText(text, passphrase);
+      }
+      const backup = parseBackup(text);
       const ok = await confirmDanger(
         'Restore from backup?',
         `This adds ${backup.pages.length} page${backup.pages.length === 1 ? '' : 's'} from the backup. Pages you already have are left as they are.`,
@@ -379,10 +393,13 @@ function DataTab() {
   return (
     <>
       <Section title="Backup">
-        <p>Save every page, group and picture to one file you keep wherever you like, and add them back later or on another computer.</p>
+        <p>Save every page, group and picture to one file you keep wherever you like, and add them back later or on another computer. An encrypted backup is locked with a passphrase you choose; without it the file can’t be opened by anyone. The passphrase is not stored, so keep it safe. (Your notes on this computer are not encrypted by the app; use your system’s disk encryption for that.)</p>
         <div className="row start">
-          <button className="btn" disabled={busy} onClick={() => void exportAll()}>
+          <button className="btn" disabled={busy} onClick={() => void exportAll(false)}>
             Back up all notes…
+          </button>
+          <button className="btn" disabled={busy} title="Locks the file with a passphrase you choose" onClick={() => void exportAll(true)}>
+            Encrypted backup…
           </button>
           <button className="btn" disabled={busy} onClick={() => fileRef.current?.click()}>
             Restore from backup…

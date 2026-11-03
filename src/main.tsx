@@ -5,9 +5,13 @@ import '@fontsource-variable/onest';
 import '@fontsource/jetbrains-mono/400.css';
 import './styles.css';
 import { App } from './App';
+import { WidgetApp } from './components/widget/WidgetApp';
+import { parseRoute } from './lib/routeParse';
+
+// A desktop widget is the same app in a small window; its address says which box or page it shows.
+const route = parseRoute(location.search, location.hash);
+if (route.name === 'widget') document.documentElement.classList.add('is-widget');
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
+  <StrictMode>{route.name === 'widget' ? <WidgetApp pageId={route.pageId} blockId={route.blockId} /> : <App />}</StrictMode>,
 );

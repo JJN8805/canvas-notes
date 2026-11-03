@@ -69,6 +69,19 @@ Zustand stores under `src/store/`: `notes.ts` (pages/groups/tags — the biggest
 
 `src/export/export.tsx` handles all three export formats: Markdown (+ zip with images via `fflate`), PDF (a small hand-rolled writer producing a pixel-exact rasterization of the canvas, not selectable text), and PNG (via `html-to-image`). Tests assert against real PDF/Markdown output, not snapshots of internal calls.
 
+### Add-ons (`src/addons/`)
+
+Optional features, each a module in `src/addons/<id>/` listed in `addons/registry.ts` and loaded with a dynamic `import()` only
+while switched on in Settings → Add-ons (`addons/store.ts`; the switch is saved as the `addons.enabled` setting). An add-on is an
+`AddOnModule` (`addons/types.ts`): a `Settings` component, optionally a side `Panel`, `blockActions` (buttons on a box's hover bar)
+and palette `commands`. The core app only ever asks the store what the running add-ons contribute, so switching one off removes it.
+- `ai`: chat panel. Providers, request building and stream parsing are pure code in `src/lib/llm/` (tested without a network);
+  `lib/llm/transport.ts` sends through the Rust proxy `src-tauri/src/ai.rs` (adds the API key, refuses any other destination,
+  streams lines back) and falls back to `fetch` in the browser preview. The chat lives in memory only (`addons/ai/chat.ts`).
+  `needsConfirmation` (chat.ts) is the rule for when the user must see what is about to leave their computer.
+- `ocr`: reads text in pictures with a local Ollama vision model and stores it in `ImageBlock.ocr`, which search and sync already carry.
+A new add-on needs: an entry in the registry, a module under `src/addons/`, and tests; nothing else in the app should import it.
+
 ### Snap guides
 
 `src/lib/guides.ts` contains the pure math for edge/center snapping while dragging/resizing; it's unit-tested in isolation from the canvas component.
@@ -93,8 +106,32 @@ Architecture:
 - Anything stored must sync (`src/sync/engine.ts`) and stay readable by the previous app version.
 
 Principles:
-- Notes are private and local. No network requests unless the user triggers them, and never send
-  note content anywhere except local Ollama.
+- Notes are private and local. No network requests unless the user triggers them. Note content goes only to Ollama
+  on this computer, with one deliberate exception: the optional **AI assistant add-on** may send what the user chooses
+  to share to Claude or OpenAI (or to an Ollama on another computer), and only when the add-on is switched on, that
+  provider is chosen, and the user has clicked Send on a preview of exactly what leaves (they can turn the preview off
+  in Settings → Add-ons). The **OCR add-on** never sends anything but local Ollama. API keys live only in the Rust
+  side's `ai-keys.json` (owner-only), never in SQLite, sync, backups, exports or page JavaScript. Chats are never saved.
 - The desktop app runs in WebKitGTK. Test visual and export features in `npm run desktop`, not
   only in a browser.
 - Update README.md when adding user-facing features.
+
+
+## Visual verification (do this after every change that touches the UI)
+
+Type checks and tests do not show layout, focus or interaction bugs. Before saying a UI change is done, look at it:
+
+1. `npm run dev` (leave it running), then `npm run visual`. It drives the real app in headless Chromium with sample data,
+   writes a screenshot of every main screen to `.visual/`, and fails on any console error, failed request or exception.
+2. **Read the screenshots** (the Read tool shows images) for the screens you changed and the ones next to them. Look for
+   overlap, clipping, missing controls, wrong counts and empty states, not just errors.
+3. Add the new screen or flow to `scripts/visual-check.mjs` so it is checked from now on.
+4. Exercise the interaction, not just the layout: type, click, press Space and Enter, open and close dialogs. (A card
+   detail that stole focus on every keystroke looked fine in a still screenshot and passed every test.)
+5. The browser preview cannot show the Tauri shell: desktop widgets (always-on-bottom, tray, start at login, dragging),
+   file save dialogs and exports in WebKitGTK. For changes there, build (`cd src-tauri && cargo build`) and run
+   `scripts/desktop-run.sh` (throwaway data folder, never your real notes; add `--background` for the start-at-login
+   path). This machine is a Wayland session with no screenshot tool for X windows, so inspect the windows with
+   `xdotool search --name "Canvas Notes"`, `xdotool getwindowgeometry`, `xwininfo` and `xprop`, and have the page write
+   measurements (`innerWidth`, `devicePixelRatio`, element boxes) to a file through the fs plugin while debugging
+   (remove that code afterwards). Say clearly which parts were not seen.

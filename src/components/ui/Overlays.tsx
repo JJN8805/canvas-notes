@@ -184,6 +184,8 @@ function DialogHost() {
           <input
             ref={inputRef}
             className="field"
+            type={dialog.secret ? 'password' : 'text'}
+            autoComplete={dialog.secret ? 'off' : undefined}
             value={value}
             placeholder={dialog.placeholder}
             maxLength={200}
