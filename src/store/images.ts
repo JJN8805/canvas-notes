@@ -21,7 +21,7 @@ function loadImage(blob: Blob): Promise<HTMLImageElement> {
 }
 
 /** Keeps the original file unless it is huge or in a format the app can’t store. */
-async function prepare(file: Blob): Promise<{ blob: Blob; width: number; height: number }> {
+export async function prepareImage(file: Blob): Promise<{ blob: Blob; width: number; height: number }> {
   const img = await loadImage(file);
   const width = img.naturalWidth || 400;
   const height = img.naturalHeight || 300;
@@ -54,7 +54,7 @@ export async function addImages(pageId: string, files: File[], at: { x: number; 
   for (let i = 0; i < images.length; i++) {
     const f = images[i];
     try {
-      const { blob, width, height } = await prepare(f);
+      const { blob, width, height } = await prepareImage(f);
       const imageId = await getStorage().putImage(blob);
       const s = Math.min(1, 440 / width, 360 / height);
       ids.push(

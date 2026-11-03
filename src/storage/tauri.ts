@@ -6,6 +6,8 @@ import { cleanColor } from '../lib/colors';
 import { cleanDate, kindOf } from '../lib/pages';
 import { shouldSnapshot, snapshotsToDrop } from '../lib/history';
 import { newId } from '../lib/util';
+import { assertSafeImage, FILE_EXT } from './validate';
+import { fileIdsOf } from '../lib/files';
 import { pluginDb } from '../graph/db';
 import { GRAPH_SCHEMA } from '../graph/schema';
 import { openGraph } from '../graph/open';
@@ -190,15 +192,7 @@ function rowToGroupRecord(r: GroupRow): GroupRecord {
   return { id: r.id, etag: r.etag, deleted: !!r.deleted, name: r.name, color: r.color as GroupColor, position: r.position, parentId: r.parent_id ?? null };
 }
 
-const EXT: Record<string, string> = {
-  'image/png': 'png',
-  'image/jpeg': 'jpg',
-  'image/gif': 'gif',
-  'image/webp': 'webp',
-  'image/svg+xml': 'svg',
-  'image/avif': 'avif',
-  'image/bmp': 'bmp',
-};
+const EXT = FILE_EXT;
 
 /** A consistent copy of the whole database (VACUUM INTO also folds in the WAL file). */
 async function backupDatabase(db: Database) {
@@ -296,7 +290,7 @@ export async function createTauriStorage(): Promise<NotesStorage> {
     try {
       for (const r of await selectIn<PageRow>((ph) => `SELECT * FROM pages WHERE id IN (${ph})`, ids)) {
         const rec = rowToPageRecord(r);
-        if (rec.kind === 'template') continue; // templates stay out of the graph, so out of search and links
+        if (rec.kind !== 'page') continue; // templates and cards stay out of the graph, so out of search and links
         mirror((g) => g.page(rec));
       }
     } catch (e) {
@@ -448,6 +442,8 @@ export async function createTauriStorage(): Promise<NotesStorage> {
     },
 
     async writeImage(img) {
+      // The id becomes a file name and comes from another device or a backup file: never trust it.
+      assertSafeImage(img);
       const exists = await db.select<{ id: string }[]>('SELECT id FROM images WHERE id = $1', [img.id]);
       if (exists.length) return;
       const file = `${img.id}.${EXT[img.mime] ?? 'bin'}`;
@@ -532,7 +528,7 @@ export async function createTauriStorage(): Promise<NotesStorage> {
 
     async listTrash() {
       const rows = await db.select<PageRow[]>(
-        `SELECT * FROM pages WHERE deleted = 1 AND kind = 'page' AND NOT (title = '' AND blocks = '[]' AND arrows = '[]' AND tags = '[]') ORDER BY updated DESC`,
+        `SELECT * FROM pages WHERE deleted = 1 AND kind IN ('page', 'card') AND NOT (title = '' AND blocks = '[]' AND arrows = '[]' AND tags = '[]') ORDER BY updated DESC`,
       );
       return rows.map(rowToPage);
     },
@@ -621,7 +617,7 @@ export async function createTauriStorage(): Promise<NotesStorage> {
         ...(await db.select<{ blocks: string }[]>(`SELECT blocks FROM pages WHERE deleted = 1 AND blocks <> '[]'`)),
         ...(await db.select<{ blocks: string }[]>('SELECT blocks FROM page_snapshots')),
       ];
-      for (const r of keep) for (const b of parseJson<Block[]>(r.blocks, [])) if (b.type === 'image') used.add(b.imageId);
+      for (const r of keep) for (const id of fileIdsOf(parseJson<Block[]>(r.blocks, []))) used.add(id);
       const rows = await db.select<ImageRow[]>('SELECT * FROM images');
       const cutoff = Date.now() - 10 * 60 * 1000;
       let n = 0;

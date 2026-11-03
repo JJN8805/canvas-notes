@@ -26,6 +26,9 @@ export const useCanvas = create<CanvasState>(() => ({
   selectMode: false,
 }));
 
+/** Text boxes just made by double-click or the Text tool: dropped again if they are left empty when deselected. */
+export const freshText = new Set<string>();
+
 export function setSelected(ids: string[]) {
   const cur = useCanvas.getState();
   if (cur.selected.length === ids.length && cur.selected.every((id, i) => id === ids[i]) && !cur.selectedArrow) return;

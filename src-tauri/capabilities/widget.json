@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "widget",
+  "description": "What a desktop widget window may do: read and write the app's database and its own folder, and be dragged. It cannot open dialogs, change start-at-login or create windows.",
+  "windows": [
+    "w-*"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "sql:default",
+    "sql:allow-execute",
+    "fs:allow-appconfig-read-recursive",
+    "fs:allow-appconfig-write-recursive"
+  ]
+}

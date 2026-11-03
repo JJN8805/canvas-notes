@@ -5,11 +5,13 @@ import { fuzzyFilter } from '../../lib/fuzzy';
 import { libraryPages } from '../../lib/pages';
 import { navigate } from '../../lib/route';
 import { buildCommands } from './commands';
+import { Icon, type IconName } from '../ui/Icon';
 
 interface Row {
   key: string;
   label: string;
   hint?: string;
+  icon?: IconName;
   run: () => void;
 }
 
@@ -28,12 +30,12 @@ function PaletteBody({ mode }: { mode: 'commands' | 'switcher' }) {
 
   const rows = useMemo<Row[]>(() => {
     if (mode === 'commands') {
-      const all = buildCommands().map((c) => ({ key: c.id, label: c.title, hint: c.keys, run: c.run }));
+      const all = buildCommands().map((c) => ({ key: c.id, label: c.title, hint: c.keys, icon: c.icon, run: c.run }));
       return fuzzyFilter(all, query, (r) => r.label);
     }
     const all = libraryPages(pages)
       .sort((a, b) => b.updated - a.updated)
-      .map((p) => ({ key: p.id, label: p.title || 'Untitled', hint: p.tags.map((t) => '#' + t).join(' '), run: () => navigate({ name: 'page', id: p.id }) }));
+      .map((p) => ({ key: p.id, label: p.title || 'Untitled', hint: p.tags.map((t) => '#' + t).join(' '), icon: 'pages' as IconName, run: () => navigate({ name: 'page', id: p.id }) }));
     return fuzzyFilter(all, query, (r) => r.label).slice(0, 50);
   }, [mode, pages, query]);
 
@@ -81,6 +83,7 @@ function PaletteBody({ mode }: { mode: 'commands' | 'switcher' }) {
         <ul className="palette-list" ref={listRef} role="listbox">
           {rows.map((r, i) => (
             <li key={r.key} role="option" aria-selected={i === sel} className={'palette-row' + (i === sel ? ' on' : '')} onMouseMove={() => setSel(i)} onClick={() => choose(r)}>
+              {r.icon && <span className="palette-ico"><Icon name={r.icon} size={16} /></span>}
               <span className="palette-label">{r.label}</span>
               {r.hint && <span className="palette-hint">{r.hint}</span>}
             </li>

@@ -158,9 +158,11 @@ export class GraphMirror {
         ids.set(b.id, other && other.page_id !== p.id ? `${b.id}${SEP}${p.id}` : b.id);
       }
       const { id, type, x, y, w, h, z, ...content } = b;
+      // The graph's block table predates audio and PDF boxes; both are files there ('file'), the real kind kept in the content.
+      const isFile = type === 'audio' || type === 'pdf';
       await repo.putBlock({
-        id: ids.get(id)!, pageId: p.id, type, x, y, w, h, z: Math.round(z ?? 0),
-        content, plainText: blockPlainText(b),
+        id: ids.get(id)!, pageId: p.id, type: isFile ? 'file' : type, x, y, w, h, z: Math.round(z ?? 0),
+        content: isFile ? { ...content, kind: type } : content, plainText: blockPlainText(b),
       });
     }
     const liveBlocks = new Set(p.blocks.map((b) => b.id));

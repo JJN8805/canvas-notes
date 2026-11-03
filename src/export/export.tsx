@@ -2,7 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import TurndownService from 'turndown';
 import { zipSync } from 'fflate';
-import type { Arrow, Block, ChecklistBlock, CodeBlock, ImageBlock, Page, PageDrawing, StickyBlock, TableBlock, TextBlock } from '../types';
+import type { Arrow, AudioBlock, Block, ChecklistBlock, CodeBlock, ImageBlock, Page, PageDrawing, PdfBlock, StickyBlock, TableBlock, TextBlock } from '../types';
 import { tintVars } from '../lib/colors';
 import { liveDrawing, svgSrc, unionBounds } from '../lib/drawing';
 import { BLOCK_LABEL, blockHeight, blockText, isFixedHeight } from '../lib/util';
@@ -288,11 +288,11 @@ export function readingOrder(blocks: Block[]): Block[] {
  *  maps to heading depth) followed by its own contents, recursively; other blocks go
  *  through the normal per-type rendering. `all` is the full (visible) block list, used
  *  to look up each frame's direct children. */
-function blocksToMarkdown(blocks: Block[], all: Block[], imagePath: (b: ImageBlock) => string, headingDepth: number, out: string[]) {
+function blocksToMarkdown(blocks: Block[], all: Block[], imagePath: (b: ImageBlock) => string, headingDepth: number, out: string[], filePath: (b: AudioBlock | PdfBlock) => string = () => '') {
   for (const b of readingOrder(blocks)) {
     if (b.type === 'frame') {
       out.push(`${'#'.repeat(Math.min(headingDepth, 6))} ${b.title || 'Frame'}`);
-      blocksToMarkdown(all.filter((x) => x.frameId === b.id), all, imagePath, headingDepth + 1, out);
+      blocksToMarkdown(all.filter((x) => x.frameId === b.id), all, imagePath, headingDepth + 1, out, filePath);
       continue;
     }
     switch (b.type) {
@@ -332,17 +332,25 @@ function blocksToMarkdown(blocks: Block[], all: Block[], imagePath: (b: ImageBlo
         out.push(`![${(img.alt ?? '').replace(/[[\]]/g, '')}](${imagePath(img)})`);
         break;
       }
+      case 'audio':
+      case 'pdf': {
+        // A link to the file when the export carries it (the zip), otherwise just its name.
+        const path = filePath(b);
+        const name = b.name.replace(/[[\]]/g, '');
+        out.push(`${b.type === 'audio' ? '🔊' : '📄'} ${path ? `[${name}](${path})` : name}`);
+        break;
+      }
     }
   }
 }
 
-export function pageToMarkdown(page: Page, imagePath: (b: ImageBlock) => string, drawingPath = ''): string {
+export function pageToMarkdown(page: Page, imagePath: (b: ImageBlock) => string, drawingPath = '', filePath: (b: AudioBlock | PdfBlock) => string = () => ''): string {
   const out: string[] = [`# ${page.title || 'Untitled'}`];
   if (page.tags.length) out.push(page.tags.map((t) => `#${t}`).join(' '));
   // Boxes hidden behind a collapsed frame (and their arrows, below) are left out of exports too.
   const hidden = hiddenBlockIds(page.blocks);
   const visible = page.blocks.filter((b) => !hidden.has(b.id));
-  blocksToMarkdown(visible.filter((b) => !b.frameId), visible, imagePath, 2, out);
+  blocksToMarkdown(visible.filter((b) => !b.frameId), visible, imagePath, 2, out, filePath);
   if (drawingPath && liveDrawing(page.drawing)) out.push(`![Drawing](${drawingPath})`);
   const visibleIds = new Set(visible.map((b) => b.id));
   const arrows = page.arrows.filter((a) => visibleIds.has(a.from) && visibleIds.has(a.to));
@@ -370,13 +378,16 @@ export function pageToMarkdown(page: Page, imagePath: (b: ImageBlock) => string,
 
 const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/svg+xml': 'svg', 'image/avif': 'avif' };
 
-/** Markdown file, or a zip with the Markdown and an images/ folder when the page has pictures. */
+const FILE_EXTS: Record<string, string> = { ...EXT, 'application/pdf': 'pdf', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/aac': 'aac', 'audio/ogg': 'ogg', 'audio/opus': 'opus', 'audio/wav': 'wav', 'audio/webm': 'weba', 'audio/flac': 'flac' };
+
+/** Markdown file, or a zip with the Markdown, an images/ folder and a files/ folder (audio, PDFs) when the page has any. */
 async function markdownExport(page: Page): Promise<{ bytes: Uint8Array<ArrayBuffer>; ext: 'md' | 'zip' }> {
   const hidden = hiddenBlockIds(page.blocks);
   const imageBlocks = page.blocks.filter((b): b is ImageBlock => b.type === 'image' && !hidden.has(b.id));
+  const fileBlocks = page.blocks.filter((b): b is AudioBlock | PdfBlock => (b.type === 'audio' || b.type === 'pdf') && !hidden.has(b.id));
   const ink = liveDrawing(page.drawing);
   const enc = new TextEncoder();
-  if (!imageBlocks.length && !ink) return { bytes: toArrayBufferBytes(enc.encode(pageToMarkdown(page, () => ''))), ext: 'md' };
+  if (!imageBlocks.length && !fileBlocks.length && !ink) return { bytes: toArrayBufferBytes(enc.encode(pageToMarkdown(page, () => ''))), ext: 'md' };
 
   const files: Record<string, Uint8Array> = {};
   const names = new Map<string, string>();
@@ -388,11 +399,20 @@ async function markdownExport(page: Page): Promise<{ bytes: Uint8Array<ArrayBuff
     names.set(b.imageId, name);
     files[name] = base64ToBytes(img.data);
   }
+  const fileNames = new Map<string, string>();
+  for (const b of fileBlocks) {
+    if (fileNames.has(b.fileId)) continue;
+    const f = await getStorage().sync.readImage(b.fileId);
+    if (!f) continue;
+    const name = `files/${b.fileId}.${FILE_EXTS[f.mime] ?? 'bin'}`;
+    fileNames.set(b.fileId, name);
+    files[name] = base64ToBytes(f.data);
+  }
   // The drawing goes in as an SVG file next to the pictures.
   if (ink) files['images/drawing.svg'] = enc.encode(ink.preview);
   const base = fileBase(page);
   files[`${base}.md`] = enc.encode(
-    pageToMarkdown(page, (b) => names.get(b.imageId) ?? '', ink ? 'images/drawing.svg' : ''),
+    pageToMarkdown(page, (b) => names.get(b.imageId) ?? '', ink ? 'images/drawing.svg' : '', (b) => fileNames.get(b.fileId) ?? ''),
   );
   return { bytes: toArrayBufferBytes(zipSync(files, { level: 6 })), ext: 'zip' };
 }

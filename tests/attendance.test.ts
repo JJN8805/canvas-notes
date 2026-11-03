@@ -103,6 +103,7 @@ describe('attendance numbers', () => {
     const b = make();
     const lvl = (d: string, only?: string) => dayLevel(b, d, '2026-10-24', only);
     expect(lvl('2026-10-19')).toBe(-1);
+    expect(lvl('2026-10-25')).toBe(-3);
     expect(lvl('2026-10-20')).toBe(4);
     expect(lvl('2026-10-21')).toBe(2);
     expect(lvl('2026-10-22')).toBe(0);
@@ -303,14 +304,14 @@ describe('the attendance page layout', () => {
     for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) expect(overlaps(blocks[i], blocks[j]), `${blocks[i].id} / ${blocks[j].id}`).toBe(false);
   });
 
-  it('puts the summary beside the whole-list heatmap while it is narrow, under it once it is wide', () => {
+  it('puts the summary under the whole-list heatmap', () => {
     const at = (blocks: Block[], id: string) => blocks.find((x) => x.id === id)!;
-    const short = lay(4);
-    expect(at(short, 'att-summary').y).toBeLessThan(at(short, 'att-hm-all').y + at(short, 'att-hm-all').h);
-    expect(at(short, 'att-summary').x).toBeGreaterThan(at(short, 'att-hm-all').x + at(short, 'att-hm-all').w);
-    const long = lay(60);
-    expect(at(long, 'att-summary').x).toBe(at(long, 'att-hm-all').x);
-    expect(at(long, 'att-summary').y).toBeGreaterThan(at(long, 'att-hm-all').y + at(long, 'att-hm-all').h);
+    // The calendar is always a full year wide, so the summary always sits under it.
+    for (const weeks of [4, 60]) {
+      const blocks = lay(weeks);
+      expect(at(blocks, 'att-summary').x).toBe(at(blocks, 'att-hm-all').x);
+      expect(at(blocks, 'att-summary').y).toBeGreaterThan(at(blocks, 'att-hm-all').y + at(blocks, 'att-hm-all').h);
+    }
   });
 
   it('wraps the per-item heatmaps onto a new row instead of running off the page', () => {
@@ -323,18 +324,14 @@ describe('the attendance page layout', () => {
 });
 
 describe('the heatmap drawing', () => {
-  it('spans a year at most, ends with this week, and is never a sliver', () => {
+  it('always spans a full year, ending with this week', () => {
     expect(mondayOf('2026-10-24')).toBe('2026-10-19'); // a Saturday
     expect(mondayOf('2026-10-19')).toBe('2026-10-19');
-    const fresh = heatWindow('2026-10-24', '2026-10-24');
-    expect(fresh.weeks).toBe(12);
-    expect(addEnd(fresh)).toBe('2026-10-19');
-    const old = heatWindow('2020-01-01', '2026-10-24');
-    expect(old.weeks).toBe(MAX_WEEKS);
-    expect(addEnd(old)).toBe('2026-10-19');
-    const some = heatWindow('2026-06-01', '2026-10-24');
-    expect(some.start).toBe('2026-06-01');
-    expect(some.weeks).toBe(21);
+    for (const track of ['2026-10-24', '2026-06-01', '2020-01-01']) {
+      const w = heatWindow(track, '2026-10-24');
+      expect(w.weeks).toBe(MAX_WEEKS);
+      expect(addEnd(w)).toBe('2026-10-19');
+    }
   });
 
   it('draws a cell per counted day with the right colours, and nothing for days that do not count', () => {
@@ -342,7 +339,7 @@ describe('the heatmap drawing', () => {
       start: '2026-10-19',
       weeks: 2,
       legend: 'share',
-      levelOf: (k) => ({ '2026-10-19': 4, '2026-10-20': 1, '2026-10-21': 0, '2026-10-22': -2 })[k] as never ?? -1,
+      levelOf: (k) => ({ '2026-10-19': 4, '2026-10-20': 1, '2026-10-21': 0, '2026-10-22': -2, '2026-10-23': -1 })[k] as never ?? -3,
     });
     expect(svg.startsWith('<svg')).toBe(true);
     expect(svg).toContain(`width="${width}" height="${height}"`);
@@ -352,8 +349,9 @@ describe('the heatmap drawing', () => {
     expect(svg).toContain('fill="none"'); // today's outline
     expect(svg).toContain('Oct');
     expect(svg).toContain('Mon');
-    // 4 day cells + 5 legend cells
-    expect(svg.match(/<rect /g)).toHaveLength(9);
+    expect(svg).toContain('fill-opacity="0.12"'); // an untracked day, drawn faintly
+    // 5 day cells + 5 legend cells
+    expect(svg.match(/<rect /g)).toHaveLength(10);
   });
 
   it('draws a title above the grid when given one, and escapes it', () => {

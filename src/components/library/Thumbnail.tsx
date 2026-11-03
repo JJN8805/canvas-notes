@@ -6,6 +6,7 @@ import { blockHeight, colorVar, isFixedHeight, sanitizeHtml } from '../../lib/ut
 import { routeBetween } from '../../lib/arrows';
 import { hiddenBlockIds, paintOrder } from '../../lib/frames';
 import { useImageUrl } from '../../lib/useImageUrl';
+import { formatDuration } from '../../lib/media';
 
 const PAD = 36;
 const MAX_SCALE = 0.42;
@@ -151,6 +152,26 @@ export function StaticBody({ block: b }: { block: Block }) {
       );
     case 'image':
       return <StaticImage imageId={b.imageId} />;
+    case 'audio':
+      return (
+        <div className="body audio-body static-file">
+          <div className="audio-head">
+            <span className="audio-name">🔊 {b.name}</span>
+            {b.duration ? <span className="audio-len">{formatDuration(b.duration)}</span> : null}
+          </div>
+          <div className="static-bar" />
+        </div>
+      );
+    case 'pdf':
+      return (
+        <div className="body pdf-body static-file">
+          <div className="static-page">
+            <span>PDF</span>
+            <strong>{b.name}</strong>
+            {b.pages ? <em>{b.pages} page{b.pages === 1 ? '' : 's'}</em> : null}
+          </div>
+        </div>
+      );
     case 'frame':
       return (
         <>

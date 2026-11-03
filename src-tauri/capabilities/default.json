@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "What the Canvas Notes window may do: its own database, files in its own folder, and files you pick in a save dialog.",
+  "description": "What the main Canvas Notes window may do: its own database, files in its own folder, files you pick in a save dialog, and the start-at-login setting.",
   "windows": [
     "main"
   ],
@@ -12,6 +12,9 @@
     "sql:allow-execute",
     "fs:allow-appconfig-read-recursive",
     "fs:allow-appconfig-write-recursive",
-    "dialog:allow-save"
+    "dialog:allow-save",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
+    "autostart:allow-is-enabled"
   ]
 }

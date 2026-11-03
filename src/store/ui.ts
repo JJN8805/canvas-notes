@@ -14,6 +14,8 @@ export interface DialogReq {
   /** When set, the dialog shows a text field with this initial value. */
   input?: string;
   placeholder?: string;
+  /** Show the dialog's text field as a password field. */
+  secret?: boolean;
   okLabel: string;
   danger?: boolean;
   resolve: (v: string | boolean | null) => void;
@@ -51,7 +53,7 @@ export function dismissToast(id: number) {
   useUi.setState((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
 }
 
-export function ask(opts: { title: string; initial?: string; placeholder?: string; okLabel: string; text?: string }): Promise<string | null> {
+export function ask(opts: { title: string; initial?: string; placeholder?: string; okLabel: string; text?: string; secret?: boolean }): Promise<string | null> {
   return new Promise((resolve) => {
     useUi.setState({
       dialog: {
@@ -60,6 +62,7 @@ export function ask(opts: { title: string; initial?: string; placeholder?: strin
         text: opts.text,
         input: opts.initial ?? '',
         placeholder: opts.placeholder,
+        secret: opts.secret,
         okLabel: opts.okLabel,
         resolve: (v) => resolve(typeof v === 'string' ? v : null),
       },

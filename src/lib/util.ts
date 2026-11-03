@@ -91,6 +91,8 @@ export const BLOCK_LABEL: Record<Block['type'], string> = {
   table: 'Table',
   frame: 'Frame',
   sticky: 'Sticky',
+  audio: 'Audio',
+  pdf: 'PDF',
 };
 
 export function blockText(b: Block): string {
@@ -104,6 +106,11 @@ export function blockText(b: Block): string {
       return b.code;
     case 'table':
       return b.rows.flat().join(' ');
+    case 'image':
+      return b.ocr ?? ''; // text read from the picture by the OCR add-on
+    case 'audio':
+    case 'pdf':
+      return b.name; // so a clip or document can be found by its name
     default:
       return '';
   }
@@ -112,8 +119,8 @@ export function blockText(b: Block): string {
 /** Height of a frame's always-visible title bar; a collapsed frame shrinks to just this. */
 export const FRAME_HEAD_H = 32;
 
-/** Pictures and stickies keep the height they were given; every other box grows with its content. */
-export const isFixedHeight = (b: Block) => b.type === 'image' || b.type === 'sticky';
+/** Pictures, stickies, audio players and PDFs keep the height they were given; every other box grows with its content. */
+export const isFixedHeight = (b: Block) => b.type === 'image' || b.type === 'sticky' || b.type === 'audio' || b.type === 'pdf';
 
 export function blockHeight(b: Block): number {
   if (b.type === 'frame') return b.collapsed ? FRAME_HEAD_H : b.h;
@@ -125,6 +132,18 @@ export function isEditableTarget(el: Element | null): boolean {
   const tag = el.tagName;
   return (el as HTMLElement).isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 }
+
+const NON_TEXT_INPUTS = ['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color', 'file', 'image'];
+
+/** A field where typing makes text: editable, but not a checkbox, slider or other input that only looks like one to the keyboard. */
+export function isTextEntry(el: Element | null): boolean {
+  if (!isEditableTarget(el)) return false;
+  return !(el!.tagName === 'INPUT' && NON_TEXT_INPUTS.includes((el as HTMLInputElement).type));
+}
+
+/** Something Space or Enter activates natively (a button, link, checkbox…), so the canvas must leave those keys alone. */
+export const isActivatable = (el: Element | null): boolean =>
+  !!el?.matches('button, a[href], summary, [role="button"], [role="menuitem"], [role="option"], input[type="checkbox"], input[type="radio"], input[type="button"], input[type="submit"]');
 
 export const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 export const modKey = (e: { metaKey: boolean; ctrlKey: boolean }) => (isMac ? e.metaKey : e.ctrlKey);
