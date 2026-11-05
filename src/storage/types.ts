@@ -1,7 +1,9 @@
+import { cleanArrows, cleanBlocks, cleanTags } from '../lib/sanitize';
 import { cleanColor } from '../lib/colors';
 import { cleanDate, kindOf } from '../lib/pages';
+import { cleanSheet, sheetCovering } from '../lib/sheet';
 import type { GraphMirror } from '../graph/mirror';
-import type { Arrow, Block, Group, GroupColor, NoteColor, Page, PageDrawing, PageKind } from '../types';
+import type { Arrow, Block, Group, GroupColor, NoteColor, Page, PageDrawing, PageKind, Sheet } from '../types';
 
 export type SaveResult = { ok: true; rev: number } | { ok: false; reason: 'conflict' };
 
@@ -38,6 +40,8 @@ export interface PageRecord {
   /** Absent in records from app versions before templates and daily pages. */
   kind?: PageKind;
   dailyDate?: string | null;
+  /** Absent in records from app versions before finite pages: an infinite page. */
+  sheet?: Sheet | null;
   /** Absent in records from app versions before page colours. */
   color?: NoteColor | null;
   created: number;
@@ -138,17 +142,20 @@ export interface NotesStorage {
 }
 
 export function normalizePage(p: Partial<Page> & { id: string }): Page {
+  const blocks = cleanBlocks(p.blocks);
+  const sheet = cleanSheet(p.sheet);
   return {
     id: p.id,
     title: typeof p.title === 'string' ? p.title : '',
     groupId: p.groupId ?? null,
-    tags: Array.isArray(p.tags) ? p.tags : [],
-    blocks: Array.isArray(p.blocks) ? p.blocks : [],
-    arrows: Array.isArray(p.arrows) ? p.arrows : [],
+    tags: cleanTags(p.tags),
+    blocks,
+    arrows: cleanArrows(p.arrows),
     drawing: p.drawing ?? null,
     color: cleanColor(p.color),
     kind: kindOf(p),
     dailyDate: cleanDate(p.dailyDate),
+    sheet: sheet && sheetCovering(sheet, blocks),
     created: p.created ?? Date.now(),
     updated: p.updated ?? p.created ?? Date.now(),
     rev: p.rev ?? 0,

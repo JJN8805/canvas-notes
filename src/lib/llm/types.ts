@@ -1,4 +1,10 @@
-export type ProviderId = 'ollama' | 'anthropic' | 'openai';
+export type ProviderId = 'ollama' | 'anthropic' | 'openai' | 'gemini';
+
+/** Everything a request can be addressed to: the three chat providers, and the two kinds of local picture server. */
+export type WireProvider = ProviderId | 'sdwebui' | 'imageserver';
+
+/** Where pictures are drawn: OpenAI or Google Gemini (cloud), a Stable Diffusion WebUI server (AUTOMATIC1111, Forge, SD.Next), or any OpenAI-compatible image server (LocalAI and others). */
+export type ImageSource = 'openai' | 'gemini' | 'sdwebui' | 'imageserver';
 
 export interface ChatMsg {
   role: 'user' | 'assistant';
@@ -7,7 +13,7 @@ export interface ChatMsg {
 
 /** One HTTP request to a model provider. The API key is never in here: whoever sends it adds the key. */
 export interface RequestSpec {
-  provider: ProviderId;
+  provider: WireProvider;
   method: 'GET' | 'POST';
   url: string;
   headers: Record<string, string>;

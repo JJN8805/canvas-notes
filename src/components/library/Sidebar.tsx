@@ -9,6 +9,10 @@ import { toast } from '../../store/ui';
 import { tagSummaries } from '../../lib/browse';
 import { Icon, type IconName } from '../ui/Icon';
 import { PAGE_MIME } from './shared';
+import { addonScreens, askHandler, useAddons } from '../../addons/store';
+import { journalEntries } from '../../lib/journal';
+import { openNav } from '../../store/nav';
+import { MOD_LABEL } from '../../lib/util';
 
 /* ---------------- Sidebar ---------------- */
 
@@ -19,8 +23,12 @@ export function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Grou
   const groupIds = new Set(groups.map((g) => g.id));
   const cardCount = useNotes((s) => cardsOf(s.pages).length);
   const trashCount = useNotes((s) => s.trash.length);
+  const journalCount = useNotes((s) => journalEntries(s.pages).length);
   const templateCount = useNotes((s) => templatesOf(s.pages).length);
   const ungrouped = pages.filter((p) => !p.groupId || !groupIds.has(p.groupId)).length;
+  useAddons((s) => s.loaded); // re-render when an add-on starts or stops, so its screens and the "ask" wording follow
+  const screens = addonScreens();
+  const canAsk = !!askHandler();
 
   return (
     <nav className="sidebar" aria-label="Pages, groups and tags">
@@ -30,7 +38,17 @@ export function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Grou
       </div>
       <ProfileChip />
 
+      <button className="side-search" onClick={() => openNav('switcher')} aria-label={`${canAsk ? 'Search or ask' : 'Search'} (${MOD_LABEL}+K)`}>
+        <Icon name="search" size={15} />
+        <span className="side-search-label">{canAsk ? 'Search or ask' : 'Search'}</span>
+        <kbd>{MOD_LABEL}+K</kbd>
+      </button>
+
       <div className="side-section">
+        {screens.map((s) => (
+          <NavItem key={s.id} icon={s.icon} label={s.label} active={filter.kind === 'addon' && filter.id === s.id} onClick={() => setFilter({ kind: 'addon', id: s.id })} />
+        ))}
+        <NavItem icon="book" label="Journal" count={journalCount} active={filter.kind === 'journal'} onClick={() => setFilter({ kind: 'journal' })} />
         <NavItem icon="pages" label="All pages" count={pages.length} active={filter.kind === 'all'} onClick={() => setFilter({ kind: 'all' })} />
         <NavItem
           icon="folder"
@@ -93,7 +111,7 @@ export function ProfileChip() {
 }
 
 
-export function NavItem(props: { label: string; count: number; active: boolean; onClick: () => void; dropGroup?: string | null; icon?: IconName }) {
+export function NavItem(props: { label: string; count?: number; active: boolean; onClick: () => void; dropGroup?: string | null; icon?: IconName }) {
   const [over, setOver] = useState(false);
   const droppable = props.dropGroup !== undefined;
   return (
@@ -128,7 +146,7 @@ export function NavItem(props: { label: string; count: number; active: boolean; 
     >
       {props.icon && <span className="nav-ico"><Icon name={props.icon} size={16} /></span>}
       <span className="lbl" title={props.label}>{props.label}</span>
-      <span className="cnt">{props.count}</span>
+      {props.count !== undefined && <span className="cnt">{props.count}</span>}
     </button>
   );
 }

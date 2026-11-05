@@ -126,7 +126,7 @@ export const PageCard = memo(function PageCard({ page, group }: { page: Page; gr
       onDragEnd={() => setDragging(false)}
     >
       {group && <div className="tab">{group.name}</div>}
-      <Thumbnail blocks={page.blocks} arrows={page.arrows} drawing={page.drawing} />
+      <Thumbnail blocks={page.blocks} arrows={page.arrows} drawing={page.drawing} sheet={page.sheet} />
       <button
         ref={menuRef}
         className="icon-btn card-menu"
@@ -141,14 +141,6 @@ export const PageCard = memo(function PageCard({ page, group }: { page: Page; gr
       <div className="card-body">
         <div className={'card-title' + (page.title ? '' : ' untitled')}>{page.title || 'Untitled'}</div>
         <div className="card-meta">{timeAgo(page.updated)}</div>
-        {page.tags.length > 0 && (
-          <div className="chips">
-            {page.tags.slice(0, 4).map((t) => (
-              <span key={t} className="chip">#{t}</span>
-            ))}
-            {page.tags.length > 4 && <span className="chip">+{page.tags.length - 4}</span>}
-          </div>
-        )}
       </div>
     </article>
   );

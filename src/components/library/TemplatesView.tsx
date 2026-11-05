@@ -104,7 +104,7 @@ export const TemplateCard = memo(function TemplateCard({ template: t, isDaily }:
         showMenu();
       }}
     >
-      <Thumbnail blocks={t.blocks} arrows={t.arrows} drawing={t.drawing} />
+      <Thumbnail blocks={t.blocks} arrows={t.arrows} drawing={t.drawing} sheet={t.sheet} />
       <button
         ref={menuRef}
         className="icon-btn card-menu"

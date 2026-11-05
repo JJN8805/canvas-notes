@@ -54,7 +54,7 @@ function Picker() {
           </button>
           {templates.map((t) => (
             <button key={t.id} className="tpl" onClick={() => choose(t.id)} aria-label={`New page from ${t.title || 'Untitled'}`}>
-              <Thumbnail blocks={t.blocks} arrows={t.arrows} drawing={t.drawing} />
+              <Thumbnail blocks={t.blocks} arrows={t.arrows} drawing={t.drawing} sheet={t.sheet} />
               <span className="tpl-name">{t.title || 'Untitled'}</span>
             </button>
           ))}

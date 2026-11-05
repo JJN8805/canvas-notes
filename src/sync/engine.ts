@@ -191,6 +191,7 @@ async function syncRound(store: SyncStore, send: Send, report: SyncReport): Prom
           arrows: r.arrows,
           drawing: r.drawing ?? null,
           color: r.color ?? null,
+          sheet: r.sheet ?? null,
           // A conflicted copy of a template stays a template; it never keeps a daily page's date.
           kind: r.kind ?? 'page',
           dailyDate: null,

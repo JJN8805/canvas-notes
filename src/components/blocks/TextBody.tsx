@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { EditorContent, useEditor } from '@tiptap/react';
+import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Placeholder } from '@tiptap/extensions';
 import type { StickyBlock, TextBlock } from '../../types';
 import { updateBlock } from '../../store/notes';
+import { emptyTextSpace, hasEmptyTextSpace } from '../../addons/store';
 import { addImages, imageFiles } from '../../store/images';
 import { canvasApi, editorRegistry, useCanvas } from '../../store/canvas';
 import { useCanvasCtx } from '../editor/context';
@@ -13,6 +14,7 @@ export function TextBody({ block }: { block: TextBlock | StickyBlock }) {
   const sticky = block.type === 'sticky';
   const { pageId } = useCanvasCtx();
   // Handlers are created once with the editor, so read position through a ref.
+  const editorRef = useRef<Editor | null>(null);
   const latest = useRef(block);
   latest.current = block;
   const beside = () => ({ x: latest.current.x + latest.current.w + 24, y: latest.current.y });
@@ -30,13 +32,20 @@ export function TextBody({ block }: { block: TextBlock | StickyBlock }) {
               link: { openOnClick: false, autolink: true, linkOnPaste: true },
             },
       ),
-      Placeholder.configure({ placeholder: sticky ? 'Note…' : 'Type something…' }),
+      Placeholder.configure({ placeholder: sticky ? 'Note…' : hasEmptyTextSpace() ? 'Type, or press space for AI' : 'Type something…' }),
     ],
     content: block.html,
     immediatelyRender: true,
     shouldRerenderOnTransaction: false,
     editorProps: {
       attributes: { class: 'body prose', 'aria-label': sticky ? 'Sticky note' : 'Text box' },
+      // Space in an empty text box is offered to the add-ons ("Write with AI"); if one takes it, no space is typed.
+      handleKeyDown: (view, event) => {
+        if (sticky || event.key !== ' ' || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return false;
+        if (view.state.doc.textContent !== '' || view.state.doc.childCount > 1) return false;
+        const ed = editorRef.current;
+        return !!ed && emptyTextSpace(ed);
+      },
       // Images pasted or dropped into a text box become their own image boxes beside it.
       handlePaste: (_view, event) => {
         if (sticky) return false;
@@ -69,6 +78,7 @@ export function TextBody({ block }: { block: TextBlock | StickyBlock }) {
 
   // Register for focusing new boxes; unregister on unmount.
   useEffect(() => {
+    editorRef.current = editor;
     if (!editor) return;
     editorRegistry.set(block.id, editor);
     return () => {

@@ -1,5 +1,9 @@
+import { useNotes } from '../../store/notes';
+import { isCard } from '../../lib/pages';
+import { cardInitial, cardLabel, cardParts } from '../../lib/cards';
 import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import type { Arrow, Block, PageDrawing } from '../../types';
+import type { Arrow, Block, PageDrawing, Sheet } from '../../types';
+import { inkClipPath, inkOnSheet } from '../../lib/sheet';
 import { frameInk, tintVars } from '../../lib/colors';
 import { liveDrawing, svgSrc, unionBounds } from '../../lib/drawing';
 import { blockHeight, colorVar, isFixedHeight, sanitizeHtml } from '../../lib/util';
@@ -17,10 +21,13 @@ export const Thumbnail = memo(function Thumbnail({
   blocks,
   arrows = EMPTY_ARROWS,
   drawing,
+  sheet,
 }: {
   blocks: Block[];
   arrows?: Arrow[];
   drawing?: PageDrawing | null;
+  /** A finite page's edges: ink outside them is not shown. */
+  sheet?: Sheet | null;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
@@ -40,7 +47,8 @@ export const Thumbnail = memo(function Thumbnail({
   const ink = liveDrawing(drawing);
   const layout = useMemo(() => {
     const boxes = visible.map((b) => ({ x: b.x, y: b.y, w: b.w, h: blockHeight(b) }));
-    if (ink) boxes.push(ink);
+    const shown = ink && inkOnSheet(ink, sheet);
+    if (shown) boxes.push(shown);
     if (!boxes.length) return null;
     const { minX, minY, maxX, maxY } = unionBounds(boxes);
     return {
@@ -49,7 +57,7 @@ export const Thumbnail = memo(function Thumbnail({
       h: maxY - minY + PAD * 2,
       sorted: paintOrder(visible),
     };
-  }, [visible, ink]);
+  }, [visible, ink, sheet]);
 
   let transform = 'scale(0)';
   if (layout && box.w) {
@@ -85,7 +93,7 @@ export const Thumbnail = memo(function Thumbnail({
               className="ink"
               alt=""
               src={svgSrc(ink.preview)}
-              style={{ left: ink.x - layout.minX + PAD, top: ink.y - layout.minY + PAD, width: ink.w, height: ink.h }}
+              style={{ left: ink.x - layout.minX + PAD, top: ink.y - layout.minY + PAD, width: ink.w, height: ink.h, clipPath: sheet ? inkClipPath(ink, sheet) : undefined }}
             />
           )}
           {arrows.length > 0 && (
@@ -162,6 +170,8 @@ export function StaticBody({ block: b }: { block: Block }) {
           <div className="static-bar" />
         </div>
       );
+    case 'card':
+      return <StaticCard cardId={b.cardId} />;
     case 'pdf':
       return (
         <div className="body pdf-body static-file">
@@ -187,4 +197,20 @@ export function StaticBody({ block: b }: { block: Block }) {
 function StaticImage({ imageId }: { imageId: string }) {
   const url = useImageUrl(imageId);
   return <div className="body">{url ? <img src={url} alt="" draggable={false} /> : <div className="missing" />}</div>;
+}
+
+/** A card on a page, as a still picture and label (page thumbnails, PNG and PDF export). */
+function StaticCard({ cardId }: { cardId: string }) {
+  const card = useNotes((s) => s.pages[cardId]);
+  const cover = card && isCard(card) ? cardParts(card).cover : null;
+  const url = useImageUrl(cover?.imageId ?? '');
+  if (!card || !isCard(card)) return <div className="body card-body"><div className="missing card-missing">Card not found</div></div>;
+  return (
+    <div className="body card-body">
+      <div className="ctile static-ctile">
+        <span className="ctile-cover">{url ? <img src={url} alt="" draggable={false} /> : <span className="ctile-initial" aria-hidden="true">{cardInitial(card)}</span>}</span>
+        <span className="ctile-label">{cardLabel(card)}</span>
+      </div>
+    </div>
+  );
 }

@@ -1,10 +1,8 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Filter, Group } from '../../types';
 import { searchPages } from '../../lib/search';
-import { libraryPages } from '../../lib/pages';
-import { CalendarButton, goToDay } from '../ui/Calendar';
-import { dateKey } from '../../lib/daily';
-import { setQuery, setSort, useNotes } from '../../store/notes';
+import { listedPages } from '../../lib/pages';
+import { setFilter, setQuery, setSort, useNotes } from '../../store/notes';
 import { groupPath, withDescendants } from '../../lib/groups';
 import { childSummaries, groupAncestors, groupSummaries } from '../../lib/browse';
 import { CardsView } from '../cards/CardsView';
@@ -17,6 +15,8 @@ import { TrashView } from './TrashView';
 import { Sidebar } from './Sidebar';
 import { Crumbs, GroupCard, GroupsView, TagsView } from './Browse';
 import { PageCard } from './PageCard';
+import { useAddons } from '../../addons/store';
+import { JournalView } from '../journal/JournalView';
 
 function filterTitle(f: Filter, groups: Group[]): string {
   if (f.kind === 'group') return groupPath(groups, f.id).join(' / ') || 'Group';
@@ -27,9 +27,23 @@ function filterTitle(f: Filter, groups: Group[]): string {
   if (f.kind === 'cards') return 'Cards';
   if (f.kind === 'trash') return 'Trash';
   if (f.kind === 'templates') return 'Templates';
+  if (f.kind === 'addon') return 'Chat';
+  if (f.kind === 'journal') return 'Journal';
   return 'All pages';
 }
 
+
+/** The full-page screen of an add-on. If the add-on is switched off while it is open, go back to All pages. */
+function AddonScreen({ id }: { id: string }) {
+  const View = useAddons((s) => s.loaded[id as 'ai' | 'ocr']?.View);
+  const known = useAddons((s) => s.enabled.includes(id as 'ai' | 'ocr'));
+  const failed = useAddons((s) => !!s.errors[id as 'ai' | 'ocr']);
+  useEffect(() => {
+    if (!View && !known) setFilter({ kind: 'all' });
+  }, [View, known]);
+  if (View) return <View />;
+  return <p className="ai-note" role={failed ? 'alert' : 'status'}>{failed ? 'This add-on couldn’t start. See Settings → Add-ons.' : 'Loading…'}</p>;
+}
 
 export function Library() {
   const pages = useNotes((s) => s.pages);
@@ -39,7 +53,8 @@ export function Library() {
   const sort = useNotes((s) => s.sort);
 
   // Templates are not pages: they stay out of the list, search, counts and tags.
-  const all = useMemo(() => libraryPages(pages), [pages]);
+  // Daily pages are read in the Journal, so they are not in All pages, the counts, groups or tags.
+  const all = useMemo(() => listedPages(pages), [pages]);
   const groupIds = useMemo(() => new Set(groups.map((g) => g.id)), [groups]);
 
   const inGroup = useMemo(() => (filter.kind === 'group' ? withDescendants(groups, filter.id) : null), [filter, groups]);
@@ -65,11 +80,15 @@ export function Library() {
   return (
     <div className="library">
       <Sidebar pages={all} groups={groups} filter={filter} />
-      <main className="main">
+      <main className={'main' + (filter.kind === 'journal' ? ' main-journal' : '')}>
         {filter.kind === 'trash' ? (
           <TrashView />
         ) : filter.kind === 'templates' ? (
           <TemplatesView />
+        ) : filter.kind === 'journal' ? (
+          <JournalView />
+        ) : filter.kind === 'addon' ? (
+          <AddonScreen id={filter.id} />
         ) : filter.kind === 'cards' ? (
           <CardsView />
         ) : filter.kind === 'groups' ? (
@@ -111,11 +130,6 @@ export function Library() {
               <option value="title">Title A–Z</option>
             </select>
             <SyncButton />
-            <button className="btn" title="Open today's page (Ctrl+Alt+D)" onClick={() => goToDay(dateKey())}>
-              <Icon name="today" size={16} />
-              Today
-            </button>
-            <CalendarButton />
             <button className="btn primary" onClick={openNewPage}>
               <Icon name="plus" size={16} />
               New page

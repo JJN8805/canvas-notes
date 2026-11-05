@@ -1,10 +1,13 @@
+import { isCard } from '../lib/pages';
+import { cardLabel, cardParts, cardText } from '../lib/cards';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import TurndownService from 'turndown';
 import { zipSync } from 'fflate';
-import type { Arrow, AudioBlock, Block, ChecklistBlock, CodeBlock, ImageBlock, Page, PageDrawing, PdfBlock, StickyBlock, TableBlock, TextBlock } from '../types';
+import type { Arrow, AudioBlock, Block, CardBlock, ChecklistBlock, CodeBlock, ImageBlock, Page, PdfBlock, StickyBlock, TableBlock, TextBlock } from '../types';
 import { tintVars } from '../lib/colors';
 import { liveDrawing, svgSrc, unionBounds } from '../lib/drawing';
+import { inkOnSheet } from '../lib/sheet';
 import { BLOCK_LABEL, blockHeight, blockText, isFixedHeight } from '../lib/util';
 import { hiddenBlockIds, paintOrder } from '../lib/frames';
 import { routeBetween, type Rect as ArrowRect } from '../lib/arrows';
@@ -22,7 +25,7 @@ const PAD = 48;
 /* Picture of the page (PNG and PDF)                                   */
 /* ------------------------------------------------------------------ */
 
-function bounds(blocks: Block[], drawing: PageDrawing | null) {
+function bounds(blocks: Block[], drawing: { x: number; y: number; w: number; h: number } | null) {
   const boxes = blocks.map((b) => ({ x: b.x, y: b.y, w: b.w, h: blockHeight(b) }));
   if (drawing) boxes.push(drawing);
   if (!boxes.length) return { x: 0, y: 0, w: 800, h: 500 };
@@ -39,7 +42,8 @@ export async function renderPage(page: Page, maxScale = 2): Promise<{ canvas: HT
   // Boxes hidden behind a collapsed frame (and their arrows, below) are left out of exports too.
   const hidden = hiddenBlockIds(page.blocks);
   const visible = page.blocks.filter((b) => !hidden.has(b.id));
-  const ink = liveDrawing(page.drawing);
+  const drawn = liveDrawing(page.drawing);
+  const ink = drawn && inkOnSheet(drawn, page.sheet); // the part of the ink on the page; outside a finite page's edges it is not shown, so not exported either
   const box = bounds(visible, ink);
   const host = document.createElement('div');
   host.className = 'export-root';
@@ -71,7 +75,12 @@ export async function renderPage(page: Page, maxScale = 2): Promise<{ canvas: HT
 
     // Wait for fonts and for every image to arrive and decode.
     await document.fonts.ready;
-    const expected = visible.filter((b) => b.type === 'image').length;
+    // Pictures to wait for: picture boxes, and the covers of cards shown on the page.
+    const expected = visible.filter((b) => {
+      if (b.type === 'image') return true;
+      const card = b.type === 'card' ? useNotes.getState().pages[b.cardId] : undefined;
+      return !!card && isCard(card) && !!cardParts(card).cover;
+    }).length;
     const deadline = Date.now() + 8000;
     while (host.querySelectorAll('img').length < expected && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
     await Promise.all(Array.from(host.querySelectorAll('img')).map((img) => img.decode().catch(() => undefined)));
@@ -116,11 +125,18 @@ export async function renderPage(page: Page, maxScale = 2): Promise<{ canvas: HT
       const toB = visible.find((bl) => bl.id === a.to);
       if (fromB && toB) drawArrow(ctx, a, fromB, toB, box);
     }
-    if (ink) {
+    if (ink && drawn) {
       // Drawn directly like pictures, for the same WebKit reason. The ink sits above the boxes, as on the canvas.
       const pic = new Image();
-      pic.src = svgSrc(ink.preview);
-      if (await pic.decode().then(() => true, () => false)) ctx.drawImage(pic, ink.x - box.x, ink.y - box.y, ink.w, ink.h);
+      pic.src = svgSrc(drawn.preview);
+      if (await pic.decode().then(() => true, () => false)) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(ink.x - box.x, ink.y - box.y, ink.w, ink.h);
+        ctx.clip(); // `ink` is the part on the sheet; the picture is the whole drawing
+        ctx.drawImage(pic, drawn.x - box.x, drawn.y - box.y, drawn.w, drawn.h);
+        ctx.restore();
+      }
     }
     return { canvas, width: box.w, height: box.h };
   } finally {
@@ -288,11 +304,11 @@ export function readingOrder(blocks: Block[]): Block[] {
  *  maps to heading depth) followed by its own contents, recursively; other blocks go
  *  through the normal per-type rendering. `all` is the full (visible) block list, used
  *  to look up each frame's direct children. */
-function blocksToMarkdown(blocks: Block[], all: Block[], imagePath: (b: ImageBlock) => string, headingDepth: number, out: string[], filePath: (b: AudioBlock | PdfBlock) => string = () => '') {
+function blocksToMarkdown(blocks: Block[], all: Block[], imagePath: (b: ImageBlock) => string, headingDepth: number, out: string[], filePath: (b: AudioBlock | PdfBlock) => string = () => '', cardOf: (b: CardBlock) => { label: string; text: string } | null = () => null) {
   for (const b of readingOrder(blocks)) {
     if (b.type === 'frame') {
       out.push(`${'#'.repeat(Math.min(headingDepth, 6))} ${b.title || 'Frame'}`);
-      blocksToMarkdown(all.filter((x) => x.frameId === b.id), all, imagePath, headingDepth + 1, out, filePath);
+      blocksToMarkdown(all.filter((x) => x.frameId === b.id), all, imagePath, headingDepth + 1, out, filePath, cardOf);
       continue;
     }
     switch (b.type) {
@@ -332,6 +348,13 @@ function blocksToMarkdown(blocks: Block[], all: Block[], imagePath: (b: ImageBlo
         out.push(`![${(img.alt ?? '').replace(/[[\]]/g, '')}](${imagePath(img)})`);
         break;
       }
+      case 'card': {
+        // The card's label and details as a quote; its picture is not part of the page's export.
+        const c = cardOf(b as CardBlock);
+        if (!c) break;
+        out.push([`> 🗂️ **${c.label.replace(/[*_`]/g, '')}**`, ...c.text.split('\n').filter((l) => l.trim()).map((l) => `> ${l}`)].join('\n'));
+        break;
+      }
       case 'audio':
       case 'pdf': {
         // A link to the file when the export carries it (the zip), otherwise just its name.
@@ -344,13 +367,13 @@ function blocksToMarkdown(blocks: Block[], all: Block[], imagePath: (b: ImageBlo
   }
 }
 
-export function pageToMarkdown(page: Page, imagePath: (b: ImageBlock) => string, drawingPath = '', filePath: (b: AudioBlock | PdfBlock) => string = () => ''): string {
+export function pageToMarkdown(page: Page, imagePath: (b: ImageBlock) => string, drawingPath = '', filePath: (b: AudioBlock | PdfBlock) => string = () => '', cardOf: (b: CardBlock) => { label: string; text: string } | null = () => null): string {
   const out: string[] = [`# ${page.title || 'Untitled'}`];
   if (page.tags.length) out.push(page.tags.map((t) => `#${t}`).join(' '));
   // Boxes hidden behind a collapsed frame (and their arrows, below) are left out of exports too.
   const hidden = hiddenBlockIds(page.blocks);
   const visible = page.blocks.filter((b) => !hidden.has(b.id));
-  blocksToMarkdown(visible.filter((b) => !b.frameId), visible, imagePath, 2, out, filePath);
+  blocksToMarkdown(visible.filter((b) => !b.frameId), visible, imagePath, 2, out, filePath, cardOf);
   if (drawingPath && liveDrawing(page.drawing)) out.push(`![Drawing](${drawingPath})`);
   const visibleIds = new Set(visible.map((b) => b.id));
   const arrows = page.arrows.filter((a) => visibleIds.has(a.from) && visibleIds.has(a.to));
@@ -378,6 +401,12 @@ export function pageToMarkdown(page: Page, imagePath: (b: ImageBlock) => string,
 
 const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/svg+xml': 'svg', 'image/avif': 'avif' };
 
+/** A card box's label and details, read from the card it points at. */
+function cardInfo(b: CardBlock): { label: string; text: string } | null {
+  const p = useNotes.getState().pages[b.cardId];
+  return p && isCard(p) ? { label: cardLabel(p), text: cardText(p) } : null;
+}
+
 const FILE_EXTS: Record<string, string> = { ...EXT, 'application/pdf': 'pdf', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/aac': 'aac', 'audio/ogg': 'ogg', 'audio/opus': 'opus', 'audio/wav': 'wav', 'audio/webm': 'weba', 'audio/flac': 'flac' };
 
 /** Markdown file, or a zip with the Markdown, an images/ folder and a files/ folder (audio, PDFs) when the page has any. */
@@ -387,7 +416,7 @@ async function markdownExport(page: Page): Promise<{ bytes: Uint8Array<ArrayBuff
   const fileBlocks = page.blocks.filter((b): b is AudioBlock | PdfBlock => (b.type === 'audio' || b.type === 'pdf') && !hidden.has(b.id));
   const ink = liveDrawing(page.drawing);
   const enc = new TextEncoder();
-  if (!imageBlocks.length && !fileBlocks.length && !ink) return { bytes: toArrayBufferBytes(enc.encode(pageToMarkdown(page, () => ''))), ext: 'md' };
+  if (!imageBlocks.length && !fileBlocks.length && !ink) return { bytes: toArrayBufferBytes(enc.encode(pageToMarkdown(page, () => '', '', () => '', cardInfo))), ext: 'md' };
 
   const files: Record<string, Uint8Array> = {};
   const names = new Map<string, string>();
@@ -412,7 +441,7 @@ async function markdownExport(page: Page): Promise<{ bytes: Uint8Array<ArrayBuff
   if (ink) files['images/drawing.svg'] = enc.encode(ink.preview);
   const base = fileBase(page);
   files[`${base}.md`] = enc.encode(
-    pageToMarkdown(page, (b) => names.get(b.imageId) ?? '', ink ? 'images/drawing.svg' : '', (b) => fileNames.get(b.fileId) ?? ''),
+    pageToMarkdown(page, (b) => names.get(b.imageId) ?? '', ink ? 'images/drawing.svg' : '', (b) => fileNames.get(b.fileId) ?? '', cardInfo),
   );
   return { bytes: toArrayBufferBytes(zipSync(files, { level: 6 })), ext: 'zip' };
 }

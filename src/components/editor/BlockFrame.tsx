@@ -1,3 +1,4 @@
+import { openCard } from '../../store/cardView';
 import { blockActionsFor, useAddons } from '../../addons/store';
 import { memo, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { ResizeHandles } from './ResizeHandles';
@@ -105,6 +106,9 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
       ),
     );
   }
+  if (block.type === 'card') {
+    extra.push(btn('Open card', 'Open', () => openCard(block.cardId)));
+  }
   if (block.type === 'table') {
     const edit = (fn: (b: TableBlock) => void) => updateBlock<TableBlock>(pageId, block.id, fn);
     extra.push(
@@ -153,7 +157,7 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
 
   return (
     <div className="bar">
-      <span className="grip" role="button" aria-label={`Move ${LABEL[block.type].toLowerCase()} box`} title="Drag to move" onPointerDown={(e) => startMove(e, block.id)}>
+      <span className="grip" role="button" aria-label={`Move ${(LABEL[block.type] ?? 'box').toLowerCase()} box`} title="Drag to move" onPointerDown={(e) => startMove(e, block.id)}>
         <Icon name="grip" size={14} />
         {LABEL[block.type]}
       </span>

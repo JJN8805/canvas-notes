@@ -27,7 +27,7 @@ export function TrashView() {
         <div className="cards">
           {trash.map((p) => (
             <article key={p.id} className="card trashed" aria-label={p.title || 'Untitled'}>
-              <Thumbnail blocks={p.blocks} arrows={p.arrows} drawing={p.drawing} />
+              <Thumbnail blocks={p.blocks} arrows={p.arrows} drawing={p.drawing} sheet={p.sheet} />
               <div className="card-body">
                 <div className={'card-title' + (p.title ? '' : ' untitled')}>{p.title || 'Untitled'}</div>
                 <div className="card-meta">

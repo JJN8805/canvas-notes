@@ -1,11 +1,14 @@
-/** The conversation. It lives in memory only: closing the panel (or leaving the page) forgets it. */
+/**
+ * Conversations. They live in memory only and are never saved. The page drawer's conversation is forgotten when the drawer closes;
+ * the Chat screen's lasts until "New chat" or until the app is closed. Each is its own store, made by `createChat`.
+ */
 import { create } from 'zustand';
-import { chatRequest, parseStreamLine } from '../../lib/llm/providers';
 import { generateImageB64 } from './picture';
-import { sendRequest } from '../../lib/llm/transport';
+import { streamChat } from './stream';
 import { LlmError, type ChatMsg } from '../../lib/llm/types';
 import { newId } from '../../lib/util';
 import { SYSTEM_PROMPT } from './prompts';
+import { EDIT_PROMPT, type AliasMap } from './edits';
 import type { AiSettings } from './config';
 
 export interface Message {
@@ -20,7 +23,13 @@ export interface Message {
   error?: string;
   /** The page text sent with this message: how much. */
   shared?: { chars: number; blocks: number };
+  /** Titles of the pages attached to this message (the Chat screen can attach several). */
+  sharedPages?: string[];
   streaming?: boolean;
+  /** Set when the assistant was allowed to suggest changes to the page: the labels it was shown (b1, b2 …) and what each box held then. */
+  aliases?: AliasMap;
+  /** What became of the changes this answer proposed. Absent = still waiting for the user. */
+  proposal?: { state: 'applied' | 'discarded'; note?: string };
 }
 
 interface ChatState {
@@ -29,8 +38,6 @@ interface ChatState {
   /** The provider the user has agreed to send this chat's page text to. Forgotten with the chat. */
   consented: string | null;
 }
-
-export const useChat = create<ChatState>(() => ({ messages: [], busy: false, consented: null }));
 
 /**
  * Must the user be shown what is about to be sent, and click, first? Yes when page text would leave this computer:
@@ -52,10 +59,6 @@ export function needsConfirmation(a: {
 
 export const hasPageText = (wire: string) => wire.startsWith('<page>');
 
-let abort: AbortController | null = null;
-
-const patch = (id: string, p: Partial<Message>) => useChat.setState((s) => ({ messages: s.messages.map((m) => (m.id === id ? { ...m, ...p } : m)) }));
-
 /** The conversation as the provider wants it: pictures become a short note, and failed answers are left out. */
 export function wireHistory(messages: Message[]): ChatMsg[] {
   return messages
@@ -63,66 +66,88 @@ export function wireHistory(messages: Message[]): ChatMsg[] {
     .map((m) => ({ role: m.role, content: m.imageB64 ? `[A picture was generated for: ${m.content}]` : m.wire ?? m.content }));
 }
 
-export function clearChat() {
-  abort?.abort();
-  abort = null;
-  useChat.setState({ messages: [], busy: false, consented: null });
-}
+export type AskOptions = { wire?: string; shared?: Message['shared']; sharedPages?: string[]; consent?: boolean; aliases?: AliasMap };
 
-export function stopChat() {
-  abort?.abort();
-}
+/** One independent conversation: its own messages, its own "busy", its own way to stop. */
+export function createChat() {
+  const useStore = create<ChatState>(() => ({ messages: [], busy: false, consented: null }));
+  let abort: AbortController | null = null;
+  const patch = (id: string, p: Partial<Message>) => useStore.setState((s) => ({ messages: s.messages.map((m) => (m.id === id ? { ...m, ...p } : m)) }));
 
-/** Asks the chosen provider. `wire` is the text actually sent (the page attached); `text` is what is shown. */
-export async function askChat(settings: AiSettings, text: string, opts: { wire?: string; shared?: Message['shared']; consent?: boolean } = {}) {
-  if (useChat.getState().busy) return;
-  const user: Message = { id: newId(), role: 'user', content: text, wire: opts.wire, shared: opts.shared };
-  const reply: Message = { id: newId(), role: 'assistant', content: '', streaming: true };
-  useChat.setState((s) => ({ messages: [...s.messages, user, reply], busy: true, consented: opts.consent ? settings.provider : s.consented }));
-  abort = new AbortController();
-  const mine = abort;
-  try {
-    const history = wireHistory(useChat.getState().messages.filter((m) => m.id !== reply.id));
-    const spec = chatRequest(settings, SYSTEM_PROMPT, history);
-    let answer = '';
-    let failure = '';
-    await sendRequest(spec, {
-      signal: mine.signal,
-      model: settings.models[settings.provider],
-      onLine: (line) => {
-        for (const ev of parseStreamLine(spec.provider, line)) {
-          if (ev.type === 'text') {
-            answer += ev.text;
-            patch(reply.id, { content: answer });
-          } else if (ev.type === 'error') failure = ev.message;
-        }
-      },
-    });
-    if (failure) patch(reply.id, { streaming: false, error: failure });
-    else if (!answer && !mine.signal.aborted) patch(reply.id, { streaming: false, error: 'The model sent back nothing.' });
-    else patch(reply.id, { streaming: false });
-  } catch (e) {
-    patch(reply.id, { streaming: false, error: e instanceof LlmError ? e.message : e instanceof Error ? e.message : 'Something went wrong.' });
-  } finally {
-    if (abort === mine) abort = null;
-    useChat.setState({ busy: false });
+  function clear() {
+    abort?.abort();
+    abort = null;
+    useStore.setState({ messages: [], busy: false, consented: null });
   }
+
+  function stop() {
+    abort?.abort();
+  }
+
+  /** Asks the chosen provider. `wire` is the text actually sent (the page attached); `text` is what is shown. */
+  async function ask(settings: AiSettings, text: string, opts: AskOptions = {}) {
+    if (useStore.getState().busy) return;
+    const user: Message = { id: newId(), role: 'user', content: text, wire: opts.wire, shared: opts.shared, sharedPages: opts.sharedPages, aliases: opts.aliases };
+    const reply: Message = { id: newId(), role: 'assistant', content: '', streaming: true, aliases: opts.aliases };
+    useStore.setState((s) => ({ messages: [...s.messages, user, reply], busy: true, consented: opts.consent ? settings.provider : s.consented }));
+    abort = new AbortController();
+    const mine = abort;
+    try {
+      const history = wireHistory(useStore.getState().messages.filter((m) => m.id !== reply.id));
+      await streamChat(settings, opts.aliases ? SYSTEM_PROMPT + '\n\n' + EDIT_PROMPT : SYSTEM_PROMPT, history, { signal: mine.signal, onText: (t) => patch(reply.id, { content: t }) });
+      patch(reply.id, { streaming: false });
+    } catch (e) {
+      patch(reply.id, { streaming: false, error: e instanceof LlmError ? e.message : e instanceof Error ? e.message : 'Something went wrong.' });
+    } finally {
+      if (abort === mine) abort = null;
+      useStore.setState({ busy: false });
+    }
+  }
+
+  /** Asks OpenAI (or a picture server) to draw a picture. */
+  async function draw(settings: AiSettings, prompt: string) {
+    if (useStore.getState().busy) return;
+    const user: Message = { id: newId(), role: 'user', content: prompt };
+    const reply: Message = { id: newId(), role: 'assistant', content: prompt, streaming: true };
+    useStore.setState((s) => ({ messages: [...s.messages, user, reply], busy: true }));
+    abort = new AbortController();
+    const mine = abort;
+    try {
+      patch(reply.id, { streaming: false, imageB64: await generateImageB64(settings, prompt, mine.signal) });
+    } catch (e) {
+      patch(reply.id, { streaming: false, error: e instanceof Error ? e.message : 'Something went wrong.' });
+    } finally {
+      if (abort === mine) abort = null;
+      useStore.setState({ busy: false });
+    }
+  }
+
+  /** Asks the last question again, replacing the last answer. Does nothing while an answer is being written. */
+  async function regenerate(settings: AiSettings) {
+    const { messages, busy } = useStore.getState();
+    if (busy) return;
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+    if (!lastUser) return;
+    const at = messages.findIndex((m) => m.id === lastUser.id);
+    useStore.setState({ messages: messages.slice(0, at) }); // drop that question and everything after it, then ask it afresh
+    await ask(settings, lastUser.content, { wire: lastUser.wire, shared: lastUser.shared, sharedPages: lastUser.sharedPages, aliases: lastUser.aliases });
+  }
+
+  /** Records what became of a proposal (applied or discarded). */
+  const settle = (id: string, proposal: Message['proposal']) => patch(id, { proposal });
+
+  return { useStore, ask, draw, regenerate, clear, stop, settle };
 }
 
-/** Asks OpenAI to draw a picture. */
-export async function drawImage(settings: AiSettings, prompt: string) {
-  if (useChat.getState().busy) return;
-  const user: Message = { id: newId(), role: 'user', content: prompt };
-  const reply: Message = { id: newId(), role: 'assistant', content: prompt, streaming: true };
-  useChat.setState((s) => ({ messages: [...s.messages, user, reply], busy: true }));
-  abort = new AbortController();
-  const mine = abort;
-  try {
-    patch(reply.id, { streaming: false, imageB64: await generateImageB64(settings, prompt, mine.signal) });
-  } catch (e) {
-    patch(reply.id, { streaming: false, error: e instanceof Error ? e.message : 'Something went wrong.' });
-  } finally {
-    if (abort === mine) abort = null;
-    useChat.setState({ busy: false });
-  }
-}
+/** The page drawer's conversation (the exports below keep the names the drawer and the tests already use). */
+export const panelChat = createChat();
+export const useChat = panelChat.useStore;
+export const askChat = panelChat.ask;
+export const drawImage = panelChat.draw;
+export const regenerateLast = panelChat.regenerate;
+export const clearChat = panelChat.clear;
+export const stopChat = panelChat.stop;
+export const settleProposal = panelChat.settle;
+
+/** The Chat screen's conversation: separate from the drawer's, and kept while you move around the app. */
+export const mainChat = createChat();

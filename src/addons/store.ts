@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { ADDONS, isAddOnId } from './registry';
 import type { AddOnId, AddOnModule, BlockAction, CardPictureSource } from './types';
 import type { Block } from '../types';
+import type { Editor } from '@tiptap/react';
 import type { Command } from '../components/nav/commands';
 
 const KEY = 'addons.enabled';
@@ -76,6 +77,24 @@ const modules = () => Object.entries(useAddons.getState().loaded) as [AddOnId, A
 export function blockActionsFor(block: Block, pageId: string): BlockAction[] {
   return modules().flatMap(([, m]) => m.blockActions?.(block, pageId) ?? []);
 }
+
+/** The screens the running add-ons offer in the library sidebar. */
+export function addonScreens(): { id: AddOnId; label: string; icon: import('../components/ui/Icon').IconName }[] {
+  return modules().flatMap(([id, m]) => (m.navItem && m.View ? [{ id, label: m.navItem.label, icon: m.navItem.icon }] : []));
+}
+
+/** Where a question typed into "Search or ask" goes, if a running add-on can answer it. */
+export function askHandler(): ((question: string) => void) | undefined {
+  return modules().map(([, m]) => m.askHandler).find((h) => !!h);
+}
+
+/** Lets an add-on take the space pressed in an empty text box (as "Write with AI" does). */
+export function emptyTextSpace(editor: Editor): boolean {
+  return modules().some(([, m]) => m.onEmptyTextSpace?.(editor) === true);
+}
+
+/** Whether some running add-on uses the space key in an empty text box, so the empty box can say so. */
+export const hasEmptyTextSpace = (): boolean => modules().some(([, m]) => !!m.onEmptyTextSpace);
 
 /** Ways the running add-ons offer to give a card its picture. */
 export function cardPictureSources(): (CardPictureSource & { key: string })[] {

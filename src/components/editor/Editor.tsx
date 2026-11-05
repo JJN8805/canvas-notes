@@ -1,3 +1,9 @@
+import { isJournalPage } from '../../lib/journal';
+import { openJournal } from '../../store/journal';
+import { addCardBox, createCard } from '../../store/cards';
+import { openCard } from '../../store/cardView';
+import { cardLabel } from '../../lib/cards';
+import type { MenuItem } from '../../store/ui';
 import { openAddonPanel, useAddons } from '../../addons/store';
 import type { AddOnId } from '../../addons/types';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
@@ -5,9 +11,8 @@ import { flushSync } from 'react-dom';
 import { useEditorState, type Editor as TipTapEditor } from '@tiptap/react';
 import type { BlockType } from '../../types';
 import { navigate } from '../../lib/route';
-import { CalendarButton, goToDay } from '../ui/Calendar';
-import { addDays, dailyTitle, dateKey } from '../../lib/daily';
-import { isTemplate, libraryPages } from '../../lib/pages';
+import { attendanceLink } from '../../lib/attendance';
+import { cardsOf, isCard, isTemplate, libraryPages } from '../../lib/pages';
 import { STICKY_SIZE } from '../../lib/colors';
 import { MOD_LABEL, normTag } from '../../lib/util';
 import {
@@ -15,6 +20,7 @@ import {
   createGroup,
   flushPage,
   getStorage,
+  growPage,
   history,
   mutatePage,
   redo,
@@ -23,6 +29,7 @@ import {
   saveAsTemplate,
   setFilter,
   setPageGroup,
+  setPageSize,
   undo,
   useNotes,
 } from '../../store/notes';
@@ -41,9 +48,20 @@ import { openNav } from '../../store/nav';
 import { DrawOverlay } from './DrawOverlay';
 import { closeDraw, toggleDraw, useDraw } from '../../store/draw';
 
-export function Editor({ pageId }: { pageId: string }) {
+/**
+ * A page. `variant: 'journal'` is the page of a day inside the Journal's book: the book supplies the date and the way back, so the
+ * header is cut down to undo, redo, outline, history, the assistant and export.
+ */
+export function Editor({ pageId, variant = 'page' }: { pageId: string; variant?: 'page' | 'journal' }) {
   const exists = useNotes((s) => !!s.pages[pageId]);
   const template = useNotes((s) => isTemplate(s.pages[pageId] ?? {}));
+  // A card is its own kind of item, not a page: an address that points at one goes to the Cards gallery instead.
+  const asCard = useNotes((s) => isCard(s.pages[pageId] ?? {}));
+  // A day's page is read in the Journal: an address that points at one opens the book at that day instead.
+  const journalDay = useNotes((s) => {
+    const p = s.pages[pageId];
+    return p && isJournalPage(p) ? (p.dailyDate as string) : null;
+  });
 
   useEffect(() => {
     resetCanvas();
@@ -54,9 +72,12 @@ export function Editor({ pageId }: { pageId: string }) {
     };
   }, [pageId]);
 
+  const redirect = variant === 'page' && !!journalDay;
   useEffect(() => {
-    if (!exists) navigate({ name: 'library' });
-  }, [exists]);
+    if (asCard) setFilter({ kind: 'cards' });
+    if (redirect && journalDay) openJournal(journalDay);
+    else if (!exists || asCard) navigate({ name: 'library' });
+  }, [exists, asCard, redirect, journalDay]);
 
   // Start a new day for tracked checklists, and keep an attendance page current, while this page is open
   // (on opening, when the window comes back, and each minute so a page left open past midnight rolls over).
@@ -74,12 +95,11 @@ export function Editor({ pageId }: { pageId: string }) {
     };
   }, [pageId]);
 
-  if (!exists) return null;
+  if (!exists || asCard || redirect) return null;
   return (
     <div className="editor">
-      <EditorHeader pageId={pageId} />
-      {template && <TemplateBanner />}
-      <DailyBar pageId={pageId} />
+      <EditorHeader pageId={pageId} compact={variant === 'journal'} />
+      {template && variant === 'page' && <TemplateBanner />}
       <div className="ed-body">
         <Canvas pageId={pageId} />
         <DrawOverlay pageId={pageId} />
@@ -98,31 +118,6 @@ function AddonPanel({ pageId }: { pageId: string }) {
   const open = useAddons((s) => s.panel);
   const Panel = open ? loaded[open]?.Panel : undefined;
   return Panel ? <Panel pageId={pageId} onClose={() => openAddonPanel(null)} /> : null;
-}
-
-/** On a daily page: the previous and next day, the date's calendar, and a way back to today. */
-function DailyBar({ pageId }: { pageId: string }) {
-  const date = useNotes((s) => {
-    const p = s.pages[pageId];
-    return p && !isTemplate(p) ? p.dailyDate ?? null : null;
-  });
-  if (!date) return null;
-  return (
-    <div className="daily-bar" role="navigation" aria-label="Daily page">
-      <button className="icon-btn" aria-label="Previous day" title="Previous day" onClick={() => goToDay(addDays(date, -1))}>
-        <Icon name="back" />
-      </button>
-      <CalendarButton selected={date} label={dailyTitle(date)} align="left" />
-      <button className="icon-btn" aria-label="Next day" title="Next day" onClick={() => goToDay(addDays(date, 1))}>
-        <span style={{ display: 'inline-flex', transform: 'scaleX(-1)' }}><Icon name="back" /></span>
-      </button>
-      {date !== dateKey() && (
-        <button className="btn" onClick={() => goToDay(dateKey())}>
-          Today
-        </button>
-      )}
-    </div>
-  );
 }
 
 /** Shown while a template is open, so it can't be mistaken for a page. */
@@ -183,38 +178,44 @@ function Backlinks({ pageId }: { pageId: string }) {
   );
 }
 
-function EditorHeader({ pageId }: { pageId: string }) {
+function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: boolean }) {
   const title = useNotes((s) => s.pages[pageId]?.title ?? '');
   const groupId = useNotes((s) => s.pages[pageId]?.groupId ?? null);
   const blockCount = useNotes((s) => s.pages[pageId]?.blocks.length ?? 0);
   const groups = useNotes((s) => s.groups);
   const template = useNotes((s) => isTemplate(s.pages[pageId] ?? {}));
+  const attendance = useNotes((s) => !!attendanceLink(s.pages[pageId] ?? { blocks: [] }));
   useNotes((s) => s.historyVersion); // re-render when undo/redo availability changes
   const canUndo = history.canUndo(pageId);
   const canRedo = history.canRedo(pageId);
   const titleRef = useRef<HTMLInputElement>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const sheet = useNotes((s) => s.pages[pageId]?.sheet ?? null);
   const addons = useAddons((s) => s.loaded);
   const openAddon = useAddons((s) => s.panel);
 
   useEffect(() => {
-    if (!title && !blockCount) titleRef.current?.focus();
+    if (!compact && !title && !blockCount) titleRef.current?.focus();
     // only on open
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <header className="ed-head">
+    <header className={'ed-head' + (compact ? ' compact' : '')}>
+      {!compact && (
       <button
         className="btn ed-back"
         onClick={() => {
           if (template) setFilter({ kind: 'templates' });
+          else if (attendance) setFilter({ kind: 'journal' });
           navigate({ name: 'library' });
         }}
       >
         <Icon name="back" />
-        {template ? 'Templates' : 'Library'}
+        {template ? 'Templates' : attendance ? 'Journal' : 'Library'}
       </button>
+      )}
+      {!compact && (
       <input
         ref={titleRef}
         className="ed-title"
@@ -231,6 +232,7 @@ function EditorHeader({ pageId }: { pageId: string }) {
           if (e.key === 'Enter') e.currentTarget.blur();
         }}
       />
+      )}
       <div className="ed-actions">
         <button className="icon-btn" aria-label="Undo" title={`Undo (${MOD_LABEL}+Z)`} disabled={!canUndo} onClick={() => undo(pageId)}>
           <Icon name="undo" />
@@ -239,7 +241,7 @@ function EditorHeader({ pageId }: { pageId: string }) {
           <Icon name="redo" />
         </button>
       </div>
-      {!template && (
+      {!template && !compact && (
         <>
       <select
         className="field ed-group"
@@ -280,6 +282,29 @@ function EditorHeader({ pageId }: { pageId: string }) {
       <button className="btn ed-outline" title="Headings, frames and links of this page" onClick={() => openNav('outline')}>
         <Icon name="outline" size={16} />
         Outline
+      </button>
+      <button
+        className="btn ed-size"
+        aria-label="Page size"
+        title={sheet ? 'Page size: this page has edges. Change its size, or make it infinite.' : 'Page size: this page has no edges. Give it a size.'}
+        onClick={(e) => {
+          const landscape = !!sheet && sheet.w > sheet.h;
+          openMenu(e.currentTarget, [
+            { heading: 'Page size' },
+            { label: 'Portrait page', check: !!sheet && !landscape, action: () => setPageSize(pageId, 'portrait') },
+            { label: 'Landscape page', check: landscape, action: () => setPageSize(pageId, 'landscape') },
+            { label: 'Infinite page', check: !sheet, action: () => setPageSize(pageId, 'infinite') },
+            ...(sheet
+              ? [
+                  { separator: true as const },
+                  { label: 'Add room below', action: () => growPage(pageId, 'down') },
+                  { label: 'Add room to the right', action: () => growPage(pageId, 'right') },
+                ]
+              : []),
+          ]);
+        }}
+      >
+        <Icon name="pages" size={16} />
       </button>
       <button className="btn ed-history" onClick={() => setShowHistory(true)}>
         <Icon name="history" size={16} />
@@ -392,6 +417,7 @@ const TOOLS: { type: BlockType; label: string }[] = [
   { type: 'image', label: 'Image' },
   { type: 'audio', label: 'Audio' },
   { type: 'pdf', label: 'PDF' },
+  { type: 'card', label: 'Card' },
   { type: 'checklist', label: 'List' },
   { type: 'code', label: 'Code' },
   { type: 'table', label: 'Table' },
@@ -441,9 +467,30 @@ function AddToolbar({ pageId }: { pageId: string }) {
     }
   };
 
-  const add = (type: BlockType) => {
+  /** Card: a new card (opened at once to give it a picture and a label) or one that already exists in the Cards gallery. */
+  const addCard = (anchor: HTMLElement) => {
     const api = canvasApi.current;
     if (!api) return;
+    const place = (cardId: string) => {
+      const id = addCardBox(pageId, cardId, api.visibleSpot(220, 220));
+      if (id) setSelected([id]);
+    };
+    const existing = cardsOf(useNotes.getState().pages).sort((a, b) => b.updated - a.updated);
+    const items: MenuItem[] = [{ label: 'New card', action: () => { const c = createCard(); place(c.id); openCard(c.id); } }];
+    if (existing.length) {
+      items.push({ separator: true }, { heading: existing.length > 12 ? 'Add an existing card (12 most recent)' : 'Add an existing card' });
+      for (const c of existing.slice(0, 12)) items.push({ label: cardLabel(c), action: () => place(c.id) });
+    }
+    openMenu(anchor, items);
+  };
+
+  const add = (type: BlockType, anchor?: HTMLElement) => {
+    const api = canvasApi.current;
+    if (!api) return;
+    if (type === 'card') {
+      if (anchor) addCard(anchor);
+      return;
+    }
     if (type === 'image') {
       fileRef.current?.click();
       return;
@@ -479,7 +526,7 @@ function AddToolbar({ pageId }: { pageId: string }) {
         Select
       </button>
       {TOOLS.map((t) => (
-        <button key={t.type} className="tool" title={`Add ${t.label.toLowerCase()}${t.type === 'sticky' ? ' (S)' : ''}`} onClick={() => add(t.type)}>
+        <button key={t.type} className="tool" title={`Add ${t.label.toLowerCase()}${t.type === 'sticky' ? ' (S)' : ''}`} onClick={(e) => add(t.type, e.currentTarget)}>
           <Icon name={t.type} />
           {t.label}
         </button>
@@ -575,6 +622,7 @@ function FormatBar() {
 }
 
 function FormatButtons({ editor }: { editor: TipTapEditor }) {
+  const addons = useAddons((s) => s.loaded);
   const st = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
@@ -643,6 +691,12 @@ function FormatButtons({ editor }: { editor: TipTapEditor }) {
         <Fragment key={i}>
           {i > 0 && <span className="sep" />}
           {items}
+        </Fragment>
+      ))}
+      {Object.entries(addons).map(([id, m]) => m.FormatTool && (
+        <Fragment key={id}>
+          <span className="sep" />
+          <m.FormatTool editor={editor} />
         </Fragment>
       ))}
     </div>

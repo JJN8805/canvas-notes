@@ -32,6 +32,8 @@ export function blockPlainText(b: Block): string {
     case 'audio':
     case 'pdf':
       return b.name ?? '';
+    case 'card':
+      return ''; // the card's own text belongs to the card, not to this page
   }
 }
 

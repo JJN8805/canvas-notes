@@ -1,4 +1,4 @@
-export type BlockType = 'text' | 'image' | 'checklist' | 'code' | 'table' | 'frame' | 'sticky' | 'audio' | 'pdf';
+export type BlockType = 'text' | 'image' | 'checklist' | 'code' | 'table' | 'frame' | 'sticky' | 'audio' | 'pdf' | 'card';
 
 /** The muted colours offered for boxes, stickies and page cards. Their light and dark values are
  *  the `--n-*` tokens in styles.css; each has a matching `--n-*-ink` for text on top of it. */
@@ -100,7 +100,15 @@ export interface PdfBlock extends BlockBase {
   /** Number of pages, read when the file was added. */
   pages?: number;
 }
-export type Block = TextBlock | ImageBlock | ChecklistBlock | CodeBlock | TableBlock | FrameBlock | StickyBlock | AudioBlock | PdfBlock;
+/**
+ * A card shown on the page. The card itself (its picture, label and details) is its own item in the Cards gallery, not part of
+ * the page: this box only points at it by id, so deleting the box leaves the card, and one card can be shown on several pages.
+ */
+export interface CardBlock extends BlockBase {
+  type: 'card';
+  cardId: string;
+}
+export type Block = TextBlock | ImageBlock | ChecklistBlock | CodeBlock | TableBlock | FrameBlock | StickyBlock | AudioBlock | PdfBlock | CardBlock;
 
 export type ArrowheadMode = 'none' | 'one' | 'both';
 export type LineStyle = 'solid' | 'dashed';
@@ -122,6 +130,14 @@ export interface Arrow {
 /** Freehand ink over the whole page, made with Excalidraw. `scene` is its JSON (the elements), and
  *  `preview` an SVG render of them that covers the box x/y/w/h in canvas pixels, so the canvas,
  *  thumbnails and exports never need to load Excalidraw. */
+/** The edges of a finite page. */
+export interface Sheet {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface PageDrawing {
   scene: string;
   preview: string;
@@ -149,6 +165,8 @@ export interface Page {
   color?: NoteColor | null;
   /** Absent when nothing is drawn on the page. */
   drawing?: PageDrawing | null;
+  /** The page's one rectangle (canvas coordinates) that every box stays inside. Absent or null = an infinite page (every page from before this existed). */
+  sheet?: Sheet | null;
   created: number;
   updated: number;
   /** Revision stored on disk. 0 means never saved. Used to detect edits from another window. */
@@ -175,6 +193,10 @@ export type Filter =
   | { kind: 'cards' }
   | { kind: 'tag'; tag: string }
   | { kind: 'trash' }
-  | { kind: 'templates' };
+  | { kind: 'templates' }
+  /** The Journal: the daily pages as a book. */
+  | { kind: 'journal' }
+  /** The full-page screen of an add-on (see `AddOnModule.View`), by the add-on's id. */
+  | { kind: 'addon'; id: string };
 
 export type SortKey = 'updated' | 'created' | 'title';

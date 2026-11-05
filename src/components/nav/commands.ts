@@ -1,7 +1,7 @@
 import { currentRoute, navigate } from '../../lib/route';
 import { dateKey } from '../../lib/daily';
 import { isDarkTheme } from '../../lib/settings';
-import { goToDay } from '../ui/Calendar';
+import { openJournal } from '../../store/journal';
 import { createCard } from '../../store/cards';
 import { pinPage } from '../../widgets';
 import { widgetsAvailableNow } from '../../widgets/host';
@@ -31,7 +31,8 @@ export function buildCommands(): Command[] {
   const onPage = route.name === 'page' ? route.id : null;
   const list: Command[] = [
     { id: 'new-page', icon: 'plus', title: 'New page', run: openTemplatePicker },
-    { id: 'today', icon: 'today', title: 'Open today’s page', keys: 'Ctrl+Alt+D', run: () => goToDay(dateKey()) },
+    { id: 'today', icon: 'today', title: 'Open today in the journal', keys: 'Ctrl+Alt+D', run: () => openJournal(dateKey()) },
+    { id: 'journal', icon: 'book', title: 'Open the journal', run: () => openJournal() },
     { id: 'switcher', icon: 'search', title: 'Open quick switcher', keys: `${MOD_LABEL}+O`, run: () => openNav('switcher') },
     { id: 'graph', icon: 'graph', title: 'Open graph view', run: () => openNav('graph') },
     {

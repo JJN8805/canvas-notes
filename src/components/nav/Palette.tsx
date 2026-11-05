@@ -5,6 +5,7 @@ import { fuzzyFilter } from '../../lib/fuzzy';
 import { libraryPages } from '../../lib/pages';
 import { navigate } from '../../lib/route';
 import { buildCommands } from './commands';
+import { askHandler, useAddons } from '../../addons/store';
 import { Icon, type IconName } from '../ui/Icon';
 
 interface Row {
@@ -28,6 +29,9 @@ function PaletteBody({ mode }: { mode: 'commands' | 'switcher' }) {
   const listRef = useRef<HTMLUListElement>(null);
   const prevFocus = useRef<Element | null>(document.activeElement);
 
+  const loaded = useAddons((s) => s.loaded); // an add-on starting or stopping changes the rows
+  const canAsk = mode === 'switcher' && !!askHandler();
+
   const rows = useMemo<Row[]>(() => {
     if (mode === 'commands') {
       const all = buildCommands().map((c) => ({ key: c.id, label: c.title, hint: c.keys, icon: c.icon, run: c.run }));
@@ -35,9 +39,14 @@ function PaletteBody({ mode }: { mode: 'commands' | 'switcher' }) {
     }
     const all = libraryPages(pages)
       .sort((a, b) => b.updated - a.updated)
-      .map((p) => ({ key: p.id, label: p.title || 'Untitled', hint: p.tags.map((t) => '#' + t).join(' '), icon: 'pages' as IconName, run: () => navigate({ name: 'page', id: p.id }) }));
-    return fuzzyFilter(all, query, (r) => r.label).slice(0, 50);
-  }, [mode, pages, query]);
+      .map((p) => ({ key: p.id, label: p.title || 'Untitled', hint: p.dailyDate ? 'Journal' : p.tags.map((t) => '#' + t).join(' '), icon: 'pages' as IconName, run: () => navigate({ name: 'page', id: p.id }) }));
+    const found: Row[] = fuzzyFilter(all, query, (r) => r.label).slice(0, 50);
+    // "Search or ask": the last row asks the question instead of opening a page, so Enter still opens the best page match.
+    const ask = askHandler();
+    const q = query.trim();
+    if (ask && q) found.push({ key: 'ask-ai', label: `Ask AI: “${q}”`, icon: 'sparkle', run: () => ask(q) });
+    return found;
+  }, [mode, pages, query, loaded]);
 
   useEffect(() => setSel(0), [query, mode]);
   useEffect(() => {
@@ -61,7 +70,7 @@ function PaletteBody({ mode }: { mode: 'commands' | 'switcher' }) {
           autoFocus
           className="field"
           value={query}
-          placeholder={mode === 'commands' ? 'Type a command…' : 'Find or open a page…'}
+          placeholder={mode === 'commands' ? 'Type a command…' : canAsk ? 'Find a page, or ask AI…' : 'Find or open a page…'}
           aria-label={mode === 'commands' ? 'Command' : 'Page'}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {

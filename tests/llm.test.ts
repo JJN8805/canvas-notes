@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { chatRequest, DEFAULT_CONFIG, explainHttpError, imageRequest, ollamaModelsRequest, parseImageResponse, parseOllamaModels, parseStreamLine, type ProviderConfig } from '../src/lib/llm/providers';
+import { chatRequest, DEFAULT_CONFIG, explainHttpError, imageModelsRequest, imageRequest, ollamaModelsRequest, parseImageModels, parseImageResponse, parseOllamaModels, parseStreamLine, type ProviderConfig } from '../src/lib/llm/providers';
+import { imageDestination, imageTargetLabel, imageTypeOf } from '../src/lib/llm/image';
 import { destinationOf, isLoopbackHost, normalizeBaseUrl } from '../src/lib/llm/url';
-import { LlmError, type StreamEvent } from '../src/lib/llm/types';
+import { LlmError, type ChatMsg, type StreamEvent } from '../src/lib/llm/types';
 import { buildPageContext } from '../src/addons/ai/context';
 import { checklistItems, markdownToHtml } from '../src/addons/ai/markdown';
 import { QUICK_ACTIONS, SYSTEM_PROMPT, userMessage } from '../src/addons/ai/prompts';
@@ -9,8 +10,9 @@ import { blockText } from '../src/lib/util';
 import { searchPages } from '../src/lib/search';
 import type { Block, Page } from '../src/types';
 
+const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 const cfg = (over: Partial<ProviderConfig> = {}): ProviderConfig => ({ ...DEFAULT_CONFIG, models: { ollama: 'llama3.2', anthropic: 'claude-sonnet-5-5', openai: 'gpt-4o-mini' }, ...over });
-const events = (provider: 'ollama' | 'anthropic' | 'openai', lines: string[]): StreamEvent[] => lines.flatMap((l) => parseStreamLine(provider, l));
+const events = (provider: 'ollama' | 'anthropic' | 'openai' | 'gemini', lines: string[]): StreamEvent[] => lines.flatMap((l) => parseStreamLine(provider, l));
 
 describe('addresses', () => {
   it('turns what is typed into an http(s) base address, or null', () => {
@@ -114,7 +116,7 @@ describe('reading streamed answers', () => {
   });
 
   it('reads a picture, or says why there is none', () => {
-    expect(parseImageResponse('{"data":[{"b64_json":"AAAA"}]}')).toBe('AAAA');
+    expect(parseImageResponse(`{"data":[{"b64_json":"${PNG_B64}"}]}`)).toBe(PNG_B64);
     expect(() => parseImageResponse('{"data":[{"url":"https://x/y.png"}]}')).toThrow(/web link/);
     expect(() => parseImageResponse('{"error":{"message":"Your request was rejected by the safety system."}}')).toThrow(/safety/);
     expect(() => parseImageResponse('nonsense')).toThrow(/No picture/);
@@ -229,5 +231,164 @@ describe('text read from pictures is searchable', () => {
     expect(blockText(withOcr.blocks[0])).toBe('TOTAL 42.50 Blue Bottle Coffee');
     expect(searchPages([withOcr], 'bottle coffee').map((p) => p.id)).toEqual(['p']);
     expect(searchPages([{ ...withOcr, blocks: [{ ...withOcr.blocks[0], ocr: undefined } as Block] }], 'bottle')).toEqual([]);
+  });
+});
+
+describe('picture sources', () => {
+  const sd = (over: Partial<ProviderConfig> = {}) => cfg({ imageSource: 'sdwebui', ...over });
+  const srv = (over: Partial<ProviderConfig> = {}) => cfg({ imageSource: 'imageserver', ...over });
+
+  it('asks a Stable Diffusion WebUI server on its own address, with size and steps, saving nothing on the server', () => {
+    const r = imageRequest(sd(), 'a red fox');
+    expect(r).toMatchObject({ provider: 'sdwebui', method: 'POST', url: 'http://127.0.0.1:7860/sdapi/v1/txt2img', stream: false });
+    expect(JSON.parse(r.body!)).toEqual({ prompt: 'a red fox', width: 512, height: 512, steps: 20, batch_size: 1, n_iter: 1, send_images: true, save_images: false });
+    expect(JSON.stringify(r.headers).toLowerCase()).not.toMatch(/key|authorization/);
+  });
+
+  it('can name the checkpoint to use, and keeps size and steps in range', () => {
+    const body = (c: ProviderConfig) => JSON.parse(imageRequest(c, 'x').body!);
+    expect(body(sd({ imageServerModel: ' flux1-schnell.safetensors ' })).override_settings).toEqual({ sd_model_checkpoint: 'flux1-schnell.safetensors' });
+    expect(body(sd()).override_settings).toBeUndefined();
+    expect(body(sd({ imageSize: 1024, imageSteps: 4 }))).toMatchObject({ width: 1024, height: 1024, steps: 4 });
+    expect(body(sd({ imageSize: 999 }))).toMatchObject({ width: 512, height: 512 }); // not one of the offered sizes
+    expect(body(sd({ imageSteps: 100000 })).steps).toBe(150);
+    expect(body(sd({ imageSteps: 0 })).steps).toBe(20);
+  });
+
+  it('asks an OpenAI-compatible server for the picture itself, not a link', () => {
+    const r = imageRequest(srv({ imageServerModel: 'flux' , imageSize: 768 }), 'a red fox');
+    expect(r).toMatchObject({ provider: 'imageserver', url: 'http://localhost:8080/v1/images/generations', stream: false });
+    expect(JSON.parse(r.body!)).toEqual({ model: 'flux', prompt: 'a red fox', n: 1, size: '768x768', response_format: 'b64_json' });
+    expect(JSON.parse(imageRequest(srv(), 'x').body!).model).toBeUndefined(); // no model named: the server decides
+  });
+
+  it('still asks OpenAI the old way by default', () => {
+    expect(imageRequest(cfg(), 'x')).toMatchObject({ provider: 'openai', url: 'https://api.openai.com/v1/images/generations' });
+  });
+
+  it('refuses a bad server address before sending anything', () => {
+    expect(() => imageRequest(sd({ imageUrls: { sdwebui: 'ftp://x', imageserver: '' } }), 'x')).toThrow(/picture server address/);
+    expect(() => imageRequest(srv({ imageUrls: { sdwebui: '', imageserver: 'http://user:pw@host' } }), 'x')).toThrow(LlmError);
+  });
+
+  it('lists the models a local server has', () => {
+    expect(imageModelsRequest(sd())).toMatchObject({ provider: 'sdwebui', method: 'GET', url: 'http://127.0.0.1:7860/sdapi/v1/sd-models' });
+    expect(imageModelsRequest(srv())).toMatchObject({ provider: 'imageserver', method: 'GET', url: 'http://localhost:8080/v1/models' });
+    expect(() => imageModelsRequest(cfg())).toThrow(/Picture model/);
+    expect(parseImageModels('sdwebui', '[{"title":"sd_xl_base.safetensors [31e35c80fc]","model_name":"sd_xl_base"},{"title":"v1-5.ckpt","model_name":"v1-5"}]')).toEqual(['sd_xl_base', 'v1-5']);
+    expect(parseImageModels('sdwebui', '[{"title":"only-a-title.ckpt"}]')).toEqual(['only-a-title.ckpt']);
+    expect(parseImageModels('imageserver', '{"data":[{"id":"flux"},{"id":"sdxl"},{"id":"flux"}]}')).toEqual(['flux', 'sdxl']);
+    expect(parseImageModels('sdwebui', 'not json')).toEqual([]);
+  });
+
+  const B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  it('reads a picture from either kind of server', () => {
+    expect(parseImageResponse(JSON.stringify({ images: [B64], parameters: {}, info: '{}' }))).toBe(B64);
+    expect(parseImageResponse(JSON.stringify({ images: [`data:image/png;base64,${B64}`] }))).toBe(B64); // some servers add a data: prefix
+    expect(parseImageResponse(JSON.stringify({ images: [B64.slice(0, 20) + '\n' + B64.slice(20)] }))).toBe(B64);
+    expect(parseImageResponse(JSON.stringify({ data: [{ b64_json: B64 }] }))).toBe(B64);
+  });
+
+  it('explains every way a server says no', () => {
+    expect(() => parseImageResponse('{"detail":"Not Found"}')).toThrow('Not Found');
+    expect(() => parseImageResponse('{"detail":[{"loc":["body","steps"],"msg":"value is not a valid integer","type":"type_error"}]}')).toThrow(/not a valid integer/);
+    expect(() => parseImageResponse('{"error":"CUDA out of memory","errors":"OutOfMemoryError"}')).toThrow(/out of memory/);
+    expect(() => parseImageResponse('{"error":{"message":"model not loaded"}}')).toThrow('model not loaded');
+    expect(() => parseImageResponse('{"images":[]}')).toThrow(/No picture/);
+    expect(() => parseImageResponse('{"images":["this is not base64 !!"]}')).toThrow(/No picture/);
+    expect(() => parseImageResponse('{"images":["QUJD"]}')).toThrow(/No picture/); // too short to be a picture
+    expect(() => parseImageResponse('<html>')).toThrow(/No picture/);
+    expect(() => parseImageResponse('{"data":[{"url":"https://x/y.png"}]}')).toThrow(/web link/);
+  });
+
+  it('words HTTP errors for the local servers', () => {
+    expect(explainHttpError('sdwebui', 404, '{"detail":"Not Found"}')).toMatch(/--api/);
+    expect(explainHttpError('imageserver', 404, '')).toMatch(/\/v1\/images\/generations/);
+    expect(explainHttpError('sdwebui', 422, '{"detail":[{"msg":"bad width"}]}')).toMatch(/didn’t accept.*bad width/);
+    expect(explainHttpError('sdwebui', 500, '{"error":"OutOfMemoryError"}')).toMatch(/out of memory.*OutOfMemoryError/);
+    expect(explainHttpError('imageserver', 401, '')).toMatch(/refused/);
+    expect(explainHttpError('openai', 401, '')).toMatch(/rejected the API key/); // OpenAI is unchanged
+  });
+
+  it('never treats a picture server answer as a chat stream', () => {
+    expect(parseStreamLine('sdwebui', 'data: {"type":"message_stop"}')).toEqual([]);
+    expect(parseStreamLine('imageserver', '{"message":{"content":"x"}}')).toEqual([]);
+  });
+
+  it('tells PNG, JPEG, WebP and GIF apart by their first bytes', () => {
+    const b64 = (...bytes: number[]) => Buffer.from([...bytes, ...new Array(20).fill(0)]).toString('base64');
+    expect(imageTypeOf(B64)).toEqual({ mime: 'image/png', ext: 'png' });
+    expect(imageTypeOf(b64(0xff, 0xd8, 0xff, 0xe0))).toEqual({ mime: 'image/jpeg', ext: 'jpg' });
+    expect(imageTypeOf(b64(0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50))).toEqual({ mime: 'image/webp', ext: 'webp' });
+    expect(imageTypeOf(b64(0x47, 0x49, 0x46, 0x38, 0x39, 0x61))).toEqual({ mime: 'image/gif', ext: 'gif' });
+    expect(imageTypeOf(b64(0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45)).mime).toBe('image/png'); // a RIFF that is not WebP
+    expect(imageTypeOf('!!! not base64 !!!').mime).toBe('image/png'); // unknown: the safe default
+  });
+
+  it('says where a picture description goes', () => {
+    expect(imageDestination(cfg())).toBe('cloud');
+    expect(imageDestination(sd())).toBe('local');
+    expect(imageDestination(sd({ imageUrls: { sdwebui: 'http://192.168.1.9:7860', imageserver: '' } }))).toBe('network');
+    expect(imageDestination(srv({ imageUrls: { sdwebui: '', imageserver: 'http://localhost.evil.com:8080' } }))).toBe('network');
+    expect(imageTargetLabel(cfg())).toBe('OpenAI (gpt-image-1)');
+    expect(imageTargetLabel(sd())).toBe('the Stable Diffusion server at 127.0.0.1:7860 (on this computer)');
+    expect(imageTargetLabel(srv({ imageUrls: { sdwebui: '', imageserver: 'http://192.168.1.9:8080' } }))).toBe('the picture server at 192.168.1.9:8080 (on another computer)');
+  });
+});
+
+describe('Gemini', () => {
+  const g = (over: Partial<ProviderConfig> = {}) => cfg({ provider: 'gemini', models: { ollama: '', anthropic: '', openai: '', gemini: 'gemini-2.5-flash' }, ...over });
+  const msgs: ChatMsg[] = [{ role: 'user', content: 'Hi' }, { role: 'assistant', content: 'Hello' }, { role: 'user', content: 'Again' }];
+
+  it('asks the streaming endpoint with the system text apart and roles renamed, and never carries the key', () => {
+    const r = chatRequest(g(), 'SYS', msgs);
+    expect(r).toMatchObject({ provider: 'gemini', method: 'POST', stream: true, url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse' });
+    expect(JSON.parse(r.body!)).toEqual({
+      systemInstruction: { parts: [{ text: 'SYS' }] },
+      contents: [{ role: 'user', parts: [{ text: 'Hi' }] }, { role: 'model', parts: [{ text: 'Hello' }] }, { role: 'user', parts: [{ text: 'Again' }] }],
+    });
+    expect(JSON.stringify(r)).not.toMatch(/key/i);
+  });
+  it('refuses a model name that could change the address', () => {
+    for (const bad of ['../files/x', 'a/b', 'x?key=1', 'x:delete', '', ' ', 'a b']) expect(() => chatRequest(g({ models: { ollama: '', anthropic: '', openai: '', gemini: bad } }), 's', msgs), bad).toThrow();
+    expect(chatRequest(g({ models: { ollama: '', anthropic: '', openai: '', gemini: 'models/gemini-2.5-pro' } }), 's', msgs).url).toContain('/models/gemini-2.5-pro:');
+  });
+  it('reads streamed text, hides thinking, ends on the finish reason and reports blocks and errors', () => {
+    const ev = (l: string) => parseStreamLine('gemini', l);
+    expect(ev('data: {"candidates":[{"content":{"parts":[{"text":"Hel"}]}}]}')).toEqual([{ type: 'text', text: 'Hel' }]);
+    expect(ev('data: {"candidates":[{"content":{"parts":[{"text":"hmm","thought":true},{"text":"lo"}]},"finishReason":"STOP"}]}')).toEqual([{ type: 'text', text: 'lo' }, { type: 'done' }]);
+    expect(ev('data: {"candidates":[{"finishReason":"SAFETY"}]}')).toEqual([{ type: 'error', message: 'Gemini stopped the answer (safety).' }]);
+    expect(ev('data: {"promptFeedback":{"blockReason":"PROHIBITED_CONTENT"}}')).toEqual([{ type: 'error', message: 'Gemini declined this request (prohibited content).' }]);
+    expect(ev('data: {"error":{"message":"quota"}}')).toEqual([{ type: 'error', message: 'quota' }]);
+    expect(ev(': ping')).toEqual([]);
+    expect(ev('data: nope')).toEqual([]);
+  });
+  it('draws with a Gemini image model through generateContent, and with Imagen through predict', () => {
+    const a = imageRequest(g({ imageSource: 'gemini' }), 'a cat');
+    expect(a).toMatchObject({ provider: 'gemini', stream: false, url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent' });
+    expect(JSON.parse(a.body!)).toEqual({ contents: [{ parts: [{ text: 'a cat' }] }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'] } });
+    const b = imageRequest(g({ imageSource: 'gemini', geminiImageModel: 'imagen-4.0-generate-001' }), 'a cat');
+    expect(b.url).toBe('https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict');
+    expect(JSON.parse(b.body!)).toEqual({ instances: [{ prompt: 'a cat' }], parameters: { sampleCount: 1 } });
+  });
+  it('finds the picture in either answer shape, and says what Gemini said when it drew nothing', () => {
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    expect(parseImageResponse(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'Here you go' }, { inlineData: { mimeType: 'image/png', data: png } }] } }] }))).toBe(png);
+    expect(parseImageResponse(JSON.stringify({ candidates: [{ content: { parts: [{ inline_data: { data: png } }] } }] }))).toBe(png);
+    expect(parseImageResponse(JSON.stringify({ predictions: [{ bytesBase64Encoded: png }] }))).toBe(png);
+    expect(() => parseImageResponse(JSON.stringify({ candidates: [{ content: { parts: [{ text: 'I can’t draw that.' }] } }] }))).toThrow(/didn’t draw a picture.*can’t draw that/);
+    expect(() => parseImageResponse(JSON.stringify({ promptFeedback: { blockReason: 'SAFETY' } }))).toThrow(/declined to draw/);
+    expect(() => parseImageResponse(JSON.stringify({ error: { message: 'billing required' } }))).toThrow(/billing required/);
+  });
+  it('explains errors, including Google’s 400 for a wrong key', () => {
+    expect(explainHttpError('gemini', 400, '{"error":{"message":"API key not valid. Please pass a valid API key."}}')).toMatch(/Gemini \(Google\) rejected the API key/);
+    expect(explainHttpError('gemini', 400, '{"error":{"message":"bad request body"}}')).toMatch(/bad request body/);
+    expect(explainHttpError('gemini', 429, '{"error":{"message":"Quota exceeded"}}')).toMatch(/too many requests.*Quota exceeded/);
+    expect(explainHttpError('gemini', 404, '', 'gemini-9')).toMatch(/doesn’t know the model “gemini-9”/);
+  });
+  it('is a cloud destination', () => {
+    expect(destinationOf('gemini', '')).toBe('cloud');
+    expect(imageDestination({ imageSource: 'gemini', imageUrls: DEFAULT_CONFIG.imageUrls })).toBe('cloud');
+    expect(imageTargetLabel({ ...DEFAULT_CONFIG, imageSource: 'gemini' })).toBe('Google Gemini (gemini-2.5-flash-image)');
   });
 });

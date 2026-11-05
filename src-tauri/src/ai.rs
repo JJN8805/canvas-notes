@@ -3,7 +3,7 @@
 //! The page never talks to a model provider itself and never holds an API key: it describes a request, and this
 //! module sends it. That keeps the app's content security policy strict (no outside `connect-src`), lets the key
 //! live in a file the page can't read, and lets this code refuse anything but the three destinations the add-on
-//! is for: Ollama (an address you chose), api.anthropic.com and api.openai.com.
+//! is for: Ollama (an address you chose), api.anthropic.com, api.openai.com and generativelanguage.googleapis.com (Gemini).
 //!
 //! Keys are kept in `ai-keys.json` in the app's config folder (owner-only permissions on Unix). They are not in
 //! the notes database, so they are never synced, backed up or exported.
@@ -54,7 +54,7 @@ pub enum AiChunk {
 }
 
 /// Providers whose key this module keeps.
-const KEYED: [&str; 2] = ["anthropic", "openai"];
+const KEYED: [&str; 3] = ["anthropic", "openai", "gemini"];
 
 /// Checks where a request is going. Returns the provider's key name when a key is to be added.
 pub fn check_target(provider: &str, method: &str, url: &str) -> Result<Option<&'static str>, String> {
@@ -79,12 +79,35 @@ pub fn check_target(provider: &str, method: &str, url: &str) -> Result<Option<&'
             }
             Ok(Some("openai"))
         }
-        "ollama" => {
+        "gemini" => {
+            // Only the model methods Gemini and Imagen use, on Google's API host: /v1beta/models/<name>:generateContent,
+            // :streamGenerateContent (with ?alt=sse) and :predict. The key goes in a header, never in the address.
+            let path = u.path();
+            let rest = path.strip_prefix("/v1beta/models/").unwrap_or("");
+            let (name, method_name) = rest.split_once(':').unwrap_or(("", ""));
+            let name_ok = !name.is_empty() && name.len() <= 90 && name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'));
+            let query_ok = match u.query() {
+                None => true,
+                Some(q) => q == "alt=sse",
+            };
+            if u.scheme() != "https" || host != "generativelanguage.googleapis.com" || u.port().is_some() || !name_ok || !matches!(method_name, "generateContent" | "streamGenerateContent" | "predict") || !query_ok || u.fragment().is_some() {
+                return Err("Gemini requests may only go to https://generativelanguage.googleapis.com/v1beta/models/ (generateContent, streamGenerateContent or predict).".into());
+            }
+            Ok(Some("gemini"))
+        }
+        "ollama" | "sdwebui" | "imageserver" => {
             if u.scheme() != "http" && u.scheme() != "https" {
-                return Err("The Ollama address must start with http:// or https://.".into());
+                return Err("The server address must start with http:// or https://.".into());
             }
             if host.is_empty() {
-                return Err("The Ollama address has no host.".into());
+                return Err("The server address has no host.".into());
+            }
+            // A picture server is reached only on the paths those servers use, so this can't be used to poke at other services.
+            if provider == "sdwebui" && !u.path().starts_with("/sdapi/v1/") {
+                return Err("Stable Diffusion WebUI requests may only use /sdapi/v1/.".into());
+            }
+            if provider == "imageserver" && !u.path().starts_with("/v1/") {
+                return Err("Picture server requests may only use /v1/.".into());
             }
             Ok(None)
         }
@@ -112,6 +135,7 @@ pub fn filter_headers(headers: &[(String, String)]) -> Result<Vec<(String, Strin
 fn key_header(key_name: &str, key: &str) -> (String, String) {
     match key_name {
         "anthropic" => ("x-api-key".into(), key.into()),
+        "gemini" => ("x-goog-api-key".into(), key.into()),
         _ => ("authorization".into(), format!("Bearer {key}")),
     }
 }
@@ -226,7 +250,9 @@ fn unreachable_message(provider: &str, host: &str, e: &ureq::Transport) -> Strin
     use ureq::ErrorKind::*;
     let hint = match (e.kind(), provider) {
         (ConnectionFailed, "ollama") => "Is Ollama running there?".to_string(),
-        (Dns, "ollama") => "Check the address in Settings → Add-ons.".to_string(),
+        (ConnectionFailed, "sdwebui") => "Is the Stable Diffusion server running there, started with --api?".to_string(),
+        (ConnectionFailed, "imageserver") => "Is the picture server running there?".to_string(),
+        (Dns, "ollama" | "sdwebui" | "imageserver") => "Check the address in Settings → Add-ons.".to_string(),
         (ConnectionFailed | Dns, _) => "Check your internet connection.".to_string(),
         _ => e.to_string(),
     };
@@ -307,6 +333,25 @@ mod tests {
     fn sends_each_provider_only_to_its_own_servers() {
         assert_eq!(check_target("anthropic", "POST", "https://api.anthropic.com/v1/messages"), Ok(Some("anthropic")));
         assert_eq!(check_target("openai", "POST", "https://api.openai.com/v1/chat/completions"), Ok(Some("openai")));
+        assert_eq!(check_target("gemini", "POST", "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse"), Ok(Some("gemini")));
+        assert_eq!(check_target("gemini", "POST", "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent"), Ok(Some("gemini")));
+        assert_eq!(check_target("gemini", "POST", "https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict"), Ok(Some("gemini")));
+        for url in [
+            "https://generativelanguage.googleapis.com.evil.com/v1beta/models/x:generateContent",
+            "http://generativelanguage.googleapis.com/v1beta/models/x:generateContent",
+            "https://generativelanguage.googleapis.com:8443/v1beta/models/x:generateContent",
+            "https://generativelanguage.googleapis.com/v1beta/models",
+            "https://generativelanguage.googleapis.com/v1beta/models/x:delete",
+            "https://generativelanguage.googleapis.com/v1beta/files/x:generateContent",
+            "https://generativelanguage.googleapis.com/v1beta/models/../files/x:generateContent",
+            "https://generativelanguage.googleapis.com/v1beta/models/a/b:generateContent",
+            "https://generativelanguage.googleapis.com/v1beta/models/x:generateContent?key=stolen",
+            "https://generativelanguage.googleapis.com/v1beta/models/x:streamGenerateContent?alt=sse&key=k",
+            "https://user:pw@generativelanguage.googleapis.com/v1beta/models/x:generateContent",
+            "https://api.openai.com/v1/models/x:generateContent",
+        ] {
+            assert!(check_target("gemini", "POST", url).is_err(), "gemini {url} should be refused");
+        }
         assert_eq!(check_target("ollama", "POST", "http://localhost:11434/api/chat"), Ok(None));
         assert_eq!(check_target("ollama", "GET", "https://ollama.example.com/api/tags"), Ok(None));
         for (p, url) in [
@@ -328,6 +373,25 @@ mod tests {
         ] {
             assert!(check_target(p, "POST", url).is_err(), "{p} {url} should be refused");
         }
+        // The local picture servers: any address you choose, but only their own paths.
+        assert_eq!(check_target("sdwebui", "POST", "http://127.0.0.1:7860/sdapi/v1/txt2img"), Ok(None));
+        assert_eq!(check_target("sdwebui", "GET", "http://192.168.1.9:7860/sdapi/v1/sd-models"), Ok(None));
+        assert_eq!(check_target("imageserver", "POST", "http://localhost:8080/v1/images/generations"), Ok(None));
+        assert_eq!(check_target("imageserver", "GET", "https://images.example.com/v1/models"), Ok(None));
+        for (p, url) in [
+            ("sdwebui", "http://127.0.0.1:7860/"),
+            ("sdwebui", "http://127.0.0.1:7860/config"),
+            ("sdwebui", "http://127.0.0.1:7860/sdapi/v2/x"),
+            ("sdwebui", "http://127.0.0.1:7860/v1/images/generations"),
+            ("sdwebui", "file:///sdapi/v1/txt2img"),
+            ("sdwebui", "http://user:pw@127.0.0.1:7860/sdapi/v1/txt2img"),
+            ("imageserver", "http://localhost:8080/admin"),
+            ("imageserver", "http://localhost:8080/sdapi/v1/txt2img"),
+            ("imageserver", "http://localhost:8080/v1evil"),
+            ("imageserver", "ftp://localhost/v1/models"),
+        ] {
+            assert!(check_target(p, "POST", url).is_err(), "{p} {url} should be refused");
+        }
         assert!(check_target("ollama", "DELETE", "http://localhost:11434/api/delete").is_err());
         assert!(check_target("ollama", "PUT", "http://localhost:11434/api/x").is_err());
     }
@@ -343,11 +407,12 @@ mod tests {
     fn keys_go_in_the_right_header_and_bad_keys_are_refused() {
         assert_eq!(key_header("anthropic", "sk-ant-1"), h("x-api-key", "sk-ant-1"));
         assert_eq!(key_header("openai", "sk-1"), h("authorization", "Bearer sk-1"));
+        assert_eq!(key_header("gemini", "AIza1"), h("x-goog-api-key", "AIza1"));
         assert_eq!(clean_key("  sk-abc_123  "), Ok("sk-abc_123".to_string()));
         for bad in ["", "   ", "has space", "new\nline", "tab\tkey", "ключ", &"x".repeat(401)] {
             assert!(clean_key(bad).is_err(), "{bad:?}");
         }
-        assert!(keyed("anthropic").is_ok() && keyed("openai").is_ok());
+        assert!(keyed("anthropic").is_ok() && keyed("openai").is_ok() && keyed("gemini").is_ok());
         assert!(keyed("ollama").is_err() && keyed("evil").is_err());
     }
 

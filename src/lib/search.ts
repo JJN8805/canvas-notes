@@ -1,7 +1,7 @@
 /**
  * The library's search box. Plain words must all appear (title, tags or text, any order); the rest narrow the pages:
  *   #travel or tag:travel     the page has exactly that tag
- *   has:image                 the page has a box of that kind (text, image, checklist, code, table, frame, sticky, audio, pdf) or has:drawing
+ *   has:image                 the page has a box of that kind (text, image, checklist, code, table, frame, sticky, audio, pdf, card) or has:drawing
  *   in:work                   the page is in a group whose name contains this (its subgroups count too)
  *   after:2026-01-01          last edited on or after that day (local time)
  *   before:2026-02-01         last edited before the end of that day
@@ -12,7 +12,7 @@ import { withDescendants } from './groups';
 import { blockText, normTag } from './util';
 import { cleanDate } from './pages';
 
-export const BLOCK_KINDS = ['text', 'image', 'checklist', 'code', 'table', 'frame', 'sticky', 'audio', 'pdf', 'drawing'] as const;
+export const BLOCK_KINDS = ['text', 'image', 'checklist', 'code', 'table', 'frame', 'sticky', 'audio', 'pdf', 'card', 'drawing'] as const;
 
 export interface ParsedQuery {
   words: string[];

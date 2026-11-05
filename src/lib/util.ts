@@ -93,6 +93,7 @@ export const BLOCK_LABEL: Record<Block['type'], string> = {
   sticky: 'Sticky',
   audio: 'Audio',
   pdf: 'PDF',
+  card: 'Card',
 };
 
 export function blockText(b: Block): string {

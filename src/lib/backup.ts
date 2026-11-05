@@ -99,6 +99,7 @@ export async function restoreBackup(storage: NotesStorage, backup: Backup): Prom
       kind: p.kind,
       dailyDate: p.dailyDate,
       color: p.color,
+      sheet: p.sheet,
       created: p.created,
       updated: p.updated,
     });

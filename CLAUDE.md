@@ -74,13 +74,32 @@ Zustand stores under `src/store/`: `notes.ts` (pages/groups/tags — the biggest
 Optional features, each a module in `src/addons/<id>/` listed in `addons/registry.ts` and loaded with a dynamic `import()` only
 while switched on in Settings → Add-ons (`addons/store.ts`; the switch is saved as the `addons.enabled` setting). An add-on is an
 `AddOnModule` (`addons/types.ts`): a `Settings` component, optionally a side `Panel`, `blockActions` (buttons on a box's hover bar)
-and palette `commands`. The core app only ever asks the store what the running add-ons contribute, so switching one off removes it.
+`commands`, `navItem` + `View` (a sidebar entry that opens a full-page screen in the library; the filter is `{kind:'addon', id}`), `askHandler`
+("ask" from the quick switcher), `cardPictureSources` (extra ways to give a card a picture), `FormatTool` (a button in the text formatting bar), `Overlay`
+(floating UI mounted once for the app) and `onEmptyTextSpace` (space pressed in an empty text box). The core app only ever asks the store
+what the running add-ons contribute, so switching one off removes it.
 - `ai`: chat panel. Providers, request building and stream parsing are pure code in `src/lib/llm/` (tested without a network);
   `lib/llm/transport.ts` sends through the Rust proxy `src-tauri/src/ai.rs` (adds the API key, refuses any other destination,
   streams lines back) and falls back to `fetch` in the browser preview. The chat lives in memory only (`addons/ai/chat.ts`).
-  `needsConfirmation` (chat.ts) is the rule for when the user must see what is about to leave their computer.
+  `needsConfirmation` (chat.ts) is the rule for when the user must see what is about to leave their computer. `stream.ts` is the one
+  streamed-answer path, shared by the chat panel, the Chat screen (`ChatView.tsx`) and the inline card (`InlineAi.tsx`, `inline.ts`, prompts in `tasks.ts`) that edits
+  selected text and writes on an empty line. Each conversation is its own `createChat()` store (`panelChat` for the drawer, `mainChat`
+  for the Chat screen), all in memory only.
+  The assistant can also *propose* page edits (`ai/edits.ts` pure: labelled page context, parsing of the model's fenced `edits` JSON, `propose` = before/after with per-change problems incl. stale boxes; `ai/applyEdits.ts` applies accepted changes in ONE `mutatePage` so one undo step). The model never changes the page by answering; the user must press Apply in the proposal card (`Proposal` in `Panel.tsx`). Real box ids never go to the model (labels b1… via `AliasMap`). Tested in `tests/aiEdits.test.ts`, `tests/aiApply.test.ts`; end to end (mocked Ollama) with `node scripts/assistant-edit-check.mjs`.
 - `ocr`: reads text in pictures with a local Ollama vision model and stores it in `ImageBlock.ocr`, which search and sync already carry.
 A new add-on needs: an entry in the registry, a module under `src/addons/`, and tests; nothing else in the app should import it.
+
+### The Journal
+
+The daily pages as a book (`components/journal/JournalView.tsx`, state in `store/journal.ts`, pure helpers in `lib/journal.ts`). A day's page is
+an ordinary page with `dailyDate` set, so storage, sync and backup are unchanged. The library's own lists use `listedPages` (no daily pages);
+search, the switcher, links and the Chat picker still use `libraryPages`. The book shows one page (a two-page spread was tried and removed). Attendance pages (`attendanceLink`) are excluded from `listedPages` and reached by the Journal's Attendance button (`attendancePagesOf`). `Editor` has a `variant: 'journal'` (cut-down header) for the book's
+right-hand page, and a page route that points at a daily page redirects to `openJournal(date)`. A day's page is only made by `openDailyPage` when
+the day is opened (today) or started (any other day).
+
+### Finite pages
+
+`Page.sheet` (`{x,y,w,h}` in canvas coordinates, `lib/sheet.ts`) is the page's edges; absent/null = the original infinite canvas, so every page from before it existed, and older app versions (which ignore the field), stay infinite. `createPage` gives every new page a sheet (`sheet: null` asks for an infinite one). `mutatePage` calls `keepPageInside` after every recipe, so *any* way a box changes (drag, resize, paste, import, the assistant) ends inside the sheet; a box counts at its measured height (`blockHeight`, i.e. `ah`). `normalizePage` grows a stored sheet to cover its boxes (another app version may have put some outside). `setPageSize` / `growPage` (store/notes/mutate.ts) are the only ways to change it; `Canvas.tsx` draws the `.sheet` and scrolls only within it. Stored in the `pages.sheet` column (migration v10, JSON, '' = infinite) and in IndexedDB; carried through sync (`PageRecord.sheet`), conflicted copies and backups.
 
 ### Snap guides
 
@@ -108,10 +127,13 @@ Architecture:
 Principles:
 - Notes are private and local. No network requests unless the user triggers them. Note content goes only to Ollama
   on this computer, with one deliberate exception: the optional **AI assistant add-on** may send what the user chooses
-  to share to Claude or OpenAI (or to an Ollama on another computer), and only when the add-on is switched on, that
+  to share to Claude, OpenAI or Google Gemini (or to an Ollama on another computer), and only when the add-on is switched on, that
   provider is chosen, and the user has clicked Send on a preview of exactly what leaves (they can turn the preview off
   in Settings → Add-ons). The **OCR add-on** never sends anything but local Ollama. API keys live only in the Rust
   side's `ai-keys.json` (owner-only), never in SQLite, sync, backups, exports or page JavaScript. Chats are never saved.
+  A picture is drawn from a typed description only (never page content) by OpenAI, Google Gemini or by a server the user chose: a Stable
+  Diffusion WebUI or OpenAI-compatible image server, on this computer or elsewhere on their network (`ai.rs` allows those
+  only on their own paths).
 - The desktop app runs in WebKitGTK. Test visual and export features in `npm run desktop`, not
   only in a browser.
 - Update README.md when adding user-facing features.
@@ -135,3 +157,5 @@ Type checks and tests do not show layout, focus or interaction bugs. Before sayi
    `xdotool search --name "Canvas Notes"`, `xdotool getwindowgeometry`, `xwininfo` and `xprop`, and have the page write
    measurements (`innerWidth`, `devicePixelRatio`, element boxes) to a file through the fs plugin while debugging
    (remove that code afterwards). Say clearly which parts were not seen.
+
+- Robustness: pages are repaired on read by `lib/sanitize.ts` (via `normalizePage`); `ErrorBoundary` wraps the app, each screen and draw mode, so one failure never blanks the window. `node scripts/robustness-check.mjs` injects malformed pages and checks the app still opens.

@@ -1,3 +1,4 @@
+import { cleanArrows, cleanBlocks, cleanTags } from '../lib/sanitize';
 import type { Arrow, Block } from '../types';
 import { blockPlainText, extractLinks } from './text';
 import type { GraphRepo, SearchHit } from './repo';
@@ -141,8 +142,10 @@ export class GraphMirror {
     for (const o of want) await (dir === 'out' ? repo.link(nodeId, o, type) : repo.link(o, nodeId, type));
   }
 
-  private async projectPage(p: LegacyPage) {
+  private async projectPage(raw: LegacyPage) {
     const { repo } = this;
+    // A page that arrived damaged must not stop the search index from being built: repair it the way reading it does.
+    const p: LegacyPage = { ...raw, title: typeof raw.title === 'string' ? raw.title : '', tags: cleanTags(raw.tags), blocks: cleanBlocks(raw.blocks), arrows: cleanArrows(raw.arrows) };
     if (p.deleted) {
       await repo.deleteNode(p.id);
       return;
@@ -158,11 +161,12 @@ export class GraphMirror {
         ids.set(b.id, other && other.page_id !== p.id ? `${b.id}${SEP}${p.id}` : b.id);
       }
       const { id, type, x, y, w, h, z, ...content } = b;
-      // The graph's block table predates audio and PDF boxes; both are files there ('file'), the real kind kept in the content.
-      const isFile = type === 'audio' || type === 'pdf';
+      // The graph's block table predates audio, PDF and card boxes: audio and PDFs are files there, a card is an embed,
+      // and the real kind is kept in the content.
+      const stored = type === 'audio' || type === 'pdf' ? 'file' : type === 'card' ? 'embed' : type;
       await repo.putBlock({
-        id: ids.get(id)!, pageId: p.id, type: isFile ? 'file' : type, x, y, w, h, z: Math.round(z ?? 0),
-        content: isFile ? { ...content, kind: type } : content, plainText: blockPlainText(b),
+        id: ids.get(id)!, pageId: p.id, type: stored, x, y, w, h, z: Math.round(z ?? 0),
+        content: stored !== type ? { ...content, kind: type } : content, plainText: blockPlainText(b),
       });
     }
     const liveBlocks = new Set(p.blocks.map((b) => b.id));

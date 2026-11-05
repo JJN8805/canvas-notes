@@ -34,6 +34,7 @@ import {
   isFixedHeight,
   snap,
 } from '../../lib/util';
+import { inkClipPath } from '../../lib/sheet';
 import { BlockFrame } from './BlockFrame';
 import { FrameChrome } from './FrameChrome';
 import { usePrefs } from '../../store/prefs';
@@ -61,6 +62,7 @@ const EMPTY: Block[] = [];
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2.5;
 const MARGIN = 640; // empty canvas kept beyond the furthest block
+const SHEET_PAD = 48; // desk shown around a finite page's sheet
 const SNAP_PX = 6; // screen pixels within which edges snap together
 
 type Rect = { x: number; y: number; w: number; h: number };
@@ -80,6 +82,10 @@ export function Canvas({ pageId }: { pageId: string }) {
   const drawing = useNotes((s) => s.pages[pageId]?.drawing ?? null);
   const drawingRef = useRef(drawing);
   drawingRef.current = drawing;
+  const sheet = useNotes((s) => s.pages[pageId]?.sheet ?? null);
+  const sheetRef = useRef(sheet);
+  sheetRef.current = sheet;
+  const wasFinite = useRef(sheet !== null);
   const drawMode = useDraw((s) => s.open);
   const pendingScroll = useRef<Point | null>(null);
   /** The canvas coordinate at scroll position 0 (see lib/viewport.ts), and the furthest right/bottom the page has been opened up to. */
@@ -130,19 +136,35 @@ export function Canvas({ pageId }: { pageId: string }) {
     if (ink) boxes.push(ink);
     const content = contentBounds(boxes);
 
-    // The page has no edges: the scrollable area always reaches well past the content and the view, in every direction.
     const first = origin.current === null;
-    const old = origin.current ?? initialOrigin(content, z);
-    const o = first ? old : { x: growOrigin(old.x, content?.minX ?? null, v.scrollLeft, z), y: growOrigin(old.y, content?.minY ?? null, v.scrollTop, z) };
-    origin.current = o;
-    const left = first ? -o.x * z : v.scrollLeft;
-    const top = first ? -o.y * z : v.scrollTop;
+    const sh = sheetRef.current;
     const r = reach.current;
-    r.x = Math.max(r.x, (content?.maxX ?? 0) + MARGIN, toCanvas(v.clientWidth, left, o.x, z) + EDGE_PX / z);
-    r.y = Math.max(r.y, (content?.maxY ?? 0) + MARGIN, toCanvas(v.clientHeight, top, o.y, z) + EDGE_PX / z);
-
-    const W = Math.max(v.clientWidth / z, r.x - o.x);
-    const H = Math.max(v.clientHeight / z, r.y - o.y);
+    let o: Point, old: Point, left: number, top: number, W: number, H: number;
+    if (sh) {
+      // A finite page: the scrollable area is the sheet plus a margin of desk, centred when the view is bigger than the sheet.
+      const vw = v.clientWidth / z, vh = v.clientHeight / z;
+      old = origin.current ?? { x: 0, y: 0 };
+      o = { x: Math.floor(sh.x - Math.max(SHEET_PAD, (vw - sh.w) / 2)), y: Math.floor(sh.y - Math.max(SHEET_PAD, (vh - sh.h) / 2)) };
+      if (first) old = o;
+      origin.current = o;
+      left = first ? 0 : v.scrollLeft;
+      top = first ? 0 : v.scrollTop;
+      W = Math.max(vw, sh.x + sh.w + SHEET_PAD - o.x);
+      H = Math.max(vh, sh.y + sh.h + SHEET_PAD - o.y);
+      r.x = o.x + W;
+      r.y = o.y + H;
+    } else {
+      // The page has no edges: the scrollable area always reaches well past the content and the view, in every direction.
+      old = origin.current ?? initialOrigin(content, z);
+      o = first ? old : { x: growOrigin(old.x, content?.minX ?? null, v.scrollLeft, z), y: growOrigin(old.y, content?.minY ?? null, v.scrollTop, z) };
+      origin.current = o;
+      left = first ? -o.x * z : v.scrollLeft;
+      top = first ? -o.y * z : v.scrollTop;
+      r.x = Math.max(r.x, (content?.maxX ?? 0) + MARGIN, toCanvas(v.clientWidth, left, o.x, z) + EDGE_PX / z);
+      r.y = Math.max(r.y, (content?.maxY ?? 0) + MARGIN, toCanvas(v.clientHeight, top, o.y, z) + EDGE_PX / z);
+      W = Math.max(v.clientWidth / z, r.x - o.x);
+      H = Math.max(v.clientHeight / z, r.y - o.y);
+    }
     // Boxes sit at their real coordinates inside the world; the transform slides the origin to the scroll area's corner.
     world.style.width = Math.max(1, r.x) + 'px';
     world.style.height = Math.max(1, r.y) + 'px';
@@ -150,9 +172,13 @@ export function Canvas({ pageId }: { pageId: string }) {
     sizer.style.width = W * z + 'px';
     sizer.style.height = H * z + 'px';
     // The dotted background lives on the sizer (the world can't cover negative coordinates) and is kept lined up with the canvas grid.
-    sizer.style.backgroundImage = `radial-gradient(var(--dot) ${1.1 * z}px, transparent ${1.4 * z}px)`;
-    sizer.style.backgroundSize = `${24 * z}px ${24 * z}px`;
-    sizer.style.backgroundPosition = `${(4 - o.x) * z}px ${(4 - o.y) * z}px`;
+    if (sh) {
+      sizer.style.backgroundImage = 'none'; // a finite page's dots are on its sheet
+    } else {
+      sizer.style.backgroundImage = `radial-gradient(var(--dot) ${1.1 * z}px, transparent ${1.4 * z}px)`;
+      sizer.style.backgroundSize = `${24 * z}px ${24 * z}px`;
+      sizer.style.backgroundPosition = `${(4 - o.x) * z}px ${(4 - o.y) * z}px`;
+    }
 
     if (first) {
       v.scrollLeft = left;
@@ -168,6 +194,12 @@ export function Canvas({ pageId }: { pageId: string }) {
   }, []);
 
   useLayoutEffect(() => {
+    // Switching between finite and infinite starts the scroll area afresh (growing or resizing a sheet does not).
+    if (wasFinite.current !== (sheet !== null)) {
+      wasFinite.current = sheet !== null;
+      origin.current = null;
+      reach.current = { x: 0, y: 0 };
+    }
     updateExtent();
     const v = viewportRef.current;
     if (v && pendingScroll.current) {
@@ -175,7 +207,7 @@ export function Canvas({ pageId }: { pageId: string }) {
       v.scrollTop = pendingScroll.current.y;
       pendingScroll.current = null;
     }
-  }, [blocks, drawing, zoom, updateExtent]);
+  }, [blocks, drawing, zoom, sheet, updateExtent]);
 
   useEffect(() => {
     const ro = new ResizeObserver(() => updateExtent());
@@ -272,7 +304,10 @@ export function Canvas({ pageId }: { pageId: string }) {
     const boxes: Rect[] = blocksRef.current.map((b) => ({ x: b.x, y: b.y, w: b.w, h: heights.current.get(b.id) ?? blockHeight(b) }));
     const ink = liveDrawing(drawingRef.current);
     if (ink) boxes.push(ink);
-    const content = contentBounds(boxes) ?? { minX: 0, minY: 0, maxX: v.clientWidth, maxY: v.clientHeight };
+    const sh = sheetRef.current;
+    const content = sh
+      ? { minX: sh.x, minY: sh.y, maxX: sh.x + sh.w, maxY: sh.y + sh.h }
+      : contentBounds(boxes) ?? { minX: 0, minY: 0, maxX: v.clientWidth, maxY: v.clientHeight };
     const f = fitView(content, v.clientWidth, v.clientHeight, MIN_ZOOM);
     setView({ zoom: f.zoom, left: f.x * f.zoom, top: f.y * f.zoom });
   }, [setView]);
@@ -822,6 +857,13 @@ export function Canvas({ pageId }: { pageId: string }) {
       >
         <div ref={sizerRef} className="sizer">
           <div ref={worldRef} className="world">
+            {sheet && (
+              <div
+                className="sheet"
+                aria-hidden="true"
+                style={{ left: sheet.x, top: sheet.y, width: sheet.w, height: sheet.h, backgroundPosition: `${4 - sheet.x}px ${4 - sheet.y}px` }}
+              />
+            )}
             {ordered.map((b) =>
               b.type === 'frame' ? (
                 <FrameChrome key={b.id} block={b} selected={selSet.has(b.id)} single={single && selSet.has(b.id)} />
@@ -835,7 +877,7 @@ export function Canvas({ pageId }: { pageId: string }) {
                 alt=""
                 draggable={false}
                 src={svgSrc(drawing!.preview)}
-                style={{ left: drawing!.x, top: drawing!.y, width: drawing!.w, height: drawing!.h }}
+                style={{ left: drawing!.x, top: drawing!.y, width: drawing!.w, height: drawing!.h, clipPath: sheet ? inkClipPath(drawing!, sheet) : undefined }}
               />
             )}
             <ArrowLayer pageId={pageId} blocks={visibleBlocks} heights={heights} connecting={connecting} />

@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNotes, openDailyPage } from '../../store/notes';
-import { navigate } from '../../lib/route';
+import { useNotes } from '../../store/notes';
+import { openJournal } from '../../store/journal';
 import { dateKey, datesWithPages, fromKey, monthGrid, monthTitle, WEEK_HEADS } from '../../lib/daily';
 import { Icon } from './Icon';
 
-/** Opens (creating if needed) the daily page for a date. */
+/** Opens the Journal at a date. (The day's page is made when the Journal shows it: today's at once, another day's when you start it.) */
 export function goToDay(date: string) {
-  navigate({ name: 'page', id: openDailyPage(date).id });
+  openJournal(date);
 }
 
 /** A button that opens a month calendar; days that have a daily page carry a dot. Choosing a day opens it. */
-export function CalendarButton({ selected, label = 'Calendar', align = 'right' }: { selected?: string | null; label?: string; align?: 'left' | 'right' }) {
+export function CalendarButton({ selected, label = 'Calendar', align = 'right', onPick = goToDay }: { selected?: string | null; label?: string; align?: 'left' | 'right'; onPick?: (date: string) => void }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLSpanElement>(null);
 
@@ -41,7 +41,7 @@ export function CalendarButton({ selected, label = 'Calendar', align = 'right' }
       </button>
       {open && (
         <div className={'cal-pop ' + align} role="dialog" aria-label="Calendar">
-          <Month selected={selected ?? null} onPick={(k) => { setOpen(false); goToDay(k); }} />
+          <Month selected={selected ?? null} onPick={(k) => { setOpen(false); onPick(k); }} />
         </div>
       )}
     </span>

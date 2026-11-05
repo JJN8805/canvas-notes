@@ -8,6 +8,9 @@ import { newId } from '../util';
 import { explainHttpError } from './providers';
 import { LlmError, type ProviderId, type RequestSpec } from './types';
 
+/** Providers that need no API key: Ollama and the local picture servers. */
+const KEYLESS = new Set<string>(['ollama', 'sdwebui', 'imageserver']);
+
 type Chunk =
   | { kind: 'line'; text: string }
   | { kind: 'body'; text: string }
@@ -71,7 +74,9 @@ async function viaFetch(spec: RequestSpec, { onLine, signal, model }: SendOption
     headers['x-api-key'] = browserKeys.get('anthropic') ?? '';
     headers['anthropic-dangerous-direct-browser-access'] = 'true';
   } else if (spec.provider === 'openai') headers.authorization = `Bearer ${browserKeys.get('openai') ?? ''}`;
-  if (spec.provider !== 'ollama' && !browserKeys.get(spec.provider)) throw new LlmError('No API key is saved for this provider. Add it in Settings → Add-ons.');
+  else if (spec.provider === 'gemini') headers['x-goog-api-key'] = browserKeys.get('gemini') ?? '';
+  const keyed = !KEYLESS.has(spec.provider);
+  if (keyed && !browserKeys.get(spec.provider as ProviderId)) throw new LlmError('No API key is saved for this provider. Add it in Settings → Add-ons.');
   let res: Response;
   try {
     res = await fetch(spec.url, { method: spec.method, headers, body: spec.body, signal, redirect: 'error' });
@@ -84,7 +89,12 @@ async function viaFetch(spec: RequestSpec, { onLine, signal, model }: SendOption
         return spec.url;
       }
     })();
-    throw new LlmError(`Couldn't reach ${host}. ${spec.provider === 'ollama' ? 'Is Ollama running, and does it allow this page’s address (OLLAMA_ORIGINS)?' : ''} ${e instanceof Error ? e.message : ''}`.replace(/\s+/g, ' ').trim());
+    const hint =
+      spec.provider === 'ollama' ? 'Is Ollama running, and does it allow this page’s address (OLLAMA_ORIGINS)?'
+      : spec.provider === 'sdwebui' ? 'Is the server running, started with --api (and --cors-allow-origins for this page)?'
+      : spec.provider === 'imageserver' ? 'Is the picture server running there, and does it allow this page’s address?'
+      : '';
+    throw new LlmError(`Couldn't reach ${host}. ${hint} ${e instanceof Error ? e.message : ''}`.replace(/\s+/g, ' ').trim());
   }
   if (!res.ok) throw new LlmError(explainHttpError(spec.provider, res.status, (await res.text().catch(() => '')).slice(0, 64 * 1024), model), res.status);
   if (!spec.stream) return res.text();

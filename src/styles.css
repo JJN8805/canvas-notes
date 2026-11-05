@@ -228,7 +228,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .card-title { font-weight: 600; font-size: 15px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-title.untitled { color: var(--graphite); font-weight: 500; }
 .card-meta { font-size: 12.5px; color: var(--graphite); margin-top: 2px; }
-.chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 .chip {
   display: inline-flex; align-items: center; gap: 2px; font-size: 12px; padding: 1px 8px;
   border-radius: 999px; background: var(--accent-soft); color: var(--ink); white-space: nowrap;
@@ -338,6 +337,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .world {
   position: absolute; left: 0; top: 0; transform-origin: 0 0;
 }
+.sheet {
+  position: absolute; pointer-events: none; background-color: var(--sheet);
+  background-image: radial-gradient(var(--dot) 1.1px, transparent 1.4px); background-size: 24px 24px;
+  border-radius: 2px; box-shadow: 0 0 0 1px var(--rule), 0 6px 28px rgba(20, 28, 40, 0.16);
+}
 .marquee {
   position: absolute; border: 1px solid var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
@@ -353,6 +357,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
   display: flex; flex-direction: column; gap: 2px; background: var(--sheet);
   border: 1px solid var(--rule); border-radius: 12px; padding: 6px; z-index: 10; box-shadow: var(--lift);
+  max-height: calc(100% - 24px); overflow-y: auto; /* in a short window (or a book page) it scrolls instead of being cut off */
 }
 .tool {
   display: flex; flex-direction: column; align-items: center; gap: 2px; border: 0; background: transparent;
@@ -397,7 +402,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .tags-ed { order: 4; flex: 1; }
   .ed-export { order: 1; }
   .ed-backlinks { order: 1; }
-  .ed-history { order: 1; }
+  .ed-history, .ed-size { order: 1; }
   /* On phones the selection bar goes to the top, clear of the toolbar and zoom buttons. */
   .multi-bar { top: 12px; bottom: auto; max-width: calc(100% - 24px); }
 }
@@ -997,3 +1002,142 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @media (max-width: 700px) { .ai-panel { left: 8px; right: 8px; top: 8px; bottom: 8px; width: auto; } }
 .cd-gen { display: block; margin: 8px auto; max-height: 320px; }
 .cd-cover-actions { flex-wrap: wrap; }
+
+/* A card on a page */
+.card-body { padding: 0; }
+.card-body .ctile { width: 100%; cursor: pointer; }
+.card-body .static-ctile { cursor: default; }
+.card-missing { padding: 12px; font-size: 13px; }
+.ai-sub-head { margin: 14px 0 0; font-size: 14px; font-weight: 650; }
+
+/* The inline AI card (edit selected text, write new text) */
+.ai-card { position: fixed; top: 152px; left: 50%; transform: translateX(-50%); width: min(540px, calc(100vw - 24px)); max-height: min(72vh, 600px); overflow: auto; z-index: 55; display: flex; flex-direction: column; gap: 10px; padding: 12px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; box-shadow: 0 10px 34px rgba(0, 0, 0, 0.22); }
+.ai-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ai-quote { margin: 0; padding: 6px 10px; border-left: 3px solid var(--rule); color: var(--graphite); font-size: 13px; white-space: pre-wrap; word-break: break-word; max-height: 84px; overflow: auto; }
+.ai-ask { width: 100%; box-sizing: border-box; }
+.ai-tasks { display: flex; flex-wrap: wrap; gap: 6px; }
+.ai-more { align-self: flex-start; }
+.ai-morebox { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; border-top: 1px solid var(--rule); }
+.ai-group-label { font-size: 12px; font-weight: 650; color: var(--graphite); text-transform: uppercase; letter-spacing: 0.04em; }
+.ai-suggest { display: flex; flex-direction: column; gap: 2px; }
+.ai-suggestion { text-align: left; border: 0; background: transparent; padding: 8px 10px; border-radius: 8px; font: inherit; font-size: 14px; color: var(--ink); cursor: pointer; }
+.ai-suggestion:hover:not(:disabled) { background: var(--hover); }
+.ai-suggestion:disabled { opacity: 0.5; cursor: default; }
+.ai-result { white-space: pre-wrap; word-break: break-word; font-size: 14px; line-height: 1.55; padding: 10px 12px; border-radius: 8px; background: var(--hover); max-height: 280px; overflow: auto; }
+.ai-card-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ai-card .ai-share { margin: 0; }
+
+/* "Search or ask" at the top of the sidebar */
+.side-search { display: flex; align-items: center; gap: 8px; width: 100%; box-sizing: border-box; margin: 4px 0 6px; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--sheet); color: var(--graphite); font: inherit; font-size: 14px; cursor: pointer; text-align: left; }
+.side-search:hover { border-color: var(--graphite); }
+.side-search-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-search kbd { font: inherit; font-size: 11.5px; padding: 1px 6px; border: 1px solid var(--rule); border-radius: 5px; background: var(--hover); color: var(--graphite); white-space: nowrap; }
+
+/* The Chat screen */
+.chatview { min-height: 100%; display: flex; flex-direction: column; max-width: 840px; margin: 0 auto; width: 100%; }
+.chat-list { flex: 1; display: flex; flex-direction: column; gap: 14px; padding: 22px 0 16px; min-height: 0; }
+.chat-empty { margin: auto; text-align: center; max-width: 520px; padding: 30px 0; }
+.chat-empty h2 { margin: 0 0 8px; font-size: 26px; font-weight: 650; letter-spacing: -0.01em; }
+.chat-empty p { margin: 0 0 18px; color: var(--graphite); font-size: 14px; line-height: 1.5; }
+.chat-starters { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.chat-msg { display: flex; flex-direction: column; gap: 6px; max-width: 88%; }
+.chat-msg.user { align-self: flex-end; align-items: flex-end; }
+.chat-msg.assistant { align-self: flex-start; }
+.chat-bubble { white-space: pre-wrap; word-break: break-word; font-size: 15px; line-height: 1.55; padding: 10px 14px; border-radius: 12px; background: var(--hover); }
+.chat-msg.user .chat-bubble { background: var(--accent); color: #fff; }
+.chat-bubble .dim { color: var(--graphite); }
+.chat-composer { position: sticky; bottom: 0; padding: 10px 0 4px; background: var(--desk); }
+.chat-composer::before { content: ''; position: absolute; left: 0; right: 0; top: -18px; height: 18px; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--desk)); }
+.chat-inputrow { display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; box-shadow: var(--lift, 0 2px 10px rgba(0,0,0,.06)); }
+.chat-inputrow:focus-within { border-color: var(--accent); }
+.chat-inputrow textarea { width: 100%; box-sizing: border-box; resize: none; font: inherit; font-size: 15px; border: 0; outline: none; background: transparent; color: var(--ink); }
+.chat-btns { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.chat-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+.chat-chars { font-size: 12px; color: var(--graphite); }
+.chat-picker { position: absolute; left: 0; bottom: calc(100% - 4px); width: min(420px, 100%); display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; box-shadow: 0 10px 34px rgba(0, 0, 0, 0.22); z-index: 5; }
+.chat-composer { position: sticky; }
+.chat-picker-list { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; }
+.chat-picker-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 8px; border: 0; background: transparent; border-radius: 6px; font: inherit; font-size: 14px; color: var(--ink); cursor: pointer; text-align: left; }
+.chat-picker-row:hover:not(:disabled) { background: var(--hover); }
+.chat-picker-row:disabled { opacity: 0.45; cursor: default; }
+.chat-picker-row .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-check { width: 16px; height: 16px; border: 1px solid var(--rule); border-radius: 4px; display: inline-grid; place-items: center; font-size: 11px; flex: none; }
+.chat-picker-row.on .chat-check { background: var(--accent); border-color: var(--accent); color: #fff; }
+.chat-picker-empty { padding: 10px; color: var(--graphite); font-size: 13px; }
+.chat-picker-foot { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--graphite); }
+.chat-bubble.md { white-space: normal; }
+.chat-bubble.md :is(p, ul, ol, pre, h1, h2, h3) { margin: 0 0 10px; }
+.chat-bubble.md > div > :last-child { margin-bottom: 0; }
+.chat-bubble.md h1 { font-size: 19px; }
+.chat-bubble.md h2 { font-size: 17px; }
+.chat-bubble.md h3 { font-size: 15.5px; }
+.chat-bubble.md :is(ul, ol) { padding-left: 22px; }
+.chat-bubble.md li p { margin: 0 0 4px; }
+.chat-bubble.md pre { padding: 10px 12px; background: var(--code-bg); color: var(--code-ink); border-radius: 8px; overflow-x: auto; font-size: 13px; }
+.chat-bubble.md code { font-family: var(--mono); font-size: 0.92em; }
+.chat-bubble.md :not(pre) > code { background: var(--rule); padding: 1px 5px; border-radius: 4px; }
+
+/* The Journal: the daily pages as a book */
+.main-journal { overflow: hidden; padding: 20px 28px 22px; display: flex; flex-direction: column; }
+.journal { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+.journal-bar { flex: none; }
+.journal-bar .controls { flex-wrap: wrap; }
+.book { position: relative; flex: 1; min-height: 0; display: flex; padding: 10px; border-radius: 14px; background: color-mix(in srgb, var(--accent) 20%, var(--rule)); box-shadow: var(--lift); }
+.book-spread { flex: 1; min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
+.book-page { background: var(--sheet); min-width: 0; min-height: 0; position: relative; }
+.book-page.right { border-radius: 0 8px 8px 0; display: flex; flex-direction: column; overflow: hidden; box-shadow: 3px 0 0 -1px var(--sheet), 5px 0 0 -2px var(--rule), 8px 0 0 -3px var(--sheet), 10px 0 0 -4px var(--rule); transform-origin: left center; isolation: isolate; }
+.book-page.right.alone { border-radius: 8px; }
+.book-heading { flex: none; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; padding: 14px 20px 8px; border-bottom: 1px solid var(--rule); }
+.book-heading .wd { font-size: 24px; font-weight: 700; letter-spacing: -0.01em; }
+.book-heading .dt { font-size: 16px; color: var(--graphite); }
+.today-flag { margin-left: auto; padding: 2px 10px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 12px; font-weight: 650; }
+.book-page-body { flex: 1; min-height: 0; position: relative; isolation: isolate; }
+.book-page-body .editor { height: 100%; }
+.ed-head.compact { padding: 6px 10px; }
+.book-empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 20px; color: var(--graphite); }
+.book-empty p { margin: 0; font-size: 18px; color: var(--ink); }
+.book-empty small { font-size: 13px; }
+.book-contents { position: absolute; top: 10px; bottom: 10px; left: 10px; width: min(340px, calc(100% - 20px)); z-index: 6; display: flex; flex-direction: column; gap: 10px; padding: 14px; background: var(--sheet); border-radius: 8px; box-shadow: 8px 0 24px -10px rgba(0, 0, 0, 0.35); }
+.book-contents header { display: flex; align-items: center; justify-content: space-between; }
+.book-contents-list { flex: 1; min-height: 0; overflow-y: auto; }
+.book-contents h3 { margin: 12px 0 4px; font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.05em; color: var(--graphite); }
+.book-toc-row { display: flex; gap: 10px; width: 100%; padding: 7px 8px; border: 0; background: transparent; border-radius: 6px; font: inherit; font-size: 14px; color: var(--ink); cursor: pointer; text-align: left; }
+.book-toc-row:hover { background: var(--hover); }
+.book-toc-row[aria-current='true'] { background: var(--accent-soft); font-weight: 600; }
+.book-toc-row .when { flex: none; width: 54px; color: var(--graphite); font-variant-numeric: tabular-nums; }
+.book-toc-row .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.book-toc-empty { color: var(--graphite); font-size: 14px; padding: 10px 8px; }
+/* Turning a page: the right-hand page swings in from the spine. */
+@keyframes turn-fwd { from { transform: perspective(1500px) rotateY(-62deg); opacity: 0.2; filter: brightness(0.92); } to { transform: perspective(1500px) rotateY(0); opacity: 1; filter: none; } }
+@keyframes turn-back { from { transform: perspective(1500px) rotateY(34deg); opacity: 0.2; filter: brightness(1.04); } to { transform: perspective(1500px) rotateY(0); opacity: 1; filter: none; } }
+.book-page.right.turn-fwd { animation: turn-fwd 0.42s cubic-bezier(0.2, 0.7, 0.3, 1); }
+.book-page.right.turn-back { animation: turn-back 0.36s cubic-bezier(0.2, 0.7, 0.3, 1); }
+@media (prefers-reduced-motion: reduce) { .book-page.right.turn-fwd, .book-page.right.turn-back { animation: none; } }
+@media (max-width: 900px) { .book-page.right { box-shadow: none; } }
+.book-heading .book-delete { margin-left: 4px; align-self: center; }
+.book-heading .today-flag + .book-delete { margin-left: 4px; }
+.book-heading .wd ~ .book-delete:last-child { margin-left: auto; }
+
+/* The assistant's suggested changes to the page: read first, applied only on a click */
+.ai-proposal { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--accent); border-radius: 10px; background: color-mix(in srgb, var(--accent) 7%, var(--sheet)); }
+.ai-proposal.applied { border-color: var(--rule); background: var(--sheet); }
+.ai-proposal.discarded { border-color: var(--rule); background: var(--sheet); opacity: 0.8; }
+.ai-prop-head { font-size: 13px; }
+.ai-change { display: flex; flex-direction: column; gap: 4px; padding-top: 6px; border-top: 1px solid var(--rule); }
+.ai-change-title { align-self: flex-start; border: 0; background: none; padding: 0; font: inherit; font-weight: 650; font-size: 13px; color: var(--ink); text-align: left; cursor: pointer; }
+.ai-change-title:disabled { cursor: default; }
+.ai-change-title:not(:disabled):hover { text-decoration: underline; }
+.ai-change-problem { margin: 0; font-size: 12px; color: var(--graphite); font-style: italic; }
+.ai-change.bad .ai-change-title { color: var(--graphite); }
+.ai-diff { display: flex; flex-direction: column; gap: 2px; border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+.ai-diff span { font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.04em; color: var(--graphite); }
+.ai-diff pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: inherit; max-height: 160px; overflow-y: auto; }
+.ai-diff.before { background: color-mix(in srgb, #d33 9%, var(--sheet)); }
+.ai-diff.before pre { text-decoration: line-through; text-decoration-color: color-mix(in srgb, #d33 50%, transparent); }
+.ai-diff.after { background: color-mix(in srgb, #2a9d4a 11%, var(--sheet)); }
+.ai-note-line { font-size: 12px; color: var(--graphite); align-self: center; }
+
+/* Drawing could not start: a message with a way out, never a blank window */
+.draw-overlay:has(.draw-failed) { display: grid; place-items: center; background: color-mix(in srgb, var(--ink) 18%, transparent); }
+.draw-failed { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 24px 28px; max-width: min(520px, 90%); text-align: center; background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; box-shadow: var(--lift); }
+.draw-failed p { margin: 0; color: var(--graphite); overflow-wrap: anywhere; }

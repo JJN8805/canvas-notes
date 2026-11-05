@@ -36,6 +36,8 @@ function blockToText(b: Block): string {
       return `[Audio: ${b.name}]`;
     case 'pdf':
       return `[PDF: ${b.name}]`;
+    case 'card':
+      return ''; // the card is a separate item; its text isn't part of the page
   }
 }
 

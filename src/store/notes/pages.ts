@@ -1,4 +1,6 @@
 import { Page } from '../../types';
+import { cleanSheet, sheetForContent } from '../../lib/sheet';
+import { liveDrawing } from '../../lib/drawing';
 import { dailyPageFor, dailyTitle, findDailyDuplicates, SECOND_COPY } from '../../lib/daily';
 import { cloneContent, isTemplate, resolveDailyTemplate, templateFrom } from '../../lib/pages';
 import { setDailyTemplate, usePrefs } from '../prefs';
@@ -7,7 +9,7 @@ import { history } from '../history';
 import { toast } from '../ui';
 import { get, getStorage, peekStorage, set } from './state';
 import { loadTrash } from './init';
-import { dirty, flushPage, markDirty, refreshSaveState, scheduleGroupsSave, timers } from './save';
+import { dirty, flushPage, markDirty, refreshSaveState, timers } from './save';
 import { mutatePage } from './mutate';
 
 /* ------------------------------------------------------------------ */
@@ -29,6 +31,11 @@ export function createPage(partial: Partial<Page> = {}): Page {
     rev: 0,
     ...partial,
   };
+  // Every new page is finite (a sheet, grown to hold whatever it starts with). Pass `sheet: null` for an infinite one.
+  if (partial.sheet === undefined) {
+    const ink = liveDrawing(page.drawing);
+    page.sheet = (partial.kind ?? 'page') === 'page' ? sheetForContent(ink ? [...page.blocks, ink] : page.blocks) : null;
+  } else page.sheet = cleanSheet(partial.sheet);
   set((s) => {
     s.pages[page.id] = page;
   });
@@ -45,7 +52,7 @@ export function createPageFromTemplate(templateId: string | null, partial: Parti
   if (templateId === null) return createPage(partial);
   const tpl = get().pages[templateId];
   if (!tpl || !isTemplate(tpl)) return null;
-  return createPage({ ...cloneContent(tpl), title: tpl.title, color: tpl.color ?? null, kind: 'page', dailyDate: null, ...partial });
+  return createPage({ ...cloneContent(tpl), sheet: tpl.sheet ?? undefined, title: tpl.title, color: tpl.color ?? null, kind: 'page', dailyDate: null, ...partial });
 }
 
 /** Keeps a copy of the page's layout and boxes as a template. */
@@ -122,26 +129,17 @@ export function chooseDailyTemplate(value: string | null) {
   setDailyTemplate(value, peekStorage());
 }
 
+/** The id of the "Daily" group that older versions filed daily pages in. Nothing makes that group now (the Journal holds daily pages); one that already exists is left as it is. */
 export const DAILY_GROUP_ID = 'group-daily';
 
-/** The "Daily" group, created when first needed. It has the same id on every device, so two devices never make two. */
-export function ensureDailyGroup(): string {
-  if (get().groups.some((g) => g.id === DAILY_GROUP_ID)) return DAILY_GROUP_ID;
-  set((s) => {
-    s.groups.push({ id: DAILY_GROUP_ID, name: 'Daily', color: 'ultra', parentId: null });
-  });
-  scheduleGroupsSave();
-  return DAILY_GROUP_ID;
-}
-
 /**
- * The page for a day (YYYY-MM-DD): the one that already exists, or a new one made from the daily template,
- * titled with the date and filed in the Daily group. Only ever called because you opened that day.
+ * The page for a day (YYYY-MM-DD): the one that already exists, or a new one made from the daily template, titled with the date.
+ * It belongs to the Journal, not to a group. Only ever called because you opened that day.
  */
 export function openDailyPage(date: string): Page {
   const existing = dailyPageFor(get().pages, date);
   if (existing) return existing;
-  const fields = { title: dailyTitle(date), dailyDate: date, groupId: ensureDailyGroup(), tags: [] as string[] };
+  const fields = { title: dailyTitle(date), dailyDate: date, groupId: null, tags: [] as string[] };
   const tpl = resolveDailyTemplate(get().pages, usePrefs.getState().dailyTemplate);
   return (tpl && createPageFromTemplate(tpl.id, fields)) || createPage(fields);
 }

@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { keys } from '../../lib/llm/transport';
 import { openSettings } from '../../store/settingsUi';
 import { useAiSettings } from './config';
-import { b64ToFile, defaultCardPrompt, generateImageB64 } from './picture';
+import { imageTargetLabel } from '../../lib/llm/image';
+import { b64ToFile, defaultCardPrompt, generateImageB64, imageDataUrl } from './picture';
 
 /**
  * "Generate with AI" for a card's picture: describe it, see it, keep it or try again. The text in the box is
- * exactly what is sent to OpenAI (nothing from the card is added), so clicking Generate is the consent.
+ * exactly what is sent to the picture source (OpenAI, or a server of the user's choice; nothing from the card is added),
+ * so clicking Generate is the consent.
  */
 export function CardPictureDialog({ cardLabel, onPick, onClose }: { cardLabel: string; onPick: (file: File) => void; onClose: () => void }) {
   const { settings } = useAiSettings();
@@ -18,11 +20,14 @@ export function CardPictureDialog({ cardLabel, onPick, onClose }: { cardLabel: s
   const abort = useRef<AbortController | null>(null);
   const area = useRef<HTMLTextAreaElement>(null);
 
+  // The cloud sources need a key; a server on this computer or network needs none.
+  const keyFor = settings.imageSource === 'openai' || settings.imageSource === 'gemini' ? settings.imageSource : null;
   useEffect(() => {
-    void keys.has('openai').then(setHasKey, () => setHasKey(false));
+    if (keyFor) void keys.has(keyFor).then(setHasKey, () => setHasKey(false));
+    else setHasKey(true);
     area.current?.focus();
     return () => abort.current?.abort();
-  }, []);
+  }, [keyFor]);
 
   // Escape stops a drawing in progress, or closes the dialog. It listens on the page rather than on the dialog because the
   // buttons are disabled while drawing, which drops keyboard focus out of the dialog; and it must not also close the card behind.
@@ -69,7 +74,7 @@ export function CardPictureDialog({ cardLabel, onPick, onClose }: { cardLabel: s
         <h2>Generate a picture with AI</h2>
         {hasKey === false ? (
           <>
-            <p>Pictures are drawn by OpenAI, which needs your API key. Add it in Settings → Add-ons → AI assistant (choose ChatGPT there).</p>
+            <p>Pictures are drawn by {keyFor === 'gemini' ? 'Google Gemini' : 'OpenAI'}, which needs your API key. Add it in Settings → Add-ons → AI assistant, under Pictures. Or choose a picture server on your own computer there instead.</p>
             <div className="row">
               <button className="btn" onClick={onClose}>Close</button>
               <button className="btn primary" onClick={() => { onClose(); openSettings(); }}>Open settings</button>
@@ -77,7 +82,7 @@ export function CardPictureDialog({ cardLabel, onPick, onClose }: { cardLabel: s
           </>
         ) : (
           <>
-            <p>Describe the picture. <strong>This text is sent to OpenAI</strong> ({settings.imageModel}) to draw it; nothing else from your notes is.</p>
+            <p>Describe the picture. <strong>This text is sent to {imageTargetLabel(settings)}</strong> to draw it; nothing else from your notes is.</p>
             <textarea
               ref={area}
               className="field"
@@ -95,16 +100,16 @@ export function CardPictureDialog({ cardLabel, onPick, onClose }: { cardLabel: s
                 }
               }}
             />
-            {working && <p className="ai-note" role="status">Drawing… this can take up to a minute.</p>}
+            {working && <p className="ai-note" role="status">Drawing… this can take up to a minute, or a few minutes on a computer without a graphics card.</p>}
             {error && <p className="ai-error" role="alert">{error}</p>}
-            {b64 && !working && <img className="ai-img cd-gen" alt="The generated picture" src={`data:image/png;base64,${b64}`} />}
+            {b64 && !working && <img className="ai-img cd-gen" alt="The generated picture" src={imageDataUrl(b64)} />}
             <div className="row">
               <button className="btn" onClick={working ? stop : onClose}>{working ? 'Stop' : 'Cancel'}</button>
               <button className="btn" disabled={working || !prompt.trim() || hasKey === null} onClick={() => void generate()}>
                 {b64 ? 'Try again' : 'Generate'}
               </button>
               {b64 && !working && (
-                <button className="btn primary" onClick={() => { onPick(b64ToFile(b64, 'AI picture.png')); onClose(); }}>
+                <button className="btn primary" onClick={() => { onPick(b64ToFile(b64, 'AI picture')); onClose(); }}>
                   Use this picture
                 </button>
               )}

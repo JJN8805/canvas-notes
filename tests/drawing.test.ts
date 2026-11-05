@@ -102,3 +102,21 @@ describe('keeping the chosen drawing tool', () => {
     expect(toolToLock('selection', { type: 'custom' })).toBeNull();
   });
 });
+
+import { isUsableElement, sceneElements } from '../src/lib/drawing';
+
+describe('a saved drawing is cleaned before the drawing tools see it', () => {
+  const ok = { id: 'a', type: 'rectangle', x: 1, y: 2, width: 3, height: 4 };
+  const stroke = { id: 'b', type: 'freedraw', x: 0, y: 0, points: [[0, 0], [1, 2]] };
+  it('keeps good strokes', () => {
+    expect(sceneElements(JSON.stringify({ elements: [ok, stroke] }))).toEqual([ok, stroke]);
+  });
+  it('drops nulls, numbers, strokes without a position or id, and lines with broken points', () => {
+    const bad = [null, 7, 'x', { id: 'c', type: 'rectangle' }, { type: 'rectangle', x: 0, y: 0 }, { id: 'd', type: 'freedraw', x: 0, y: 0, points: 'garbage' }, { id: 'e', type: 'line', x: 0, y: 0, points: [[0]] }, { id: 'f', type: 'rectangle', x: NaN, y: 0 }];
+    expect(sceneElements(JSON.stringify({ elements: [ok, ...bad] }))).toEqual([ok]);
+    for (const b of bad) expect(isUsableElement(b)).toBe(false);
+  });
+  it('never throws, whatever the text is', () => {
+    for (const s of ['', 'not json', '{}', '{"elements":5}', 'null', '[]']) expect(sceneElements(s)).toEqual([]);
+  });
+});

@@ -93,20 +93,18 @@ describe('opening a daily page', () => {
     expect(live()).toHaveLength(2);
   });
 
-  it('is titled by the date, holds the date, and is filed in the Daily group with no tags', () => {
+  it('is titled by the date and holds the date, with no tags and no group (the Journal holds it), even when opened while viewing a tag', () => {
     const p = openDailyPage('2026-10-19');
-    expect(p).toMatchObject({ title: 'Mon, 19 Oct 2026', dailyDate: '2026-10-19', groupId: DAILY_GROUP_ID, tags: [], kind: 'page' });
-    expect(useNotes.getState().groups).toEqual([expect.objectContaining({ id: DAILY_GROUP_ID, name: 'Daily', parentId: null })]);
+    expect(p).toMatchObject({ title: 'Mon, 19 Oct 2026', dailyDate: '2026-10-19', groupId: null, tags: [], kind: 'page' });
   });
 
-  it('makes the Daily group once and reuses it, even after it is renamed', () => {
+  it('makes no Daily group any more, and leaves one that older versions made alone', () => {
     openDailyPage('2026-10-19');
-    useNotes.setState((s) => {
-      s.groups[0].name = 'Journal';
-    });
+    expect(useNotes.getState().groups).toEqual([]);
+    useNotes.setState({ groups: [{ id: DAILY_GROUP_ID, name: 'Daily', color: 'ultra', parentId: null }] });
     openDailyPage('2026-10-20');
-    expect(useNotes.getState().groups).toHaveLength(1);
-    expect(useNotes.getState().groups[0].name).toBe('Journal');
+    expect(useNotes.getState().groups).toEqual([{ id: DAILY_GROUP_ID, name: 'Daily', color: 'ultra', parentId: null }]);
+    expect(Object.values(useNotes.getState().pages).filter((p) => p.dailyDate).every((p) => p.groupId === null)).toBe(true);
   });
 
   it('starts from the built-in Daily page template, as an independent copy', () => {

@@ -1,7 +1,7 @@
 /** Making and changing cards. Pure card logic is in `lib/cards.ts`; saving, undo-free edits and sync go through the notes store. */
 import type { Page } from '../types';
 import { cardParts, newBody, newCardBlocks, withCover } from '../lib/cards';
-import { createPage, getStorage, mutatePage, setPageGroup, useNotes } from './notes';
+import { addBlock, createPage, getStorage, mutatePage, setPageGroup, useNotes } from './notes';
 import { prepareImage } from './images';
 
 export function createCard(label = '', groupId: string | null = null): Page {
@@ -39,4 +39,9 @@ export function ensureCardBody(id: string) {
   if (!page || cardParts(page).body) return;
   const { cover } = cardParts(page);
   mutatePage(id, (p) => void p.blocks.push({ ...newBody(cover ? cover.h + 24 : 0), z: p.blocks.reduce((m, b) => Math.max(m, b.z || 0), 0) + 1 }), { history: 'none' });
+}
+
+/** Shows a card on a page as a box. The card stays its own item; the box only points at it. Returns the box's id. */
+export function addCardBox(pageId: string, cardId: string, at: { x: number; y: number }): string {
+  return addBlock(pageId, 'card', at, { cardId, w: 220 });
 }

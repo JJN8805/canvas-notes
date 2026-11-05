@@ -34,6 +34,8 @@ export const BLOCK_DEFAULTS: Record<Exclude<BlockType, 'image'>, () => NewBlockF
   // These are made from a file (see store/media.ts); the sizes are only a fallback.
   audio: () => ({ w: 320, h: AUDIO_H, fileId: '', name: 'Audio' }),
   pdf: () => ({ w: 360, h: 480, fileId: '', name: 'PDF' }),
+  // Made from a card (see store/cards.ts addCardBox). Its height follows the card tile.
+  card: () => ({ w: 220, h: 40, cardId: '' }),
 };
 
 export const maxZ = (blocks: Block[]) => blocks.reduce((m, b) => Math.max(m, b.z || 0), 0);

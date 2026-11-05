@@ -3,6 +3,8 @@ import { applyColor } from '../../lib/colors';
 import { rememberStickyColor } from '../prefs';
 import { deepClone } from '../../lib/util';
 import { reconcile } from '../../lib/attendance';
+import { keepPageInside, SHEET_LANDSCAPE, SHEET_PORTRAIT, sheetForContent, taller, wider } from '../../lib/sheet';
+import { liveDrawing } from '../../lib/drawing';
 import { history } from '../history';
 import type { Draft } from 'immer';
 import { get, peekStorage, set } from './state';
@@ -38,6 +40,7 @@ export function mutatePage(
     const p = s.pages[id];
     if (!p) return;
     recipe(p);
+    keepPageInside(p as Page); // a finite page: no box is ever left outside its edges
     // A tracked checklist keeps today's record in line with its checks, in the same step (so undo restores both).
     for (const b of p.blocks) if (b.type === 'checklist' && b.track) reconcile(b as ChecklistBlock);
     if (opts.touch !== false) p.updated = Date.now();
@@ -58,6 +61,40 @@ export function setPageDrawing(pageId: string, drawing: PageDrawing | null) {
     pageId,
     (p) => {
       p.drawing = drawing;
+    },
+    { history: 'none' },
+  );
+}
+
+export type PageSize = 'portrait' | 'landscape' | 'infinite';
+
+/**
+ * Changes a page's size. A finite page keeps its top-left corner when it turns portrait/landscape; one made finite from an infinite
+ * page is grown to hold everything already on it (so nothing moves). Making a page infinite just removes the edges.
+ * Not an undo step (the undo history is about boxes), but it saves and syncs like any page change.
+ */
+export function setPageSize(pageId: string, size: PageSize) {
+  mutatePage(
+    pageId,
+    (p) => {
+      if (size === 'infinite') {
+        p.sheet = null;
+        return;
+      }
+      const base = size === 'portrait' ? SHEET_PORTRAIT : SHEET_LANDSCAPE;
+      const ink = liveDrawing(p.drawing as PageDrawing | null | undefined);
+      p.sheet = sheetForContent(ink ? [...p.blocks, ink] : p.blocks, { ...base, x: p.sheet?.x ?? 0, y: p.sheet?.y ?? 0 });
+    },
+    { history: 'none' },
+  );
+}
+
+/** Gives a finite page more room below or to the right. Nothing on it moves. */
+export function growPage(pageId: string, direction: 'down' | 'right') {
+  mutatePage(
+    pageId,
+    (p) => {
+      if (p.sheet) p.sheet = direction === 'down' ? taller(p.sheet) : wider(p.sheet);
     },
     { history: 'none' },
   );

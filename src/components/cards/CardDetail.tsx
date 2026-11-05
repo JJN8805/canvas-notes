@@ -4,7 +4,6 @@ import { useImageUrl } from '../../lib/useImageUrl';
 import { useNotes, deletePage } from '../../store/notes';
 import { ensureCardBody, removeCardCover, setCardCover, setCardLabel, setCardSet } from '../../store/cards';
 import { confirmDanger, toast } from '../../store/ui';
-import { navigate } from '../../lib/route';
 import { Icon } from '../ui/Icon';
 import { BlockBody } from '../blocks/BlockBody';
 import { CanvasCtx } from '../editor/context';
@@ -123,10 +122,6 @@ export function CardDetail({ cardId, onClose: onCloseProp }: { cardId: string; o
         </div>
         {sources.map((s) => sourceKey === s.key && <s.Dialog key={s.key} cardLabel={card.title} onPick={(f) => void pick(f)} onClose={() => setSourceKey(null)} />)}
         <div className="cd-actions">
-          <button className="btn" title="Add more boxes, drawings and arrows around this card" onClick={() => { onClose(); navigate({ name: 'page', id: cardId }); }}>
-            <Icon name="pages" size={16} />
-            Open on canvas
-          </button>
           <button
             className="btn"
             onClick={() =>

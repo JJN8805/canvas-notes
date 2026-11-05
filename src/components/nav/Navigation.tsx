@@ -8,7 +8,7 @@ import { GraphView } from './GraphView';
 import { OutlinePanel } from './OutlinePanel';
 import { Palette } from './Palette';
 
-/** The navigation overlays and their shortcuts: Ctrl+P command palette, Ctrl+O quick switcher. */
+/** The navigation overlays and their shortcuts: Ctrl+P command palette, Ctrl+O or Ctrl+K quick switcher ("search or ask"). */
 export function Navigation() {
   const open = useNav((s) => s.open);
   const route = useRoute();
@@ -17,10 +17,10 @@ export function Navigation() {
     const onKey = (e: KeyboardEvent) => {
       if (!modKey(e) || e.altKey || e.shiftKey) return;
       const k = e.key.toLowerCase();
-      if (k !== 'p' && k !== 'o') return;
+      if (k !== 'p' && k !== 'o' && k !== 'k') return;
       if (useUi.getState().dialog || useDraw.getState().open) return;
       e.preventDefault();
-      const want = k === 'p' ? 'commands' : 'switcher';
+      const want = k === 'p' ? 'commands' : 'switcher'; // Ctrl+K is the same as Ctrl+O: "search or ask"
       if (useNav.getState().open === want) closeNav();
       else openNav(want);
     };

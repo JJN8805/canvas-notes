@@ -259,9 +259,9 @@ function EditorTab() {
         <Switch label="Snap to other boxes and the grid" on={snap} onChange={(on) => setSnap(on, getStorage())} />
         <p>While you drag or resize, edges line up with nearby boxes. Hold Alt to move freely for one drag, whatever this says.</p>
       </Section>
-      <Section title="Daily page">
+      <Section title="Journal">
         <label className="set-row">
-          <span>Start each new daily page from</span>
+          <span>Start each new journal page from</span>
           <select className="field" value={current} onChange={(e) => chooseDailyTemplate(e.target.value)}>
             <option value="none">Blank page</option>
             {templates.map((t) => (
@@ -271,7 +271,7 @@ function EditorTab() {
             ))}
           </select>
         </label>
-        <p>A daily page is only created when you open that day, never in the background.</p>
+        <p>A journal page is only created when you open or start that day, never in the background.</p>
       </Section>
     </>
   );

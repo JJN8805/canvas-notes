@@ -1,25 +1,17 @@
 // Loaded lazily (see DrawOverlay): this file and Excalidraw only reach the browser when draw mode is first opened.
-import './excalidrawAssets';
 import '@excalidraw/excalidraw/index.css';
 import { useEffect, useRef } from 'react';
 import { Excalidraw, exportToSvg, getCommonBounds, getSceneVersion } from '@excalidraw/excalidraw';
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types';
 import type { PageDrawing } from '../../types';
-import { toolToLock } from '../../lib/drawing';
+import { sceneElements, toolToLock } from '../../lib/drawing';
 
 type Elements = readonly Record<string, unknown>[];
 
 /** Space kept around the strokes in the SVG render so thick lines aren't clipped. */
 const PAD = 16;
 
-export function parseScene(scene: string): Elements {
-  try {
-    const s = JSON.parse(scene) as { elements?: unknown };
-    return Array.isArray(s.elements) ? (s.elements as Elements) : [];
-  } catch {
-    return [];
-  }
-}
+export const parseScene = (scene: string): Elements => sceneElements(scene);
 
 /** The drawing for these strokes (null when there are none). Its box is in the canvas's own coordinates. */
 export async function toPageDrawing(elements: Elements): Promise<PageDrawing | null> {

@@ -2,6 +2,7 @@ import type { Block, FrameBlock } from '../../types';
 import { TextBody } from './TextBody';
 import { AudioBody } from './AudioBody';
 import { PdfBody } from './PdfBody';
+import { CardBody } from './CardBody';
 import { ChecklistBody, CodeBody, ImageBody, TableBody } from './Bodies';
 
 /** Every block type except frames, which render through FrameChrome instead. */
@@ -26,5 +27,7 @@ export function BlockBody({ block }: { block: NonFrameBlock }) {
       return <AudioBody block={block} />;
     case 'pdf':
       return <PdfBody block={block} />;
+    case 'card':
+      return <CardBody block={block} />;
   }
 }

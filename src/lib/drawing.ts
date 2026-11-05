@@ -27,3 +27,30 @@ export function toolToLock(last: string, now: { type: string; locked?: boolean }
   if (now.type === last) return null;
   return now.type !== 'selection' && now.type !== 'custom' && !now.locked ? now.type : null;
 }
+
+const num = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
+
+/**
+ * Is this saved stroke safe to hand to the drawing tools? A drawing that came from another device or an older version can hold
+ * a null, a stroke without a position or with points that aren't a list, and Excalidraw does not survive those: it throws,
+ * and the whole window used to go blank.
+ */
+export function isUsableElement(e: unknown): boolean {
+  if (!e || typeof e !== 'object') return false;
+  const o = e as Record<string, unknown>;
+  if (typeof o.id !== 'string' || !o.id || typeof o.type !== 'string' || !num(o.x) || !num(o.y)) return false;
+  if (o.width !== undefined && !num(o.width)) return false;
+  if (o.height !== undefined && !num(o.height)) return false;
+  if ((o.type === 'freedraw' || o.type === 'line' || o.type === 'arrow') && !(Array.isArray(o.points) && o.points.every((p) => Array.isArray(p) && p.length >= 2 && num(p[0]) && num(p[1])))) return false;
+  return true;
+}
+
+/** The strokes of a saved scene (a JSON text), with anything unreadable left out. Never throws. */
+export function sceneElements(scene: string): Record<string, unknown>[] {
+  try {
+    const s = JSON.parse(scene) as { elements?: unknown };
+    return Array.isArray(s.elements) ? (s.elements.filter(isUsableElement) as Record<string, unknown>[]) : [];
+  } catch {
+    return [];
+  }
+}

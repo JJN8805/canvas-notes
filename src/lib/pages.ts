@@ -1,4 +1,5 @@
 import type { Block, Page, PageKind } from '../types';
+import { attendanceLink } from './attendance';
 import { deepClone, newId } from './util';
 
 export const kindOf = (p: { kind?: PageKind | string | null }): PageKind => (p.kind === 'template' || p.kind === 'card' ? p.kind : 'page');
@@ -7,6 +8,19 @@ export const isCard = (p: { kind?: PageKind | string | null }) => kindOf(p) === 
 
 /** The pages that belong in the library, search, tag lists and counts: everything except templates and cards. */
 export const libraryPages = (pages: Record<string, Page>): Page[] => Object.values(pages).filter((p) => kindOf(p) === 'page');
+
+/**
+ * The pages the library lists (All pages, counts, groups, tags): the library pages without the journal's daily pages, which live in
+ * the Journal. Search, the quick switcher, links and the Chat page picker still use `libraryPages`, so a day can be found anywhere.
+ */
+export const listedPages = (pages: Record<string, Page>): Page[] =>
+  libraryPages(pages).filter((p) => !cleanDate(p.dailyDate) && !attendanceLink(p));
+
+/** The attendance pages (made from tracked checklists), by title. They are read from the Journal's Attendance button, not listed in All pages. */
+export const attendancePagesOf = (pages: Record<string, Page>): Page[] =>
+  libraryPages(pages)
+    .filter((p) => !!attendanceLink(p))
+    .sort((a, b) => (a.title || '').localeCompare(b.title || ''));
 
 /** The cards, by label. */
 export const cardsOf = (pages: Record<string, Page>): Page[] =>
@@ -58,6 +72,7 @@ export function templateFrom(src: Page, name: string, now = Date.now()): Page {
     tags: [],
     dailyDate: null,
     color: src.color ?? null,
+    sheet: src.sheet ?? null,
     created: now,
     updated: now,
     rev: 0,
