@@ -8,7 +8,7 @@ import { buildEditableContext, propose, type EditOp } from '../src/addons/ai/edi
 import { undo, updateBlock, useNotes } from '../src/store/notes';
 import type { Block, Page } from '../src/types';
 
-const text = (id: string, html: string, y: number): Block => ({ id, type: 'text', x: 0, y, w: 200, h: 40, z: 1, html }) as Block;
+const text = (id: string, html: string, y: number): Block => ({ id, type: 'note', style: 'text', x: 0, y, w: 200, h: 40, z: 1, html }) as Block;
 const list = (id: string, y: number): Block => ({ id, type: 'checklist', x: 0, y, w: 200, h: 40, z: 2, items: [{ id: 'i1', text: 'Milk', done: false }] }) as Block;
 const mk = (blocks: Block[]): Page => ({ id: 'p', title: 'Shopping', groupId: null, tags: [], blocks, arrows: [], created: 1, updated: 1, rev: 1 });
 const cur = () => useNotes.getState().pages.p;

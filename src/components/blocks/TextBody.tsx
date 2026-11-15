@@ -2,17 +2,22 @@ import { useEffect, useRef } from 'react';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Placeholder } from '@tiptap/extensions';
-import type { StickyBlock, TextBlock } from '../../types';
+import type { NoteBlock } from '../../types';
 import { updateBlock } from '../../store/notes';
 import { emptyTextSpace, hasEmptyTextSpace } from '../../addons/store';
 import { addImages, imageFiles } from '../../store/images';
 import { canvasApi, editorRegistry, useCanvas } from '../../store/canvas';
 import { useCanvasCtx } from '../editor/context';
+import { richExtensions } from './richText';
+import { usePageSuggest } from './usePageSuggest';
 
 /** The rich-text editor of a text box, or of a sticky (which only offers bold, italic and bullets). */
-export function TextBody({ block }: { block: TextBlock | StickyBlock }) {
-  const sticky = block.type === 'sticky';
+export function TextBody({ block }: { block: NoteBlock }) {
+  const sticky = block.style === 'sticky';
   const { pageId } = useCanvasCtx();
+  const suggest = usePageSuggest(pageId);
+  const suggestRef = useRef(suggest);
+  suggestRef.current = suggest;
   // Handlers are created once with the editor, so read position through a ref.
   const editorRef = useRef<Editor | null>(null);
   const latest = useRef(block);
@@ -32,6 +37,7 @@ export function TextBody({ block }: { block: TextBlock | StickyBlock }) {
               link: { openOnClick: false, autolink: true, linkOnPaste: true },
             },
       ),
+      ...(sticky ? [] : richExtensions),
       Placeholder.configure({ placeholder: sticky ? 'Note…' : hasEmptyTextSpace() ? 'Type, or press space for AI' : 'Type something…' }),
     ],
     content: block.html,
@@ -41,6 +47,7 @@ export function TextBody({ block }: { block: TextBlock | StickyBlock }) {
       attributes: { class: 'body prose', 'aria-label': sticky ? 'Sticky note' : 'Text box' },
       // Space in an empty text box is offered to the add-ons ("Write with AI"); if one takes it, no space is typed.
       handleKeyDown: (view, event) => {
+        if (!sticky && suggestRef.current.onKeyDown(view, event)) return true;
         if (sticky || event.key !== ' ' || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) return false;
         if (view.state.doc.textContent !== '' || view.state.doc.childCount > 1) return false;
         const ed = editorRef.current;
@@ -64,12 +71,15 @@ export function TextBody({ block }: { block: TextBlock | StickyBlock }) {
       },
     },
     onUpdate: ({ editor: ed }) => {
-      updateBlock<TextBlock | StickyBlock>(pageId, block.id, (b) => {
+      updateBlock<NoteBlock>(pageId, block.id, (b) => {
         b.html = ed.getHTML();
       }, { history: { key: 'text:' + block.id } });
+      suggestRef.current.track(ed);
     },
+    onSelectionUpdate: ({ editor: ed }) => suggestRef.current.track(ed),
     onFocus: ({ editor: ed }) => useCanvas.setState({ activeEditor: ed }),
     onBlur: ({ editor: ed }) => {
+      suggestRef.current.close();
       window.setTimeout(() => {
         if (!ed.isFocused && useCanvas.getState().activeEditor === ed) useCanvas.setState({ activeEditor: null });
       }, 0);
@@ -94,5 +104,10 @@ export function TextBody({ block }: { block: TextBlock | StickyBlock }) {
     }
   }, [editor, block.html]);
 
-  return <EditorContent editor={editor} className="text-editor" />;
+  return (
+    <>
+      <EditorContent editor={editor} className="text-editor" />
+      {suggest.popup}
+    </>
+  );
 }

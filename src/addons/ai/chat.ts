@@ -10,6 +10,7 @@ import { newId } from '../../lib/util';
 import { SYSTEM_PROMPT } from './prompts';
 import { EDIT_PROMPT, type AliasMap } from './edits';
 import type { AiSettings } from './config';
+import type { NoteSource } from './notesSearch';
 
 export interface Message {
   id: string;
@@ -28,6 +29,10 @@ export interface Message {
   streaming?: boolean;
   /** Set when the assistant was allowed to suggest changes to the page: the labels it was shown (b1, b2 …) and what each box held then. */
   aliases?: AliasMap;
+  /** "Ask your notes": the passages sent with this question, by the number the answer cites. */
+  sources?: NoteSource[];
+  /** Extra instructions that went with this question (the notes instructions), kept so "Try again" asks the same way. */
+  system?: string;
   /** What became of the changes this answer proposed. Absent = still waiting for the user. */
   proposal?: { state: 'applied' | 'discarded'; note?: string };
 }
@@ -57,7 +62,7 @@ export function needsConfirmation(a: {
   return a.historyHasPage && a.consented !== a.provider;
 }
 
-export const hasPageText = (wire: string) => wire.startsWith('<page>');
+export const hasPageText = (wire: string) => wire.startsWith('<page>') || wire.startsWith('<notes>');
 
 /** The conversation as the provider wants it: pictures become a short note, and failed answers are left out. */
 export function wireHistory(messages: Message[]): ChatMsg[] {
@@ -66,7 +71,7 @@ export function wireHistory(messages: Message[]): ChatMsg[] {
     .map((m) => ({ role: m.role, content: m.imageB64 ? `[A picture was generated for: ${m.content}]` : m.wire ?? m.content }));
 }
 
-export type AskOptions = { wire?: string; shared?: Message['shared']; sharedPages?: string[]; consent?: boolean; aliases?: AliasMap };
+export type AskOptions = { wire?: string; shared?: Message['shared']; sharedPages?: string[]; consent?: boolean; aliases?: AliasMap; sources?: NoteSource[]; system?: string };
 
 /** One independent conversation: its own messages, its own "busy", its own way to stop. */
 export function createChat() {
@@ -87,14 +92,14 @@ export function createChat() {
   /** Asks the chosen provider. `wire` is the text actually sent (the page attached); `text` is what is shown. */
   async function ask(settings: AiSettings, text: string, opts: AskOptions = {}) {
     if (useStore.getState().busy) return;
-    const user: Message = { id: newId(), role: 'user', content: text, wire: opts.wire, shared: opts.shared, sharedPages: opts.sharedPages, aliases: opts.aliases };
-    const reply: Message = { id: newId(), role: 'assistant', content: '', streaming: true, aliases: opts.aliases };
+    const user: Message = { id: newId(), role: 'user', content: text, wire: opts.wire, shared: opts.shared, sharedPages: opts.sharedPages, aliases: opts.aliases, sources: opts.sources, system: opts.system };
+    const reply: Message = { id: newId(), role: 'assistant', content: '', streaming: true, aliases: opts.aliases, sources: opts.sources };
     useStore.setState((s) => ({ messages: [...s.messages, user, reply], busy: true, consented: opts.consent ? settings.provider : s.consented }));
     abort = new AbortController();
     const mine = abort;
     try {
       const history = wireHistory(useStore.getState().messages.filter((m) => m.id !== reply.id));
-      await streamChat(settings, opts.aliases ? SYSTEM_PROMPT + '\n\n' + EDIT_PROMPT : SYSTEM_PROMPT, history, { signal: mine.signal, onText: (t) => patch(reply.id, { content: t }) });
+      await streamChat(settings, [SYSTEM_PROMPT, opts.aliases ? EDIT_PROMPT : '', opts.system ?? ''].filter(Boolean).join('\n\n'), history, { signal: mine.signal, onText: (t) => patch(reply.id, { content: t }) });
       patch(reply.id, { streaming: false });
     } catch (e) {
       patch(reply.id, { streaming: false, error: e instanceof LlmError ? e.message : e instanceof Error ? e.message : 'Something went wrong.' });
@@ -130,13 +135,19 @@ export function createChat() {
     if (!lastUser) return;
     const at = messages.findIndex((m) => m.id === lastUser.id);
     useStore.setState({ messages: messages.slice(0, at) }); // drop that question and everything after it, then ask it afresh
-    await ask(settings, lastUser.content, { wire: lastUser.wire, shared: lastUser.shared, sharedPages: lastUser.sharedPages, aliases: lastUser.aliases });
+    await ask(settings, lastUser.content, { wire: lastUser.wire, shared: lastUser.shared, sharedPages: lastUser.sharedPages, aliases: lastUser.aliases, sources: lastUser.sources, system: lastUser.system });
+  }
+
+  /** A question answered by the app itself, with no model involved (nothing is sent anywhere). */
+  function notice(question: string, answer: string) {
+    if (useStore.getState().busy) return;
+    useStore.setState((s) => ({ messages: [...s.messages, { id: newId(), role: 'user', content: question }, { id: newId(), role: 'assistant', content: answer }] }));
   }
 
   /** Records what became of a proposal (applied or discarded). */
   const settle = (id: string, proposal: Message['proposal']) => patch(id, { proposal });
 
-  return { useStore, ask, draw, regenerate, clear, stop, settle };
+  return { useStore, ask, draw, regenerate, clear, stop, settle, notice };
 }
 
 /** The page drawer's conversation (the exports below keep the names the drawer and the tests already use). */

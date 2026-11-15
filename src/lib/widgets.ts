@@ -69,10 +69,6 @@ export function parseIndex(raw: string | null): string[] {
   }
 }
 
-/** The address a widget window opens (a query, so it works on any page host). */
-export const widgetQuery = (s: Pick<WidgetSpec, 'pageId' | 'blockId'>) =>
-  `?widget=${encodeURIComponent(s.pageId)}${s.blockId ? `&block=${encodeURIComponent(s.blockId)}` : ''}`;
-
 /** The widget with the window's current position and size (logical pixels) written in. */
 export function withGeometry(spec: WidgetSpec, g: { x: number; y: number; w: number; h: number }): WidgetSpec {
   const { w, h } = clampSize(g.w, g.h);

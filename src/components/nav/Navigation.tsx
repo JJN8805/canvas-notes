@@ -7,6 +7,7 @@ import { modKey } from '../../lib/util';
 import { GraphView } from './GraphView';
 import { OutlinePanel } from './OutlinePanel';
 import { Palette } from './Palette';
+import { WeeklyReviewDialog } from '../journal/WeeklyReviewDialog';
 
 /** The navigation overlays and their shortcuts: Ctrl+P command palette, Ctrl+O or Ctrl+K quick switcher ("search or ask"). */
 export function Navigation() {
@@ -36,6 +37,7 @@ export function Navigation() {
   return (
     <>
       <Palette />
+      <WeeklyReviewDialog />
       {open === 'graph' && <GraphView />}
       {open === 'outline' && route.name === 'page' && <OutlinePanel pageId={route.id} />}
     </>

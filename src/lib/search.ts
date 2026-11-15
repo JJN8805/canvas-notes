@@ -7,6 +7,7 @@
  *   before:2026-02-01         last edited before the end of that day
  * "quoted words" must appear together. An operator with nothing usable after it is ignored rather than hiding every page.
  */
+import { kindClass } from './note';
 import type { Group, Page } from '../types';
 import { withDescendants } from './groups';
 import { blockText, normTag } from './util';
@@ -75,7 +76,7 @@ export function searchPages(pages: Page[], query: string, groups: Group[] = []):
   });
   return pages.filter((p) => {
     if (!q.tags.every((t) => p.tags.includes(t))) return false;
-    if (!q.has.every((k) => (k === 'drawing' ? !!p.drawing : p.blocks.some((b) => b.type === k)))) return false;
+    if (!q.has.every((k) => (k === 'drawing' ? !!p.drawing : p.blocks.some((b) => kindClass(b) === k)))) return false;
     if (!inSets.every((s) => !!p.groupId && s.has(p.groupId))) return false;
     if (q.after !== null && p.updated < q.after) return false;
     if (q.before !== null && p.updated > q.before) return false;

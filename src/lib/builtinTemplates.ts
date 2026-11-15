@@ -1,5 +1,5 @@
 import { arrow, builder, type Built } from './templateKit';
-import { MORE_BUILDERS } from './moreTemplates';
+import { MORE_BUILDERS, MORE_IDS } from './moreTemplates';
 import type { PageRecord, SyncStore } from '../storage/types';
 
 /** Every device builds the built-in templates with these ids, so two devices that each seed them agree and nothing is duplicated. */
@@ -171,3 +171,6 @@ async function refreshRedrawn(storage: Seedable, metas: { id: string; deleted: b
   for (const rec of fresh) if (unedited.has(rec.id)) await storage.sync.applyRemote('page', rec);
   await storage.setSetting(REFRESHED_MORE_KEY, String(Date.now()));
 }
+
+/** True for the templates this app ships (as opposed to ones the user saved). */
+export const isBuiltinTemplateId = (id: string): boolean => (Object.values(BUILTIN_IDS) as string[]).includes(id) || (Object.values(MORE_IDS) as string[]).includes(id);

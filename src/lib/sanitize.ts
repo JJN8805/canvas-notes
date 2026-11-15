@@ -5,6 +5,8 @@
  * defaults, and entries that can't be a box at all (a null, a number) are left out. Valid data passes through unchanged.
  */
 import type { Block, Page } from '../types';
+import { cleanStyle, legacyNote } from './note';
+import { cleanLinks } from './boxLinks';
 import { newId } from './util';
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -24,7 +26,8 @@ function cleanRows(v: unknown): string[][] {
 }
 
 /** One box brought into shape, or null when it can't be a box. Boxes of a type this version doesn't know are kept as they are. */
-export function cleanBlock(b: unknown): Block | null {
+export function cleanBlock(raw: unknown): Block | null {
+  const b = isObj(raw) ? legacyNote(raw) : raw;
   if (!isObj(b) || typeof b.type !== 'string' || !b.type) return null;
   const out: Record<string, unknown> = {
     ...b,
@@ -35,10 +38,22 @@ export function cleanBlock(b: unknown): Block | null {
     h: Math.max(1, num(b.h, 60)),
     z: num(b.z, 1),
   };
+  if (out.over !== true) delete out.over; // only ever "true" or absent
+  if (out.locked !== true) delete out.locked;
+  const links = cleanLinks(out.links);
+  if (links.length) out.links = links;
+  else delete out.links;
+
   switch (b.type) {
-    case 'text':
-    case 'sticky':
-      out.html = text(b.html);
+    case 'note':
+      out.style = cleanStyle(b.style);
+      if (out.style === 'code') {
+        out.code = text(b.code);
+        out.html = '';
+      } else {
+        out.html = text(b.html);
+        delete out.code;
+      }
       break;
     case 'checklist':
       out.items = cleanItems(b.items);
@@ -47,9 +62,6 @@ export function cleanBlock(b: unknown): Block | null {
         const t = b.track;
         if (!(isObj(t) && typeof t.start === 'string' && typeof t.day === 'string' && isObj(t.log) && isObj(t.first))) delete out.track;
       }
-      break;
-    case 'code':
-      out.code = text(b.code);
       break;
     case 'table':
       out.rows = cleanRows(b.rows);

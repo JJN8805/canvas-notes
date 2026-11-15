@@ -111,7 +111,7 @@ import type { Block, Page } from '../src/types';
 
 const note = (id: string, title: string, body: string): Page => ({
   id, title, groupId: null, tags: [], arrows: [], created: 1, updated: 1, rev: 0,
-  blocks: body ? [{ id: 'b' + id, type: 'text', x: 0, y: 0, w: 1, h: 1, z: 1, html: `<p>${body}</p>` } as Block] : [],
+  blocks: body ? [{ id: 'b' + id, type: 'note', style: 'text', x: 0, y: 0, w: 1, h: 1, z: 1, html: `<p>${body}</p>` } as Block] : [],
 });
 
 describe('pages attached to a question in the Chat screen', () => {

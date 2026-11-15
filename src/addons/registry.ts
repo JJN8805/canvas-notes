@@ -19,6 +19,13 @@ export const ADDONS: readonly AddOnInfo[] = [
     privacy: 'Pictures are sent only to Ollama on this computer, never anywhere else.',
     load: () => import('./ocr').then((m) => m.default),
   },
+  {
+    id: 'office',
+    name: 'Workspace (documents, spreadsheets, presentations)',
+    description: 'Start a page as a Document (a sheet of paper with a formatting bar), a Spreadsheet (rows, columns, formulas, number formats, sorting, CSV) or a Presentation (slides you can reorder, with speaker notes and a full-screen Present mode). They are ordinary pages underneath: they sync, back up, link and export like any other, and without this add-on they simply open as canvas pages.',
+    privacy: 'Everything stays on this computer. Nothing is sent anywhere.',
+    load: () => import('./office').then((m) => m.default),
+  },
 ];
 
 export const isAddOnId = (v: unknown): v is AddOnId => ADDONS.some((a) => a.id === v);

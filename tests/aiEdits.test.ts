@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildEditableContext, cleanOp, EDIT_PROMPT, fieldsFor, fingerprint, parseAnswer, propose, visibleText } from '../src/addons/ai/edits';
 import type { Block } from '../src/types';
 
-const text = (id: string, html: string, y = 0): Block => ({ id, type: 'text', x: 0, y, w: 200, h: 40, z: 1, html }) as Block;
+const text = (id: string, html: string, y = 0): Block => ({ id, type: 'note', style: 'text', x: 0, y, w: 200, h: 40, z: 1, html }) as Block;
 const list = (id: string, y: number): Block =>
   ({ id, type: 'checklist', x: 0, y, w: 200, h: 40, z: 1, items: [{ id: 'i1', text: 'Milk', done: false }, { id: 'i2', text: 'Eggs', done: true }] }) as Block;
 const pic = (id: string, y: number): Block => ({ id, type: 'image', x: 0, y, w: 100, h: 100, z: 1, imageId: 'x', aspect: 1 }) as Block;

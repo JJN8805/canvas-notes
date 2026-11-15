@@ -2,7 +2,7 @@ import { Filter, Group, GroupColor, SortKey, GROUP_COLORS } from '../../types';
 import { newId } from '../../lib/util';
 import { history } from '../history';
 import { effectiveParents, validParents } from '../../lib/groups';
-import { get, getStorage, set } from './state';
+import { get, set } from './state';
 import { scheduleGroupsSave } from './save';
 import { setPageGroup } from './pages';
 
@@ -20,7 +20,6 @@ export function createGroup(name: string, parentId: string | null = null): Group
   const g: Group = { id: newId(), name: name.trim().slice(0, 60), color, parentId: parent ? parent.id : null };
   set((s) => {
     s.groups.push(g);
-    if (parent) s.collapsed = s.collapsed.filter((id) => id !== parent.id); // show the new subgroup
   });
   scheduleGroupsSave();
   return g;
@@ -40,7 +39,6 @@ export function moveGroup(id: string, parentId: string | null): boolean {
   set((s) => {
     const g = s.groups.find((x) => x.id === id);
     if (g) g.parentId = parentId;
-    if (parentId) s.collapsed = s.collapsed.filter((x) => x !== parentId);
   });
   scheduleGroupsSave();
   return true;
@@ -60,13 +58,6 @@ export function deleteGroup(id: string) {
   });
   for (const p of Object.values(get().pages)) if (p.groupId === id) setPageGroup(p.id, parentId);
   scheduleGroupsSave();
-}
-
-export function toggleCollapsed(id: string) {
-  set((s) => {
-    s.collapsed = s.collapsed.includes(id) ? s.collapsed.filter((x) => x !== id) : [...s.collapsed, id];
-  });
-  void getStorage().setSetting('ui.collapsedGroups', JSON.stringify(get().collapsed)).catch(() => {});
 }
 
 export function setFilter(filter: Filter) {

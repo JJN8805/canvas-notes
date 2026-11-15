@@ -6,7 +6,7 @@ function frame(id: string, opts: Partial<FrameBlock> = {}): FrameBlock {
   return { id, type: 'frame', x: 0, y: 0, w: 400, h: 300, z: 0, title: id, color: 'slate', collapsed: false, frameId: null, ...opts };
 }
 function box(id: string, opts: Partial<Block> = {}): Block {
-  return { id, type: 'text', x: 0, y: 0, w: 100, h: 40, z: 0, html: '', frameId: null, ...opts } as Block;
+  return { id, type: 'note', style: 'text', x: 0, y: 0, w: 100, h: 40, z: 0, html: '', frameId: null, ...opts } as Block;
 }
 
 describe('frame containment', () => {

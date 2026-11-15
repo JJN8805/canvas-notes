@@ -12,6 +12,7 @@ import { deletePage, openDailyPage, useNotes } from '../../store/notes';
 import { confirmDanger } from '../../store/ui';
 import { dontRemake, setContents, turnTo, useJournal } from '../../store/journal';
 import { useNav } from '../../store/nav';
+import { openWeekly } from '../../store/weekly';
 import { useUi } from '../../store/ui';
 import { Editor } from '../editor/Editor';
 import { Icon } from '../ui/Icon';
@@ -170,6 +171,10 @@ export function JournalView() {
           <button className="btn" title="Open the attendance page" onClick={(e) => openAttendance(e.currentTarget)}>
             <Icon name="check" size={16} />
             Attendance
+          </button>
+          <button className="btn" title="What the week looked like: days written, tasks, habits, pages worked on" onClick={() => openWeekly(date)}>
+            <Icon name="calendar" size={16} />
+            Week
           </button>
           <button className={'btn' + (contents ? ' on' : '')} aria-pressed={contents} onClick={() => setContents(!contents)}>
             <Icon name="outline" size={16} />

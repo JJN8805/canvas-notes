@@ -5,6 +5,8 @@ export interface ToastMsg {
   id: number;
   message: string;
   action?: { label: string; run: () => void };
+  /** The page this toast is about. Leaving the page removes it, so its Undo can never act on a page that is not on screen. */
+  owner?: string;
 }
 
 export interface DialogReq {
@@ -32,6 +34,8 @@ export type MenuItem =
 export interface MenuReq {
   anchor: HTMLElement;
   items: MenuItem[];
+  /** Screen position for a right-click menu: it opens with its corner here instead of under the anchor. */
+  at?: { x: number; y: number };
 }
 
 interface UiState {
@@ -44,10 +48,14 @@ export const useUi = create<UiState>(() => ({ toasts: [], dialog: null, menu: nu
 
 let seq = 0;
 
-export function toast(message: string, action?: ToastMsg['action'], ms = 4500) {
+export function toast(message: string, action?: ToastMsg['action'], ms = 4500, owner?: string) {
   const id = ++seq;
-  useUi.setState((s) => ({ toasts: [...s.toasts.slice(-2), { id, message, action }] }));
+  useUi.setState((s) => ({ toasts: [...s.toasts.slice(-2), { id, message, action, owner }] }));
   window.setTimeout(() => dismissToast(id), ms);
+}
+/** Removes the toasts that belong to a page (called when the page is left). */
+export function dismissToastsOwnedBy(owner: string) {
+  useUi.setState((s) => (s.toasts.some((t) => t.owner === owner) ? { toasts: s.toasts.filter((t) => t.owner !== owner) } : s));
 }
 export function dismissToast(id: number) {
   useUi.setState((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
@@ -86,6 +94,10 @@ export function closeDialog(value: string | boolean | null) {
 
 export function openMenu(anchor: HTMLElement, items: MenuItem[]) {
   useUi.setState({ menu: { anchor, items } });
+}
+/** A right-click menu: opens at the pointer; `anchor` only gets the focus back when it closes. */
+export function openMenuAt(anchor: HTMLElement, x: number, y: number, items: MenuItem[]) {
+  useUi.setState({ menu: { anchor, items, at: { x, y } } });
 }
 export function closeMenu() {
   useUi.setState({ menu: null });

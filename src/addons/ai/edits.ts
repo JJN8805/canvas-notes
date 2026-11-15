@@ -6,8 +6,9 @@
  * itself. The app turns the list into a *proposal* (what each box is now, and what it would become), the user reads it and presses
  * Apply, and only then is the page changed, as a single undo step. A box that was edited after the page was sent is left alone.
  */
+import { kindClass } from '../../lib/note';
 import type { Block, Page } from '../../types';
-import { htmlToText } from '../../graph/text';
+import { htmlToText } from '../../lib/pageText';
 import { readingOrder } from '../../export/export';
 import { markdownToHtml } from './markdown';
 
@@ -39,20 +40,17 @@ export interface EditableContext {
   usedSelection: boolean;
 }
 
-/** The kinds of box the assistant can change. Pictures, audio, PDFs, cards and frames can't be changed; attendance tables are generated. */
+/** The kinds of box the assistant can change. Pictures, audio, PDFs, cards and frames can't be changed; attendance tables are generated; a locked box is read only. */
 export const isEditable = (b: Block): boolean =>
-  b.type === 'text' || b.type === 'sticky' || b.type === 'checklist' || b.type === 'code' || (b.type === 'table' && !b.attendance);
+  !b.locked && (b.type === 'note' || b.type === 'checklist' || (b.type === 'table' && !b.attendance));
 
 /** Everything about a box that an edit could change, as one string. */
 export function fingerprint(b: Block): string {
   switch (b.type) {
-    case 'text':
-    case 'sticky':
-      return b.html ?? '';
+    case 'note':
+      return b.style === 'code' ? (b.code ?? '') : (b.html ?? '');
     case 'checklist':
       return JSON.stringify(b.items.map((i) => [i.text, i.done]));
-    case 'code':
-      return b.code ?? '';
     case 'table':
       return JSON.stringify(b.rows);
     default:
@@ -63,13 +61,10 @@ export function fingerprint(b: Block): string {
 /** The box's content as plain text (what the model reads, and what the user sees as "before"). */
 export function plainText(b: Block): string {
   switch (b.type) {
-    case 'text':
-    case 'sticky':
-      return htmlToText(b.html ?? '');
+    case 'note':
+      return b.style === 'code' ? (b.code ?? '') : htmlToText(b.html ?? '');
     case 'checklist':
       return b.items.map((i) => `- [${i.done ? 'x' : ' '}] ${i.text}`).join('\n');
-    case 'code':
-      return b.code ?? '';
     case 'table':
       return b.rows.map((r) => `| ${r.join(' | ')} |`).join('\n');
     case 'frame':
@@ -84,8 +79,8 @@ export function plainText(b: Block): string {
   }
 }
 
-const KIND_LABEL: Partial<Record<Block['type'], string>> = { text: 'text box', sticky: 'sticky note', checklist: 'checklist', code: 'code box', table: 'table' };
-export const kindLabel = (b: Block) => KIND_LABEL[b.type] ?? b.type;
+const KIND_LABEL: Record<string, string> = { text: 'text box', sticky: 'sticky note', checklist: 'checklist', code: 'code box', table: 'table' };
+export const kindLabel = (b: Block) => KIND_LABEL[kindClass(b)] ?? b.type;
 
 /** The page for the model, one labelled section per box, in reading order. With selected boxes, only those (they keep their labels). */
 export function buildEditableContext(page: Pick<Page, 'title' | 'tags' | 'blocks'>, selectedIds: readonly string[] = [], maxChars = 24000): EditableContext {
@@ -298,9 +293,9 @@ export function propose(ops: readonly EditOp[], aliases: AliasMap, blocks: reado
     }
     const title = `${op.kind === 'delete' ? 'Delete' : 'Change'} the ${kindLabel(b)}`;
     const mismatch =
-      (op.kind === 'text' && b.type !== 'text' && b.type !== 'sticky') ||
+      (op.kind === 'text' && !(b.type === 'note' && b.style !== 'code')) ||
       (op.kind === 'checklist' && b.type !== 'checklist') ||
-      (op.kind === 'code' && b.type !== 'code') ||
+      (op.kind === 'code' && !(b.type === 'note' && b.style === 'code')) ||
       (op.kind === 'table' && (b.type !== 'table' || !!b.attendance));
     let problem: string | undefined;
     if (mismatch) problem = `This is a ${kindLabel(b)}, so that kind of change doesn't fit it.`;

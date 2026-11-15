@@ -1,6 +1,6 @@
 /** What the assistant is shown of a page. Pure, so it is tested without the app. */
 import type { Block, Page } from '../../types';
-import { htmlToText } from '../../graph/text';
+import { htmlToText } from '../../lib/pageText';
 import { readingOrder } from '../../export/export';
 
 export interface PageContext {
@@ -17,15 +17,12 @@ export interface PageContext {
 
 export const DEFAULT_MAX_CHARS = 24000;
 
-function blockToText(b: Block): string {
+export function blockToText(b: Block): string {
   switch (b.type) {
-    case 'text':
-    case 'sticky':
-      return htmlToText(b.html ?? '');
+    case 'note':
+      return b.style === 'code' ? '```\n' + (b.code ?? '') + '\n```' : htmlToText(b.html ?? '');
     case 'checklist':
       return b.items.map((i) => `- [${i.done ? 'x' : ' '}] ${i.text}`).join('\n');
-    case 'code':
-      return '```\n' + (b.code ?? '') + '\n```';
     case 'table':
       return b.rows.map((r) => `| ${r.join(' | ')} |`).join('\n');
     case 'frame':

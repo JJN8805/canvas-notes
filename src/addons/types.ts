@@ -2,10 +2,11 @@
 import type { ComponentType } from 'react';
 import type { Editor } from '@tiptap/react';
 import type { Block } from '../types';
+import type { OfficeApp } from '../lib/office/app';
 import type { Command } from '../components/nav/commands';
 import type { IconName } from '../components/ui/Icon';
 
-export type AddOnId = 'ai' | 'ocr';
+export type AddOnId = 'ai' | 'ocr' | 'office';
 
 export interface BlockAction {
   id: string;
@@ -20,7 +21,17 @@ export interface CardPictureSource {
   Dialog: ComponentType<{ cardLabel: string; onPick: (file: File) => void; onClose: () => void }>;
 }
 
+/** What an add-on shows for a page of its own kind (a Workspace document, spreadsheet or presentation). */
+export interface PageAppView {
+  /** Replaces the canvas and its tools. */
+  Screen?: ComponentType<{ pageId: string }>;
+  /** Added beside the canvas, which stays (a presentation's slide list, say). */
+  Extras?: ComponentType<{ pageId: string }>;
+}
+
 export interface AddOnModule {
+  /** Screens for pages the add-on made, by kind. With the add-on off those pages are ordinary canvas pages. */
+  pageApps?: Partial<Record<OfficeApp, PageAppView>>;
   /** Its section in Settings → Add-ons, shown while it is switched on. */
   Settings: ComponentType;
   /** A side panel opened from a button in the page's header. */
@@ -34,7 +45,7 @@ export interface AddOnModule {
   /** The full-page screen opened by `navItem`. */
   View?: ComponentType;
   /** "Search or ask": called with the words typed in the quick switcher when the user chooses to ask rather than search. */
-  askHandler?: (question: string) => void;
+  askHandler?: (question: string, opts?: { pageIds?: string[] }) => void;
   /** Buttons in the text formatting bar, given the text box being edited. */
   FormatTool?: ComponentType<{ editor: Editor }>;
   /** Floating UI that lives outside the page (a card that appears near the text, say), mounted once for the whole app. */

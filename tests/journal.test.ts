@@ -3,7 +3,7 @@ import { entrySnippet, filterEntries, isJournalPage, journalEntries, longDate, m
 import { attendancePagesOf, libraryPages, listedPages } from '../src/lib/pages';
 import type { Block, Page } from '../src/types';
 
-const text = (html: string, y = 0, x = 0): Block => ({ id: 't' + html + y + x, type: 'text', x, y, w: 1, h: 1, z: 1, html }) as Block;
+const text = (html: string, y = 0, x = 0): Block => ({ id: 't' + html + y + x, type: 'note', style: 'text', x, y, w: 1, h: 1, z: 1, html }) as Block;
 const page = (id: string, extra: Partial<Page> = {}): Page => ({ id, title: id, groupId: null, tags: [], blocks: [], arrows: [], created: 1, updated: 1, rev: 0, ...extra });
 const day = (date: string, blocks: Block[] = [], extra: Partial<Page> = {}) => page('d' + date, { dailyDate: date, title: `day ${date}`, blocks, ...extra });
 

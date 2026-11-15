@@ -1,10 +1,16 @@
 import { openCard } from '../../store/cardView';
+import { LinkBadge } from './LinkBadge';
+import { openLinkDialog } from '../../store/boxLinks';
 import { blockActionsFor, useAddons } from '../../addons/store';
 import { memo, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
 import { ResizeHandles } from './ResizeHandles';
-import type { NoteColor, TableBlock, TextBlock } from '../../types';
-import { deleteBlocks, duplicateBlocks, ensureAttendancePage, sendToBack, setColor, setTracking, updateBlock } from '../../store/notes';
+import { NOTE_STYLES, type NoteBlock, type NoteColor, type NoteStyle, type TableBlock } from '../../types';
+import { duplicateBlocks, ensureAttendancePage, setColor, setTracking, updateBlock } from '../../store/notes';
+import { layerMenu } from './layerMenu';
+import { deleteWithUndo } from './actions';
 import { navigate } from '../../lib/route';
+import { kindClass, noteStyleLabel } from '../../lib/note';
+import { changeNoteStyle } from './noteStyle';
 import { canvasApi, setSelected } from '../../store/canvas';
 import { BLOCK_LABEL, isFixedHeight, newId } from '../../lib/util';
 import { Icon, type IconName } from '../ui/Icon';
@@ -48,19 +54,26 @@ export const BlockFrame = memo(function BlockFrame({
     ...tintVars(block),
   } as CSSProperties;
 
-  const cls = ['block', `b-${block.type}`];
+  const cls = ['block', `b-${kindClass(block)}`];
   if (selected) cls.push('sel');
-  if (block.type === 'text' && block.fill) cls.push('fill');
+  if (block.locked) cls.push('locked');
+  if (block.type === 'note' && block.style === 'text' && block.fill) cls.push('fill');
 
   return (
     <div ref={ref} className={cls.join(' ')} data-id={block.id} style={style} onPointerDownCapture={(e) => ctx.pointerDownBlock(e, block.id)}
-      onDoubleClick={block.type === 'sticky' ? () => canvasApi.current?.focusBlock(block.id) : undefined}>
+      onDoubleClick={block.type === 'note' && block.style === 'sticky' ? () => canvasApi.current?.focusBlock(block.id) : undefined}>
       {/* A band just outside and inside the box's edge that moves it, so it can be grabbed without the bar. */}
       <div className="grab" aria-hidden="true" title="Drag to move" onPointerDown={(e) => ctx.startMove(e, block.id)} />
       <div className="bar-wrap">
         <BlockBar block={block} />
       </div>
       <BlockBody block={block} />
+      <LinkBadge block={block} pageId={ctx.pageId} />
+      {block.locked && (
+        <span className="lock-badge" role="img" aria-label="Locked" title="Locked: it can’t be moved or deleted. Right-click to unlock.">
+          <Icon name="lock" size={11} />
+        </span>
+      )}
       {(['top', 'right', 'bottom', 'left'] as const).map((side) => (
         <div
           key={side}
@@ -97,14 +110,37 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
 
   const extra: ReactNode[] = [];
   useAddons((s) => s.loaded); // re-render when an add-on starts or stops, so its buttons appear
-  if (block.type === 'text') {
+  if (block.type === 'note') {
     extra.push(
-      btn(block.fill ? 'Remove background' : 'Add background', 'Fill', () =>
-        updateBlock<TextBlock>(pageId, block.id, (b) => {
-          b.fill = !b.fill;
-        }),
-      ),
+      <button
+        key="style"
+        aria-label="Note style"
+        title="Switch between a text box, a sticky note and code"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          openMenu(e.currentTarget, [
+            { heading: 'Note style' },
+            ...NOTE_STYLES.map((st: NoteStyle) => ({
+              label: noteStyleLabel[st],
+              check: block.style === st,
+              action: () => void changeNoteStyle(pageId, [block.id], st),
+            })),
+          ]);
+        }}
+      >
+        {noteStyleLabel[block.style]} ▾
+      </button>,
     );
+    if (block.style === 'text') {
+      extra.push(
+        btn(block.fill ? 'Remove background' : 'Add background', 'Fill', () =>
+          updateBlock<NoteBlock>(pageId, block.id, (b) => {
+            b.fill = !b.fill;
+          }),
+        ),
+      );
+    }
   }
   if (block.type === 'card') {
     extra.push(btn('Open card', 'Open', () => openCard(block.cardId)));
@@ -177,11 +213,21 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
         <span className="swatch-dot" style={{ background: block.tint ? noteVar(block.tint) : 'transparent' }} />
       </button>
       {canPin && btn('Pin to desktop', icon('pin'), () => void pinBlock(pageId, block))}
-      {btn('Send to back', icon('layer'), () => sendToBack(pageId, [block.id]))}
+      <button
+        aria-label="Layer"
+        title="Layer: forward, backward, over the drawing"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          openMenu(e.currentTarget, layerMenu(pageId, [block.id]));
+        }}
+      >
+        {icon('layer')}
+      </button>
+      {btn('Links', icon('link'), () => openLinkDialog(pageId, block.id))}
       {btn('Duplicate', icon('copy'), () => setSelected(duplicateBlocks(pageId, [block.id])))}
       {btn('Delete', icon('trash'), () => {
-        deleteBlocks(pageId, [block.id]);
-        setSelected([]);
+        deleteWithUndo(pageId, [block.id]);
       })}
     </div>
   );

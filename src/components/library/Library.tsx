@@ -16,6 +16,10 @@ import { Sidebar } from './Sidebar';
 import { Crumbs, GroupCard, GroupsView, TagsView } from './Browse';
 import { PageCard } from './PageCard';
 import { useAddons } from '../../addons/store';
+import type { AddOnId } from '../../addons/types';
+import { toggleCardTree, toggleSidebar, useLayout } from '../../store/layout';
+import { isEditableTarget, MOD_LABEL } from '../../lib/util';
+import { openShortcuts } from '../../store/shortcutsUi';
 import { JournalView } from '../journal/JournalView';
 
 function filterTitle(f: Filter, groups: Group[]): string {
@@ -35,9 +39,9 @@ function filterTitle(f: Filter, groups: Group[]): string {
 
 /** The full-page screen of an add-on. If the add-on is switched off while it is open, go back to All pages. */
 function AddonScreen({ id }: { id: string }) {
-  const View = useAddons((s) => s.loaded[id as 'ai' | 'ocr']?.View);
-  const known = useAddons((s) => s.enabled.includes(id as 'ai' | 'ocr'));
-  const failed = useAddons((s) => !!s.errors[id as 'ai' | 'ocr']);
+  const View = useAddons((s) => s.loaded[id as AddOnId]?.View);
+  const known = useAddons((s) => s.enabled.includes(id as AddOnId));
+  const failed = useAddons((s) => !!s.errors[id as AddOnId]);
   useEffect(() => {
     if (!View && !known) setFilter({ kind: 'all' });
   }, [View, known]);
@@ -51,6 +55,26 @@ export function Library() {
   const filter = useNotes((s) => s.filter);
   const query = useNotes((s) => s.query);
   const sort = useNotes((s) => s.sort);
+  const sidebarOpen = useLayout((st) => st.sidebar);
+  // Ctrl+\ shows or hides the sidebar; Ctrl+Shift+\ the card folders; ? lists every shortcut. Any open dialog or menu keeps the keyboard.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (document.querySelector('.scrim, [aria-modal="true"], .menu')) return;
+      // ? shows every shortcut, here as on a page (unless you are typing)
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !isEditableTarget(document.activeElement)) {
+        e.preventDefault();
+        openShortcuts();
+        return;
+      }
+      if (e.code !== 'Backslash' || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+      e.preventDefault();
+      if (e.shiftKey) toggleCardTree();
+      else toggleSidebar();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
 
   // Templates are not pages: they stay out of the list, search, counts and tags.
   // Daily pages are read in the Journal, so they are not in All pages, the counts, groups or tags.
@@ -78,8 +102,13 @@ export function Library() {
   const subgroups = useMemo(() => (filter.kind === 'group' ? childSummaries(summaries, filter.id) : []), [summaries, filter]);
 
   return (
-    <div className="library">
+    <div className={'library' + (sidebarOpen ? '' : ' side-closed')}>
       <Sidebar pages={all} groups={groups} filter={filter} />
+      {!sidebarOpen && (
+        <button className="icon-btn side-open" onClick={toggleSidebar} aria-label="Show sidebar" title={`Show sidebar (${MOD_LABEL}+\\)`}>
+          <Icon name="sidebar" size={18} />
+        </button>
+      )}
       <main className={'main' + (filter.kind === 'journal' ? ' main-journal' : '')}>
         {filter.kind === 'trash' ? (
           <TrashView />

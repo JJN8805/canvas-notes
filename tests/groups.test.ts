@@ -13,11 +13,6 @@ describe('group tree', () => {
     ]);
   });
 
-  it('hides subgroups of collapsed groups but still marks them as having children', () => {
-    expect(groupTree(groups, new Set(['work'])).map((r) => r.group.id)).toEqual(['work', 'home', 'garden']);
-    expect(groupTree(groups, new Set(['work']))[0].hasChildren).toBe(true);
-  });
-
   it('finds a group and everything nested inside it', () => {
     expect([...withDescendants(groups, 'work')].sort()).toEqual(['gw', 'ml', 'reports', 'work']);
     expect([...withDescendants(groups, 'gw')]).toEqual(['gw']);

@@ -7,7 +7,7 @@ vi.mock('@tauri-apps/api/path', () => fakePath);
 
 import { createTauriStorage } from '../src/storage/tauri';
 import { buildBackup, parseBackup, restoreBackup } from '../src/lib/backup';
-import { cardInitial, cardLabel, cardParts, cardText, newCardBlocks, searchCards, withCover, COVER_W, cardTagCounts, inCardSet, boardColumns } from '../src/lib/cards';
+import { cardInitial, cardLabel, cardParts, cardText, newCardBlocks, searchCards, withCover, COVER_W, cardTagCounts } from '../src/lib/cards';
 import { cardsOf, isCard, kindOf, libraryPages } from '../src/lib/pages';
 import type { NotesStorage } from '../src/storage/types';
 import type { Block, Group, Page } from '../src/types';
@@ -15,7 +15,7 @@ import type { Block, Group, Page } from '../src/types';
 const card = (id: string, title: string, blocks: Block[] = newCardBlocks(), extra: Partial<Page> = {}): Page => ({
   id, title, groupId: null, tags: [], blocks, arrows: [], kind: 'card', created: 1, updated: 1, rev: 0, ...extra,
 });
-const text = (id: string, html: string, z = 1): Block => ({ id, type: 'text', x: 0, y: 0, w: 200, h: 40, z, html }) as Block;
+const text = (id: string, html: string, z = 1): Block => ({ id, type: 'note', style: 'text', x: 0, y: 0, w: 200, h: 40, z, html }) as Block;
 const image = (id: string, z = 2): Block => ({ id, type: 'image', x: 0, y: 0, w: 100, h: 100, z, imageId: 'img1', aspect: 1 }) as Block;
 
 describe('what a card is', () => {
@@ -45,7 +45,7 @@ describe('what a card is', () => {
   it('starts with an empty details box', () => {
     const b = newCardBlocks();
     expect(b).toHaveLength(1);
-    expect(b[0]).toMatchObject({ type: 'text', html: '' });
+    expect(b[0]).toMatchObject({ type: 'note', style: 'text', html: '' });
   });
 });
 
@@ -91,7 +91,7 @@ describe('searching cards', () => {
   });
 });
 
-describe('tags and sets of cards', () => {
+describe('tags of cards', () => {
   const cards = [
     card('1', 'Tokyo', [text('t', '<p>garden party</p>')], { tags: ['travel'], groupId: 'g1' }),
     card('2', 'Garden', [text('t', '<p>x</p>')], { tags: ['plants', 'travel'], groupId: 'g2' }),
@@ -111,41 +111,6 @@ describe('tags and sets of cards', () => {
   it('counts tags, most used first', () => {
     expect(cardTagCounts(cards)).toEqual([{ tag: 'travel', count: 2 }, { tag: 'plants', count: 1 }]);
     expect(cardTagCounts([card('x', 'X', [], { tags: ['a', 'a'] })])).toEqual([{ tag: 'a', count: 1 }]);
-  });
-
-  it('picks the cards of a set', () => {
-    const ids = (set: Parameters<typeof inCardSet>[1]) => cards.filter((c) => inCardSet(c, set)).map((c) => c.id);
-    expect(ids({ kind: 'all' })).toEqual(['1', '2', '3']);
-    expect(ids({ kind: 'none' })).toEqual(['3']);
-    expect(ids({ kind: 'group', ids: new Set(['g1']) })).toEqual(['1']);
-    expect(ids({ kind: 'group', ids: new Set(['g1', 'g2']) })).toEqual(['1', '2']);
-  });
-});
-
-describe('the board of card sets', () => {
-  const g = (id: string, name: string, parentId: string | null = null): Group => ({ id, name, color: 'slate', parentId });
-  const groups = [g('w', 'Work'), g('ml', 'ML', 'w'), g('deep', 'Deep', 'ml'), g('h', 'Home')];
-  const cards = [
-    card('a', 'A', [], { groupId: 'w' }),
-    card('b', 'B', [], { groupId: 'deep' }),
-    card('c', 'C', [], { groupId: 'h' }),
-    card('d', 'D'),
-    card('e', 'E', [], { groupId: 'deleted-group' }),
-  ];
-  const show = (within: string | null) => boardColumns(groups, cards, within).map((c) => [c.groupId, c.title, c.cards.map((x) => x.id)]);
-
-  it('has "No set" and one column per top group, with deeper cards under their top group', () => {
-    expect(show(null)).toEqual([[null, 'No set', ['d', 'e']], ['w', 'Work', ['a', 'b']], ['h', 'Home', ['c']]]);
-  });
-
-  it('inside a set, shows the set itself and its subgroups', () => {
-    expect(show('w')).toEqual([['w', 'Work', ['a']], ['ml', 'ML', ['b']]]);
-    expect(show('ml')).toEqual([['ml', 'ML', []], ['deep', 'Deep', ['b']]]);
-  });
-
-  it('survives a group loop without hanging', () => {
-    const loop = [g('x', 'X', 'y'), g('y', 'Y', 'x')];
-    expect(() => boardColumns(loop, [card('p', 'P', [], { groupId: 'x' })], null)).not.toThrow();
   });
 });
 

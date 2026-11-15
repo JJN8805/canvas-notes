@@ -9,6 +9,9 @@ import { toast } from '../../store/ui';
 import { Icon } from '../../components/ui/Icon';
 import type { Block } from '../../types';
 import { buildAttachments, MAX_ATTACHED, titleFromAnswer } from './attach';
+import { citedSources, NOTES_PROMPT, NOTHING_FOUND, notesMessage, passagesOf, rankPassages, type NoteSource } from './notesSearch';
+import { openBox } from './openBox';
+import { SYSTEM_PROMPT } from './prompts';
 import { hasPageText, mainChat, needsConfirmation, wireHistory, type Message } from './chat';
 import { useChatInbox } from './chatInbox';
 import { loadAiSettings, useAiSettings } from './config';
@@ -18,7 +21,8 @@ import { userMessage } from './prompts';
 
 const DEST_LABEL = { local: 'On this computer', network: 'Another computer on your network', cloud: 'Cloud' } as const;
 
-const STARTERS: { label: string; draft: string; pickPages: boolean }[] = [
+const STARTERS: { label: string; draft: string; pickPages: boolean; notes?: boolean }[] = [
+  { label: 'Ask my notes', draft: '', pickPages: false, notes: true },
   { label: 'Summarize a page', draft: 'Summarize this page in a few short bullet points.', pickPages: true },
   { label: 'Find action items in a page', draft: 'Find the action items: things someone needs to do. One per line, each starting with "- [ ] ".', pickPages: true },
   { label: 'Brainstorm ideas', draft: 'Brainstorm ideas for ', pickPages: false },
@@ -70,9 +74,25 @@ function PagePicker({ chosen, onToggle, onClose }: { chosen: string[]; onToggle:
   );
 }
 
+/** The notes an answer rests on: the ones it cites, each a button that opens that box (or, if it cites none, the notes it was shown). */
+function Sources({ answer, sources }: { answer: string; sources: NoteSource[] }) {
+  const cited = citedSources(answer, sources);
+  const shown = cited.length ? cited : sources;
+  return (
+    <div className="chat-sources" aria-label={cited.length ? 'Sources' : 'Notes it looked at'}>
+      <span className="chat-sources-head">{cited.length ? 'From your notes' : 'Looked at (none cited)'}</span>
+      {shown.map((s) => (
+        <button key={s.n} className="chip src" title={s.text.slice(0, 240)} onClick={() => openBox(s.pageId, s.blockId)}>
+          <b>[{s.n}]</b> {s.title}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function ChatMessage({ m, last, canRetry, onRetry }: { m: Message; last: boolean; canRetry: boolean; onRetry: () => void }) {
   const saveAsPage = () => {
-    const block = { id: newId(), type: 'text', x: 80, y: 80, w: 640, h: 120, z: 1, html: markdownToHtml(m.content) } as Block;
+    const block = { id: newId(), type: 'note', style: 'text', x: 80, y: 80, w: 640, h: 120, z: 1, html: markdownToHtml(m.content) } as Block;
     const page = createPage({ title: titleFromAnswer(m.content), blocks: [block] });
     toast('Saved as a new page', { label: 'Open', run: () => navigate({ name: 'page', id: page.id }) });
   };
@@ -91,6 +111,7 @@ function ChatMessage({ m, last, canRetry, onRetry }: { m: Message; last: boolean
         </div>
       )}
       {m.sharedPages && m.sharedPages.length > 0 && <div className="ai-shared">Shared {m.sharedPages.length === 1 ? 'the page' : `${m.sharedPages.length} pages`}: {m.sharedPages.join(', ')}</div>}
+      {m.role === 'assistant' && !m.streaming && !m.error && m.sources && m.sources.length > 0 && <Sources answer={m.content} sources={m.sources} />}
       {m.error && <div className="ai-error" role="alert">{m.error}</div>}
       {m.role === 'assistant' && !m.streaming && (
         <div className="ai-acts">
@@ -119,6 +140,8 @@ export function ChatView() {
   const [draft, setDraft] = useState('');
   const [attached, setAttached] = useState<string[]>([]);
   const [picking, setPicking] = useState(false);
+  const [searchNotes, setSearchNotes] = useState(false);
+  const inboxNotes = useChatInbox((s) => s.notes);
   const [pending, setPending] = useState<{ pending: Pending; go: () => void } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -160,35 +183,52 @@ export function ChatView() {
   const model = settings.models[settings.provider] || '(no model chosen)';
   const attachments = useMemo(() => buildAttachments(pages, attached), [pages, attached]);
 
-  const send = (text: string, ids: string[] = attached) => {
+  const send = (text: string, ids: string[] = attached, notes: boolean = searchNotes) => {
     const t = text.trim();
     if (!t || busy || !loaded) return;
     const att = buildAttachments(pages, ids);
-    const wire = userMessage(t, att.texts);
-    const shared = att.texts.length ? { chars: att.chars, blocks: att.texts.length } : undefined;
+    // "Search my notes": the best passages of every page, found here on this computer; only those go in the message.
+    const found = notes ? rankPassages(t, passagesOf(libraryPages(pages))) : [];
+    if (notes && !found.length && !att.texts.length) {
+      setDraft('');
+      follow.current = true;
+      mainChat.notice(t, NOTHING_FOUND); // nothing to ask a model about: answered here, nothing is sent
+      return;
+    }
+    const noted = found.length ? notesMessage(t, found) : null;
+    const wire = userMessage(noted ? noted.wire : t, att.texts);
+    const sourcePages = [...new Set((noted?.sources ?? []).map((x) => x.title))];
+    const shared = att.texts.length || noted ? { chars: att.chars + (noted?.sources ?? []).reduce((n, x) => n + x.text.length, 0), blocks: att.texts.length + (noted?.sources.length ?? 0) } : undefined;
+    const titles = [...att.titles, ...sourcePages.filter((x) => !att.titles.includes(x))];
+    const system = noted ? NOTES_PROMPT : undefined;
     const history = wireHistory(messages);
     const go = (consent: boolean) => {
       setDraft('');
       follow.current = true; // asking something always brings you to the answer
       setAttached([]); // the pages are in the conversation now; add more only if the next question needs them
-      void mainChat.ask(settings, t, { wire, shared, sharedPages: att.titles.length ? att.titles : undefined, consent });
+      void mainChat.ask(settings, t, { wire, shared, sharedPages: titles.length ? titles : undefined, consent, sources: noted?.sources, system });
     };
     const confirm = needsConfirmation({
-      destination: dest, confirmShare: settings.confirmShare, newMessageHasPage: att.texts.length > 0,
+      destination: dest, confirmShare: settings.confirmShare, newMessageHasPage: att.texts.length > 0 || !!noted,
       historyHasPage: history.some((h) => hasPageText(h.content)), provider: settings.provider, consented,
     });
-    if (confirm) setPending({ pending: { text: t, wire, shared, history: history.map((h) => `${h.role === 'user' ? 'You' : 'Assistant'}: ${h.content}`) }, go: () => go(true) });
+    if (confirm) setPending({ pending: { text: t, wire, shared, system, history: history.map((h) => `${h.role === 'user' ? 'You' : 'Assistant'}: ${h.content}`) }, go: () => go(true) });
     else go(false);
   };
 
   // A question typed into "Search or ask" is asked here as soon as the screen is ready.
   useEffect(() => {
+    if (inboxNotes) {
+      useChatInbox.setState({ notes: false });
+      setSearchNotes(true); // "Ask my notes…" from the command palette
+    }
     if (inbox && loaded && !busy) {
-      useChatInbox.setState({ question: null });
-      send(inbox, []);
+      const ids = useChatInbox.getState().pageIds;
+      useChatInbox.setState({ question: null, pageIds: [] });
+      send(inbox, ids.filter((id) => !!pages[id]), false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inbox, loaded]);
+  }, [inbox, loaded, inboxNotes]);
 
   const toggle = (id: string) => setAttached((a) => (a.includes(id) ? a.filter((x) => x !== id) : a.length >= MAX_ATTACHED ? a : [...a, id]));
   const titleOf = (id: string) => pages[id]?.title?.trim() || 'Untitled';
@@ -223,6 +263,7 @@ export function ChatView() {
                   className="btn"
                   onClick={() => {
                     setDraft(s.draft);
+                    if (s.notes) setSearchNotes(true);
                     if (s.pickPages) setPicking(true);
                     inputRef.current?.focus();
                   }}
@@ -255,7 +296,7 @@ export function ChatView() {
           <textarea
             ref={inputRef}
             aria-label="Message"
-            placeholder="Ask anything…"
+            placeholder={searchNotes ? 'Ask a question about your notes…' : 'Ask anything…'}
             rows={2}
             value={draft}
             disabled={!loaded}
@@ -268,6 +309,15 @@ export function ChatView() {
             }}
           />
           <div className="chat-btns">
+            <button
+              className={'btn' + (searchNotes ? ' on' : '')}
+              aria-pressed={searchNotes}
+              onClick={() => setSearchNotes((v) => !v)}
+              title="Look through all your pages for the passages that answer the question, and answer from them with sources. The search runs on this computer; only the passages it picks are sent."
+            >
+              <Icon name="search" size={16} />
+              Search my notes
+            </button>
             <button className="btn" onClick={() => setPicking((p) => !p)} aria-expanded={picking} title="Add pages to talk about">
               <Icon name="pages" size={16} />
               Add pages{attached.length ? ` (${attached.length})` : ''}
@@ -285,6 +335,7 @@ export function ChatView() {
         <ConfirmShare
           pending={pending.pending}
           to={info.label}
+          system={pending.pending.system ? SYSTEM_PROMPT + '\n\n' + pending.pending.system : SYSTEM_PROMPT}
           onNo={() => setPending(null)}
           onYes={() => {
             const go = pending.go;

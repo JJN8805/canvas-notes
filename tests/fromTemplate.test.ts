@@ -10,9 +10,9 @@ import type { Block, Page } from '../src/types';
 const base = (extra: Partial<Page>): Page => ({ id: 'x', title: '', groupId: null, tags: [], blocks: [], arrows: [], created: 1, updated: 1, rev: 1, ...extra });
 const blocks = (): Block[] => [
   { id: 'f', type: 'frame', x: 0, y: 0, w: 400, h: 300, z: 0, title: 'Agenda', color: 'teal', collapsed: false } as Block,
-  { id: 'a', type: 'text', x: 10, y: 40, w: 200, h: 40, z: 1, html: '<p>Notes</p>', frameId: 'f' } as Block,
+  { id: 'a', type: 'note', style: 'text', x: 10, y: 40, w: 200, h: 40, z: 1, html: '<p>Notes</p>', frameId: 'f' } as Block,
   { id: 'c', type: 'checklist', x: 10, y: 120, w: 200, h: 40, z: 2, items: [{ id: 'i1', text: 'Do it', done: false }], frameId: 'f' } as Block,
-  { id: 's', type: 'sticky', x: 300, y: 40, w: 200, h: 200, z: 3, html: '<p>Idea</p>', tint: 'pink' } as Block,
+  { id: 's', type: 'note', style: 'sticky', x: 300, y: 40, w: 200, h: 200, z: 3, html: '<p>Idea</p>', tint: 'pink' } as Block,
 ];
 const arrows = () => [{ id: 'ar', from: 'a', to: 's', heads: 'one' as const, style: 'solid' as const, z: 1 }];
 const pages = () => Object.values(useNotes.getState().pages);

@@ -1,4 +1,5 @@
 /** The bridge to the desktop shell: widget windows, the tray and start-at-login. Every call is a no-op outside the laptop app. */
+import { buildInfo } from '../lib/appInfo';
 import { isTauri } from '../storage';
 import { fitLogicalSize, needsFit, type WidgetSpec } from '../lib/widgets';
 import { isSafeId } from '../storage/validate';
@@ -43,7 +44,16 @@ export async function autostartEnabled(): Promise<boolean> {
   const { isEnabled } = await import('@tauri-apps/plugin-autostart');
   return isEnabled();
 }
+/**
+ * Why "start at login" can't be switched on, or null when it can. A development build (`npm run desktop`) only works while its
+ * dev server runs, so a login entry for it would start a window that says "Could not connect to localhost".
+ */
+export const autostartBlockedReason = (isDevBuild: boolean): string | null =>
+  isDevBuild ? 'This is a development build, which only works while its dev server runs. Install the packaged app to start it at login.' : null;
+
 export async function setAutostart(on: boolean): Promise<void> {
+  const blocked = on ? autostartBlockedReason(buildInfo().mode === 'development') : null;
+  if (blocked) throw new Error(blocked);
   const { enable, disable } = await import('@tauri-apps/plugin-autostart');
   await (on ? enable() : disable());
   await setKeepRunning(on);

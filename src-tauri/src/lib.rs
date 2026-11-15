@@ -60,6 +60,12 @@ pub fn run() {
         .setup(|app| {
             use tauri::Manager;
             let hidden = std::env::args().any(|a| a == "--background");
+            // A development build only works while `npm run desktop`'s dev server runs. Started alone at login it would show a window
+            // that cannot connect, so it stops instead (a login entry left over from testing then does nothing).
+            #[cfg(debug_assertions)]
+            if hidden {
+                std::process::exit(0);
+            }
             app.state::<widgets::Background>().set_started_hidden(hidden);
             widgets::build_tray(app.handle())?;
             if !hidden {

@@ -1,23 +1,26 @@
 import { isCard } from '../lib/pages';
+import { isStyle, kindClass } from '../lib/note';
 import { cardLabel, cardParts, cardText } from '../lib/cards';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import TurndownService from 'turndown';
 import { zipSync } from 'fflate';
-import type { Arrow, AudioBlock, Block, CardBlock, ChecklistBlock, CodeBlock, ImageBlock, Page, PdfBlock, StickyBlock, TableBlock, TextBlock } from '../types';
+import type { Arrow, AudioBlock, Block, CardBlock, ChecklistBlock, ImageBlock, Page, PdfBlock, TableBlock } from '../types';
 import { tintVars } from '../lib/colors';
 import { liveDrawing, svgSrc, unionBounds } from '../lib/drawing';
 import { inkOnSheet } from '../lib/sheet';
+import { splitByDrawing } from '../lib/layers';
 import { BLOCK_LABEL, blockHeight, blockText, isFixedHeight } from '../lib/util';
 import { hiddenBlockIds, paintOrder } from '../lib/frames';
 import { routeBetween, type Rect as ArrowRect } from '../lib/arrows';
 import { getStorage, useNotes } from '../store/notes';
+import { pageApp } from '../lib/office/app';
 import { toast } from '../store/ui';
 import { isTauri } from '../storage';
 import { base64ToBytes } from '../storage/types';
 import { StaticBody } from '../components/library/Thumbnail';
 
-export type ExportFormat = 'markdown' | 'pdf' | 'png';
+export type ExportFormat = 'markdown' | 'pdf' | 'png' | 'xlsx' | 'docx';
 
 const PAD = 48;
 
@@ -45,6 +48,10 @@ export async function renderPage(page: Page, maxScale = 2): Promise<{ canvas: HT
   const drawn = liveDrawing(page.drawing);
   const ink = drawn && inkOnSheet(drawn, page.sheet); // the part of the ink on the page; outside a finite page's edges it is not shown, so not exported either
   const box = bounds(visible, ink);
+  // The drawing is a layer among the boxes: behind all of them, or over every box that is not marked as over it.
+  const split = splitByDrawing(paintOrder(visible), visible);
+  const over = new Set(split.above.map((b) => b.id));
+  const stacked = drawn?.behind ? paintOrder(visible) : [...split.below, ...split.above];
   const host = document.createElement('div');
   host.className = 'export-root';
   host.style.cssText = `position:fixed;left:-100000px;top:0;width:${box.w}px;height:${box.h}px;`;
@@ -54,10 +61,11 @@ export async function renderPage(page: Page, maxScale = 2): Promise<{ canvas: HT
     flushSync(() =>
       root.render(
         <div className="export-page" style={{ width: box.w, height: box.h }}>
-          {paintOrder(visible).map((b) => (
+          {stacked.map((b) => (
             <div
               key={b.id}
-              className={`block b-${b.type}${b.type === 'text' && b.fill ? ' fill' : ''}`}
+              data-over={!drawn?.behind && over.has(b.id) ? '1' : undefined}
+              className={`block b-${kindClass(b)}${isStyle(b, 'text') && b.fill ? ' fill' : ''}`}
               style={{
                 left: b.x - box.x,
                 top: b.y - box.y,
@@ -100,7 +108,25 @@ export async function renderPage(page: Page, maxScale = 2): Promise<{ canvas: HT
     // html-to-image; pictures are drawn directly, because WebKit (the Linux
     // desktop app) leaves images out of html-to-image's output.
     const fontEmbedCSS = await getFontEmbedCSS(node).catch(() => '');
+    let inkDone = false;
+    const drawInk = async () => {
+      inkDone = true;
+      if (!ink || !drawn) return;
+      // Drawn directly like pictures, for the same WebKit reason.
+      const pic = new Image();
+      pic.src = svgSrc(drawn.preview);
+      if (await pic.decode().then(() => true, () => false)) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(ink.x - box.x, ink.y - box.y, ink.w, ink.h);
+        ctx.clip(); // `ink` is the part on the sheet; the picture is the whole drawing
+        ctx.drawImage(pic, drawn.x - box.x, drawn.y - box.y, drawn.w, drawn.h);
+        ctx.restore();
+      }
+    };
+    if (drawn?.behind) await drawInk();
     for (const el of Array.from(node.children) as HTMLElement[]) {
+      if (!inkDone && el.dataset.over) await drawInk(); // the boxes marked as over the drawing come after it
       const x = el.offsetLeft, y = el.offsetTop, w = el.offsetWidth, h = el.offsetHeight;
       const img = el.classList.contains('b-image') ? el.querySelector('img') : null;
       if (el.classList.contains('b-image')) {
@@ -120,23 +146,12 @@ export async function renderPage(page: Page, maxScale = 2): Promise<{ canvas: HT
         el.style.cssText = saved;
       }
     }
+    if (!inkDone) await drawInk(); // over every box that is not marked as over it, as on the canvas
+    // Arrows sit above everything, as on the canvas.
     for (const a of page.arrows) {
       const fromB = visible.find((bl) => bl.id === a.from);
       const toB = visible.find((bl) => bl.id === a.to);
       if (fromB && toB) drawArrow(ctx, a, fromB, toB, box);
-    }
-    if (ink && drawn) {
-      // Drawn directly like pictures, for the same WebKit reason. The ink sits above the boxes, as on the canvas.
-      const pic = new Image();
-      pic.src = svgSrc(drawn.preview);
-      if (await pic.decode().then(() => true, () => false)) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(ink.x - box.x, ink.y - box.y, ink.w, ink.h);
-        ctx.clip(); // `ink` is the part on the sheet; the picture is the whole drawing
-        ctx.drawImage(pic, drawn.x - box.x, drawn.y - box.y, drawn.w, drawn.h);
-        ctx.restore();
-      }
     }
     return { canvas, width: box.w, height: box.h };
   } finally {
@@ -312,28 +327,27 @@ function blocksToMarkdown(blocks: Block[], all: Block[], imagePath: (b: ImageBlo
       continue;
     }
     switch (b.type) {
-      case 'text': {
-        const md = htmlToMarkdown((b as TextBlock).html);
-        if (md) out.push(md);
-        break;
-      }
-      case 'sticky': {
-        // A note: a blockquote line, with its colour kept in a comment so it survives a round trip.
-        const text = htmlToMarkdown((b as StickyBlock).html);
-        if (!text) break;
-        const lines = text.split('\n').map((l, i) => (i === 0 ? `> 📝 ${l}` : `> ${l}`));
+      case 'note': {
+        if (b.style === 'code') {
+          const code = b.code ?? '';
+          const fence = code.includes('```') ? '````' : '```';
+          out.push(`${fence}\n${code}\n${fence}`);
+          break;
+        }
+        const md = htmlToMarkdown(b.html);
+        if (b.style === 'text') {
+          if (md) out.push(md);
+          break;
+        }
+        // A sticky: a blockquote line, with its colour kept in a comment so it survives a round trip.
+        if (!md) break;
+        const lines = md.split('\n').map((l, i) => (i === 0 ? `> 📝 ${l}` : `> ${l}`));
         out.push((b.tint ? `<!-- sticky color: ${b.tint} -->\n` : '') + lines.join('\n'));
         break;
       }
       case 'checklist':
         out.push((b as ChecklistBlock).items.map((i) => `- [${i.done ? 'x' : ' '}] ${i.text}`).join('\n'));
         break;
-      case 'code': {
-        const code = (b as CodeBlock).code;
-        const fence = code.includes('```') ? '````' : '```';
-        out.push(`${fence}\n${code}\n${fence}`);
-        break;
-      }
       case 'table': {
         const rows = (b as TableBlock).rows;
         if (!rows.length) break;
@@ -467,6 +481,8 @@ const FILTERS: Record<string, { name: string; extensions: string[]; mime: string
   pdf: { name: 'PDF', extensions: ['pdf'], mime: 'application/pdf' },
   json: { name: 'Canvas Notes backup', extensions: ['json'], mime: 'application/json' },
   png: { name: 'PNG image', extensions: ['png'], mime: 'image/png' },
+  xlsx: { name: 'Excel workbook', extensions: ['xlsx'], mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+  docx: { name: 'Word document', extensions: ['docx'], mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
 };
 
 /** Asks where to save, then writes the file. Returns false if cancelled. */
@@ -511,12 +527,18 @@ export async function exportPage(pageId: string, format: ExportFormat) {
   const page = useNotes.getState().pages[pageId];
   if (!page || busy) return;
   busy = true;
-  const label = format === 'markdown' ? 'Markdown' : format.toUpperCase();
+  const label = format === 'markdown' ? 'Markdown' : format === 'xlsx' ? 'Excel' : format === 'docx' ? 'Word' : format.toUpperCase();
   try {
     let bytes: Uint8Array<ArrayBuffer>;
     let ext: string;
     if (format === 'markdown') {
       ({ bytes, ext } = await markdownExport(page));
+    } else if (format === 'xlsx' || format === 'docx') {
+      const { pageToDocx, pageToXlsx } = await import('./officeExport');
+      const made = format === 'xlsx' ? pageToXlsx(page) : pageToDocx(page);
+      if (!made) throw new Error(format === 'xlsx' ? 'This page is not a spreadsheet.' : 'This page is not a document.');
+      bytes = made;
+      ext = format;
     } else {
       toast(`Preparing ${label}…`, undefined, 2500);
       const { canvas, width, height } = await renderPage(page);
@@ -539,8 +561,14 @@ export async function exportPage(pageId: string, format: ExportFormat) {
   }
 }
 
-export const EXPORT_ITEMS = (pageId: string) => [
-  { label: 'Markdown (.md)', action: () => void exportPage(pageId, 'markdown') },
-  { label: 'PDF', action: () => void exportPage(pageId, 'pdf') },
-  { label: 'PNG image', action: () => void exportPage(pageId, 'png') },
-];
+export const EXPORT_ITEMS = (pageId: string) => {
+  const app = pageApp(useNotes.getState().pages[pageId]);
+  return [
+    // A Workspace spreadsheet or document can also leave as the file Excel or Word opens.
+    ...(app === 'sheet' ? [{ label: 'Excel workbook (.xlsx)', action: () => void exportPage(pageId, 'xlsx') }] : []),
+    ...(app === 'doc' ? [{ label: 'Word document (.docx)', action: () => void exportPage(pageId, 'docx') }] : []),
+    { label: 'Markdown (.md)', action: () => void exportPage(pageId, 'markdown') },
+    { label: 'PDF', action: () => void exportPage(pageId, 'pdf') },
+    { label: 'PNG image', action: () => void exportPage(pageId, 'png') },
+  ];
+};

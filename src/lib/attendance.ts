@@ -4,7 +4,7 @@
  * item was done and ✗ for a day it wasn't, plus a summary with percentages and streaks.
  */
 import type { Block, ChecklistBlock, ChecklistTrack, ImageBlock, Page, TableBlock } from '../types';
-import { addDays, dailyTitle, dateKey } from './daily';
+import { addDays, dailyTitle } from './daily';
 import { fingerprint, heatmapSvg, heatWindow, type Level } from './heatmap';
 
 /** Ids of the blocks the app writes on an attendance page start with this; anything else on the page is the user's own. */
@@ -153,7 +153,7 @@ export function attendanceBlocks(source: ChecklistBlock, link: { pageId: string;
   let z = 0;
   const add = (b: Record<string, unknown>) => blocks.push({ ...b, z: ++z } as unknown as Block);
   add({
-    id: ATT_PREFIX + 'title', type: 'text', x: LEFT, y: 48, w: 720, h: 40,
+    id: ATT_PREFIX + 'title', type: 'note', style: 'text', x: LEFT, y: 48, w: 720, h: 40,
     html: `<h1>${esc(attendanceTitle(pageTitle))}</h1><p>Updated automatically from your checks, since ${esc(dailyTitle(t.start))}. Each square is a day (Monday at the top): the greener, the more you did. Grey is a missed day.</p>`,
   });
 
@@ -203,7 +203,7 @@ export function attendanceBlocks(source: ChecklistBlock, link: { pageId: string;
 export function withAttendance(blocks: Block[], generated: Block[]): Block[] | null {
   const old = new Map(blocks.filter((b) => b.id.startsWith(ATT_PREFIX)).map((b) => [b.id, b]));
   const content = (b: Block) =>
-    b.type === 'text' ? b.html : b.type === 'table' ? JSON.stringify([b.rows, b.attendance ?? null]) : b.type === 'image' ? `${b.heat}|${b.imageId}` : '';
+    b.type === 'note' ? b.html : b.type === 'table' ? JSON.stringify([b.rows, b.attendance ?? null]) : b.type === 'image' ? `${b.heat}|${b.imageId}` : '';
   const same = old.size === generated.length && generated.every((g) => old.has(g.id) && content(old.get(g.id)!) === content(g));
   if (same) return null;
   const keep = blocks.filter((b) => !b.id.startsWith(ATT_PREFIX));
@@ -211,7 +211,7 @@ export function withAttendance(blocks: Block[], generated: Block[]): Block[] | n
   const merged = generated.map((g) => {
     const o = old.get(g.id);
     if (!o) return { ...g, z: g.z + top } as Block;
-    if (g.type === 'text') return { ...o, html: g.html } as Block;
+    if (g.type === 'note') return { ...o, html: g.html } as Block;
     if (g.type === 'table') return { ...o, rows: g.rows, attendance: g.attendance } as Block;
     if (g.type === 'image' && o.type === 'image') return { ...o, imageId: g.imageId, heat: g.heat, aspect: g.aspect, alt: g.alt, h: Math.round(o.w / g.aspect) } as Block;
     return o;
@@ -225,4 +225,3 @@ export function attendanceLink(p: Pick<Page, 'blocks'>): { pageId: string; block
   return t?.attendance ?? null;
 }
 
-export const todayKey = () => dateKey();

@@ -186,8 +186,8 @@ describe('Wi-Fi sync', () => {
   it('syncs an arrow and its edits between devices', async () => {
     await save(laptop, page('a', 'Diagram', {
       blocks: [
-        { id: 'b1', type: 'text', x: 0, y: 0, w: 100, h: 40, z: 1, html: '<p>One</p>' },
-        { id: 'b2', type: 'text', x: 300, y: 0, w: 100, h: 40, z: 2, html: '<p>Two</p>' },
+        { id: 'b1', type: 'note', style: 'text', x: 0, y: 0, w: 100, h: 40, z: 1, html: '<p>One</p>' },
+        { id: 'b2', type: 'note', style: 'text', x: 300, y: 0, w: 100, h: 40, z: 2, html: '<p>Two</p>' },
       ],
       arrows: [{ id: 'arr1', from: 'b1', to: 'b2', heads: 'one', style: 'solid', z: 1 }],
     }));
@@ -205,7 +205,7 @@ describe('Wi-Fi sync', () => {
     await save(laptop, page('a', 'Board', {
       blocks: [
         { id: 'f1', type: 'frame', x: 0, y: 0, w: 400, h: 300, z: 1, title: 'Ideas', color: 'teal', collapsed: false },
-        { id: 'b1', type: 'text', x: 10, y: 40, w: 100, h: 40, z: 2, html: '<p>One</p>', frameId: 'f1' },
+        { id: 'b1', type: 'note', style: 'text', x: 10, y: 40, w: 100, h: 40, z: 2, html: '<p>One</p>', frameId: 'f1' },
       ],
     }));
     await sync();

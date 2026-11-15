@@ -1,3 +1,4 @@
+import { APP_NAME, buildInfo } from '../../lib/appInfo';
 import { useMemo, useState } from 'react';
 import { Filter, Group, Page } from '../../types';
 import { cardsOf, templatesOf } from '../../lib/pages';
@@ -13,6 +14,7 @@ import { addonScreens, askHandler, useAddons } from '../../addons/store';
 import { journalEntries } from '../../lib/journal';
 import { openNav } from '../../store/nav';
 import { MOD_LABEL } from '../../lib/util';
+import { toggleSidebar } from '../../store/layout';
 
 /* ---------------- Sidebar ---------------- */
 
@@ -35,6 +37,9 @@ export function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Grou
       <div className="brand">
         <span className="brand-mark" />
         Canvas Notes
+        <button className="icon-btn side-toggle" onClick={toggleSidebar} aria-label="Hide sidebar" title={`Hide sidebar (${MOD_LABEL}+\\)`}>
+          <Icon name="sidebar" size={16} />
+        </button>
       </div>
       <ProfileChip />
 
@@ -92,6 +97,9 @@ export function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Grou
       </button>
       <div className="side-foot" title={storageLocation}>
         {storageKind === 'desktop' ? `Stored on this computer in ${storageLocation}` : 'Development mode: stored in this browser only.'}
+        <div className="side-ver">
+          {APP_NAME} {buildInfo().version}
+        </div>
       </div>
     </nav>
   );

@@ -141,7 +141,7 @@ describe('the attendance page content', () => {
     const b = make2();
     const withIds = (c: ReturnType<typeof attendanceBlocks>) => c.blocks.map((x) => (x.type === 'image' ? { ...x, imageId: 'pic-' + x.heat } : x));
     const gen = withIds(attendanceBlocks(b, { pageId: 'P', blockId: 'L' }, 'T', '2026-10-24'));
-    const mine: Block = { id: 'note', type: 'text', x: 5, y: 5, w: 100, h: 40, z: 9, html: '<p>mine</p>' };
+    const mine: Block = { id: 'note', type: 'note', style: 'text', x: 5, y: 5, w: 100, h: 40, z: 9, html: '<p>mine</p>' };
     const moved = gen.map((g) => (g.id === 'att-summary' ? { ...g, x: 900 } : g));
     expect(withAttendance([mine, ...moved], gen)).toBeNull();
     b.track!.log['2026-10-24'] = ['read', 'ex'];

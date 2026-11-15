@@ -18,7 +18,7 @@ let a: NotesStorage;
 let b: NotesStorage;
 
 const page = (id: string, title: string, extra: Partial<Page> = {}): Page => ({ id, title, groupId: null, tags: [], blocks: [], arrows: [], created: 1, updated: 1, rev: 0, ...extra });
-const text = (id: string, html: string) => ({ id, type: 'text', x: 0, y: 0, w: 200, h: 40, z: 1, html }) as Block;
+const text = (id: string, html: string) => ({ id, type: 'note', style: 'text', x: 0, y: 0, w: 200, h: 40, z: 1, html }) as Block;
 const image = (id: string, imageId: string) => ({ id, type: 'image', x: 0, y: 0, w: 200, h: 100, z: 2, imageId }) as Block;
 
 async function save(s: NotesStorage, p: Page): Promise<Page> {

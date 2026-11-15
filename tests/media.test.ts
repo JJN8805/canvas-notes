@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { blockPlainText } from '../src/lib/pageText';
 import { FakeDatabase, fakeFs, fakePath, useDevice } from './fakes';
-import { memoryGraph } from './graphdb';
 
 vi.mock('@tauri-apps/plugin-sql', () => ({ default: FakeDatabase }));
 vi.mock('@tauri-apps/plugin-fs', () => fakeFs);
@@ -13,11 +13,10 @@ import { handleRequest, syncWithLaptop, type SyncRequest } from '../src/sync/eng
 import { buildBackup, parseBackup, restoreBackup } from '../src/lib/backup';
 import { fileIdsOf } from '../src/lib/files';
 import { clampPage, formatDuration, formatSize, kindOfFile, MAX_MEDIA_BYTES, mediaProblem, mimeOf, nameFromFile } from '../src/lib/media';
-import { assertSafeImage } from '../src/storage/validate';
+import { assertSafeFile } from '../src/storage/validate';
 import { pageToMarkdown } from '../src/export/export';
 import { blockText } from '../src/lib/util';
 import { searchPages } from '../src/lib/search';
-import { GraphMirror } from '../src/graph/mirror';
 
 const audio = (id: string, fileId: string, extra: Partial<AudioBlock> = {}): AudioBlock => ({ id, type: 'audio', x: 0, y: 0, w: 320, h: 88, z: 1, fileId, name: 'Standup', ...extra });
 const pdf = (id: string, fileId: string, extra: Partial<PdfBlock> = {}): PdfBlock => ({ id, type: 'pdf', x: 0, y: 0, w: 360, h: 480, z: 2, fileId, name: 'Contract', pages: 3, ...extra });
@@ -72,9 +71,9 @@ describe('telling files apart', () => {
 
 describe('what the file store accepts', () => {
   it('takes audio and PDFs from a peer, still refuses anything else', () => {
-    for (const mime of ['application/pdf', 'audio/mpeg', 'audio/webm', 'audio/wav', 'image/png']) expect(() => assertSafeImage({ id: 'ok1', mime }), mime).not.toThrow();
-    for (const mime of ['text/html', 'application/javascript', 'audio/webm;codecs=opus', 'video/mp4']) expect(() => assertSafeImage({ id: 'ok1', mime }), mime).toThrow();
-    expect(() => assertSafeImage({ id: '../x', mime: 'application/pdf' })).toThrow();
+    for (const mime of ['application/pdf', 'audio/mpeg', 'audio/webm', 'audio/wav', 'image/png']) expect(() => assertSafeFile({ id: 'ok1', mime }), mime).not.toThrow();
+    for (const mime of ['text/html', 'application/javascript', 'audio/webm;codecs=opus', 'video/mp4']) expect(() => assertSafeFile({ id: 'ok1', mime }), mime).toThrow();
+    expect(() => assertSafeFile({ id: '../x', mime: 'application/pdf' })).toThrow();
   });
 
   it('finds the files a page uses, once each', () => {
@@ -83,7 +82,7 @@ describe('what the file store accepts', () => {
       pdf('p', 'f2'),
       pdf('p2', 'f2'),
       { id: 'i', type: 'image', x: 0, y: 0, w: 1, h: 1, z: 1, imageId: 'f3', aspect: 1 },
-      { id: 't', type: 'text', x: 0, y: 0, w: 1, h: 1, z: 1, html: '' },
+      { id: 't', type: 'note', style: 'text', x: 0, y: 0, w: 1, h: 1, z: 1, html: '' },
     ];
     expect(fileIdsOf(blocks)).toEqual(['f1', 'f2', 'f3']);
     expect(fileIdsOf([audio('a', '')])).toEqual([]); // a box whose file never arrived
@@ -179,7 +178,7 @@ describe('audio and PDFs in storage', () => {
   });
 });
 
-describe('audio and PDFs in exports and the graph', () => {
+describe('audio and PDFs in exports and in search text', () => {
   it('write a link when the export carries the file, and just the name when it does not', () => {
     const p = page('1', 'Notes', [audio('a', 'f1', { y: 0 }), pdf('p', 'f2', { y: 200 })]);
     const withFiles = pageToMarkdown(p, () => '', '', (b) => `files/${b.fileId}.bin`);
@@ -190,13 +189,8 @@ describe('audio and PDFs in exports and the graph', () => {
     expect(bare).not.toContain('](');
   });
 
-  it('are stored as files in the graph, searchable by name', async () => {
-    const g = await memoryGraph();
-    const mirror = new GraphMirror(g.repo);
-    await mirror.page({ id: 'pg', title: 'Meeting', groupId: null, tags: [], blocks: [audio('a', 'f1'), pdf('p', 'f2')], arrows: [], created: 5 });
-    const rows = await g.repo.listBlocks('pg');
-    expect(rows.map((r) => [r.id, r.type, r.plain_text])).toEqual([['a', 'file', 'Standup'], ['p', 'file', 'Contract']]);
-    expect(JSON.parse(rows[0].content)).toMatchObject({ kind: 'audio', fileId: 'f1' });
-    expect((await mirror.search('standup')).map((h) => h.pageId)).toEqual(['pg']);
+  it('are found by their name', () => {
+    expect(blockPlainText(audio('a', 'f1'))).toBe('Standup');
+    expect(blockPlainText(pdf('p', 'f2'))).toBe('Contract');
   });
 });

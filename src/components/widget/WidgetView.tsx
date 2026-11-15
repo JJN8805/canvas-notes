@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { isStyle, kindClass } from '../../lib/note';
 import type { CSSProperties } from 'react';
 import { useNotes } from '../../store/notes';
 import { blockText, BLOCK_LABEL } from '../../lib/util';
@@ -71,7 +72,7 @@ export function WidgetView({ pageId, blockId }: { pageId: string; blockId: strin
           <p className="widget-gone">{page ? 'This box was deleted.' : 'This page was deleted.'} Remove the widget with the × above.</p>
         ) : block ? (
           <CanvasCtx.Provider value={soloCtx(pageId)}>
-            <div className={`block b-${block.type}${block.type === 'text' && block.fill ? ' fill' : ''}`} data-id={block.id} aria-label={blockText(block).slice(0, 40)}>
+            <div className={`block b-${kindClass(block)}${isStyle(block, 'text') && block.fill ? ' fill' : ''}`} data-id={block.id} aria-label={blockText(block).slice(0, 40)}>
               <BlockBody block={block} />
             </div>
           </CanvasCtx.Provider>

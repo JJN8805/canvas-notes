@@ -73,6 +73,7 @@ export function templateFrom(src: Page, name: string, now = Date.now()): Page {
     dailyDate: null,
     color: src.color ?? null,
     sheet: src.sheet ?? null,
+    cover: src.cover ?? null,
     created: now,
     updated: now,
     rev: 0,

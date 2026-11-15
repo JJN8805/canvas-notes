@@ -5,7 +5,7 @@ import { AiSettings } from './Settings';
 import { CardPictureDialog } from './CardPicture';
 import { InlineAiFormatTool, InlineAiHost } from './InlineAi';
 import { ChatView } from './ChatView';
-import { askInChat, openChat } from './chatInbox';
+import { askInChat, askMyNotes, openChat } from './chatInbox';
 import { openInlineAi } from './inline';
 import { currentRoute } from '../../lib/route';
 import { openAddonPanel } from '../store';
@@ -33,6 +33,7 @@ const addon: AddOnModule = {
   },
   commands: ({ pageId }) => [
     { id: 'ai-chat', icon: 'chat', title: 'Open AI chat', run: openChat },
+    { id: 'ai-ask-notes', icon: 'search', title: 'Ask my notes…', run: askMyNotes },
     ...(pageId
       ? [
           { id: 'ai-open', icon: 'sparkle' as const, title: 'Open the AI assistant on this page', run: () => openAddonPanel('ai') },

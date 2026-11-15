@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clampSize, fitLogicalSize, isWidgetId, needsFit, newWidget, parseIndex, parseWidget, widgetIdFor, widgetQuery, withGeometry, WIDGET_HEADER, WIDGET_MAX, WIDGET_MIN } from '../src/lib/widgets';
+import { clampSize, fitLogicalSize, isWidgetId, needsFit, newWidget, parseIndex, parseWidget, widgetIdFor, withGeometry, WIDGET_HEADER, WIDGET_MAX, WIDGET_MIN } from '../src/lib/widgets';
 import { parseRoute } from '../src/lib/routeParse';
 import { getWidget, listWidgets, removeWidget, saveWidget, type SettingsStore } from '../src/widgets/registry';
 
@@ -88,9 +88,7 @@ describe('fitting a widget window to its page', () => {
 });
 
 describe('the widget window address', () => {
-  it('is built and read back', () => {
-    expect(widgetQuery({ pageId: 'p1', blockId: 'b1' })).toBe('?widget=p1&block=b1');
-    expect(widgetQuery({ pageId: 'p1', blockId: null })).toBe('?widget=p1');
+  it('is read back from the query the Rust side builds', () => {
     expect(parseRoute('?widget=p1&block=b1', '')).toEqual({ name: 'widget', pageId: 'p1', blockId: 'b1' });
     expect(parseRoute('?widget=p1', '')).toEqual({ name: 'widget', pageId: 'p1', blockId: null });
   });

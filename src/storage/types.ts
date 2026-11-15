@@ -2,7 +2,7 @@ import { cleanArrows, cleanBlocks, cleanTags } from '../lib/sanitize';
 import { cleanColor } from '../lib/colors';
 import { cleanDate, kindOf } from '../lib/pages';
 import { cleanSheet, sheetCovering } from '../lib/sheet';
-import type { GraphMirror } from '../graph/mirror';
+import { isSafeId } from './validate';
 import type { Arrow, Block, Group, GroupColor, NoteColor, Page, PageDrawing, PageKind, Sheet } from '../types';
 
 export type SaveResult = { ok: true; rev: number } | { ok: false; reason: 'conflict' };
@@ -42,6 +42,8 @@ export interface PageRecord {
   dailyDate?: string | null;
   /** Absent in records from app versions before finite pages: an infinite page. */
   sheet?: Sheet | null;
+  /** The id of the page's cover picture; absent in records from app versions before covers. */
+  cover?: string | null;
   /** Absent in records from app versions before page colours. */
   color?: NoteColor | null;
   created: number;
@@ -57,6 +59,10 @@ export interface GroupRecord {
   position: number;
   /** Absent in records from app versions before subgroups; treated as top level. */
   parentId?: string | null;
+  /** 'cards' for a card folder; absent for a page group (and in records from app versions before card folders). */
+  scope?: 'cards';
+  /** The description of a card folder; absent when it has none (and in records from older app versions). */
+  description?: string;
 }
 
 export type SyncRecord = PageRecord | GroupRecord;
@@ -66,6 +72,37 @@ export interface ImagePayload {
   mime: string;
   /** base64 */
   data: string;
+}
+
+/** How much room things take, and how much less than if everything were copied. All sizes are bytes. */
+export interface StorageReport {
+  pages: number;
+  /** The pages' own boxes. */
+  pageBytes: number;
+  /** Saved versions, and what they take: each distinct box once, plus the lists that say which boxes make up each version. */
+  versions: number;
+  versionBytes: number;
+  /** What the same versions would take if every one were written out in full. */
+  versionBytesIfCopied: number;
+  /** Boxes stored for history, and how many times versions use them. */
+  historyBoxes: number;
+  historyBoxUses: number;
+  /** Pictures, sounds and documents: places that use a file, the distinct files kept, and what they take. */
+  fileUses: number;
+  files: number;
+  fileBytes: number;
+  /** What the same files would take if each use had its own copy. */
+  fileBytesIfCopied: number;
+  /** Files not yet checked for duplicates and versions not yet converted (run `tidy` to finish them). */
+  pending: number;
+}
+
+export interface TidyResult {
+  /** Files that turned out to be copies of one already kept, and the bytes that freed. */
+  filesMerged: number;
+  bytesFreed: number;
+  /** Old versions converted to the shared form. */
+  versionsConverted: number;
 }
 
 /** An earlier version of a page, kept on this device only (never synced). */
@@ -134,11 +171,16 @@ export interface NotesStorage {
   imageUrl(id: string): Promise<string>;
   /** Removes images no page refers to. Returns how many were removed. */
   pruneImages(usedIds: Set<string>): Promise<number>;
+  /** How much is stored, and how much of it is shared instead of copied (for Settings → Data). */
+  report(): Promise<StorageReport>;
+  /**
+   * Brings data written by earlier versions into the shared form: files with the same content become one, and old version history written
+   * out in full becomes lists of shared boxes. Safe to run at any time and as often as you like; each run picks up where the last stopped.
+   */
+  tidy(): Promise<TidyResult>;
   getSetting(key: string): Promise<string | null>;
   setSetting(key: string, value: string | null): Promise<void>;
   sync: SyncStore;
-  /** The graph layer (links, tags, groups as nodes and edges); null if it could not start. */
-  graph: GraphMirror | null;
 }
 
 export function normalizePage(p: Partial<Page> & { id: string }): Page {
@@ -156,6 +198,7 @@ export function normalizePage(p: Partial<Page> & { id: string }): Page {
     kind: kindOf(p),
     dailyDate: cleanDate(p.dailyDate),
     sheet: sheet && sheetCovering(sheet, blocks),
+    cover: typeof p.cover === 'string' && isSafeId(p.cover) ? p.cover : null,
     created: p.created ?? Date.now(),
     updated: p.updated ?? p.created ?? Date.now(),
     rev: p.rev ?? 0,

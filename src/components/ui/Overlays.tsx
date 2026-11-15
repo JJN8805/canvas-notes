@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { closeDialog, closeMenu, dismissToast, useUi, type MenuItem } from '../../store/ui';
 import { GROUP_COLORS, NOTE_COLORS } from '../../types';
 import { colorVar } from '../../lib/util';
+import { ShortcutsSheet } from './ShortcutsSheet';
 
 export function Overlays() {
   return (
@@ -9,6 +10,7 @@ export function Overlays() {
       <MenuHost />
       <DialogHost />
       <ToastHost />
+      <ShortcutsSheet />
     </>
   );
 }
@@ -23,8 +25,15 @@ function MenuHost() {
       setPos(null);
       return;
     }
-    const r = menu.anchor.getBoundingClientRect();
     const m = ref.current.getBoundingClientRect();
+    if (menu.at) {
+      setPos({
+        left: Math.max(8, Math.min(menu.at.x, window.innerWidth - m.width - 8)),
+        top: Math.max(8, Math.min(menu.at.y, window.innerHeight - m.height - 8)),
+      });
+      return;
+    }
+    const r = menu.anchor.getBoundingClientRect();
     let left = r.right - m.width;
     let top = r.bottom + 4;
     if (left < 8) left = Math.min(r.left, window.innerWidth - m.width - 8);

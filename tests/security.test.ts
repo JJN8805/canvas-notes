@@ -6,7 +6,7 @@ vi.mock('@tauri-apps/plugin-fs', () => fakeFs);
 vi.mock('@tauri-apps/api/path', () => fakePath);
 
 import { createTauriStorage } from '../src/storage/tauri';
-import { assertSafeImage, isKnownImageType, isSafeId } from '../src/storage/validate';
+import { assertSafeFile, isKnownFileType, isSafeId } from '../src/storage/validate';
 import { parseBackup } from '../src/lib/backup';
 import type { NotesStorage } from '../src/storage/types';
 
@@ -20,11 +20,13 @@ describe('ids and image types from outside the app', () => {
   });
 
   it('only knows real image types', () => {
-    expect(isKnownImageType('image/png')).toBe(true);
-    for (const bad of ['text/html', 'image/png/../x', '__proto__', 'constructor', '', undefined]) expect(isKnownImageType(bad), String(bad)).toBe(false);
-    expect(() => assertSafeImage({ id: 'ok1', mime: 'image/png' })).not.toThrow();
-    expect(() => assertSafeImage({ id: '../evil', mime: 'image/png' })).toThrow();
-    expect(() => assertSafeImage({ id: 'ok1', mime: 'text/html' })).toThrow();
+    expect(isKnownFileType('image/png')).toBe(true);
+    expect(isKnownFileType('audio/mpeg')).toBe(true);
+    expect(isKnownFileType('application/pdf')).toBe(true);
+    for (const bad of ['text/html', 'image/png/../x', '__proto__', 'constructor', '', undefined]) expect(isKnownFileType(bad), String(bad)).toBe(false);
+    expect(() => assertSafeFile({ id: 'ok1', mime: 'image/png' })).not.toThrow();
+    expect(() => assertSafeFile({ id: '../evil', mime: 'image/png' })).toThrow();
+    expect(() => assertSafeFile({ id: 'ok1', mime: 'text/html' })).toThrow();
   });
 });
 

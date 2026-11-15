@@ -3,6 +3,8 @@ import { cleanSheet, sheetForContent } from '../../lib/sheet';
 import { liveDrawing } from '../../lib/drawing';
 import { dailyPageFor, dailyTitle, findDailyDuplicates, SECOND_COPY } from '../../lib/daily';
 import { cloneContent, isTemplate, resolveDailyTemplate, templateFrom } from '../../lib/pages';
+import { isBuiltinTemplateId } from '../../lib/builtinTemplates';
+import { MORE_IDS } from '../../lib/moreTemplates';
 import { setDailyTemplate, usePrefs } from '../prefs';
 import { deepClone, newId } from '../../lib/util';
 import { history } from '../history';
@@ -52,7 +54,10 @@ export function createPageFromTemplate(templateId: string | null, partial: Parti
   if (templateId === null) return createPage(partial);
   const tpl = get().pages[templateId];
   if (!tpl || !isTemplate(tpl)) return null;
-  return createPage({ ...cloneContent(tpl), sheet: tpl.sheet ?? undefined, title: tpl.title, color: tpl.color ?? null, kind: 'page', dailyDate: null, ...partial });
+  // A template you saved keeps the page size it was saved with (null = an infinite page). The ones shipped with the app have no size of
+  // their own: each page is fitted to its contents, except the mind map, which is meant to grow in every direction.
+  const sheet = isBuiltinTemplateId(tpl.id) ? (tpl.id === MORE_IDS.mindmap ? null : undefined) : tpl.sheet;
+  return createPage({ ...cloneContent(tpl), sheet, title: tpl.title, color: tpl.color ?? null, kind: 'page', dailyDate: null, ...partial });
 }
 
 /** Keeps a copy of the page's layout and boxes as a template. */
@@ -215,7 +220,7 @@ export function createExamplePage(): Page {
     groupId: null,
     blocks: [
       {
-        id: t(), type: 'text', x: 136, y: 64, w: 432, h: 40, z: 1,
+        id: t(), type: 'note', style: 'text', x: 136, y: 64, w: 432, h: 40, z: 1,
         html: '<h1>Welcome to your canvas</h1><p>Double-click any empty spot to start typing. Move a box with the handle above it and drag its corner to resize. Drag across empty space to select several boxes at once.</p>',
       },
       {
@@ -232,20 +237,23 @@ export function createExamplePage(): Page {
         rows: [
           ['Shortcut', 'Action'],
           ['Double-click', 'New text box'],
+          ['S / T / L / C', 'Sticky / text / list / code box at the pointer'],
+          ['Right-click', 'Menu for a box or the page'],
           ['Ctrl + Z / Ctrl + Shift + Z', 'Undo / redo'],
           ['Delete', 'Remove selected boxes'],
           ['Ctrl + D', 'Duplicate selected boxes'],
           ['Arrow keys', 'Nudge (Shift for 1px)'],
           ['Space + drag', 'Pan the canvas'],
           ['Ctrl + scroll', 'Zoom'],
+          ['?', 'Every shortcut'],
         ],
       },
       {
-        id: t(), type: 'code', x: 624, y: 312, w: 304, h: 72, z: 4,
-        code: '{\n  "type": "text",\n  "x": 136, "y": 64,\n  "w": 432\n}',
+        id: t(), type: 'note', style: 'code', x: 624, y: 312, w: 304, h: 72, z: 4,
+        html: '', code: '{\n  "type": "note",\n  "x": 136, "y": 64,\n  "w": 432\n}',
       },
       {
-        id: t(), type: 'text', x: 624, y: 472, w: 304, h: 40, z: 5, fill: true,
+        id: t(), type: 'note', style: 'text', x: 624, y: 472, w: 304, h: 40, z: 5, fill: true,
         html: '<p>Every box stores its own position, so nothing moves unless you move it.</p>',
       },
     ],

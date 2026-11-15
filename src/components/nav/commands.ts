@@ -1,12 +1,15 @@
 import { currentRoute, navigate } from '../../lib/route';
 import { dateKey } from '../../lib/daily';
 import { isDarkTheme } from '../../lib/settings';
-import { openJournal } from '../../store/journal';
+import { openJournal, useJournal } from '../../store/journal';
+import { openWeekly } from '../../store/weekly';
 import { createCard } from '../../store/cards';
 import { pinPage } from '../../widgets';
 import { widgetsAvailableNow } from '../../widgets/host';
 import { createGroup, getStorage, redo, setFilter, undo, useNotes } from '../../store/notes';
 import { openNav } from '../../store/nav';
+import { openTidy } from '../../store/tidy';
+import { openShortcuts } from '../../store/shortcutsUi';
 import { addonCommands } from '../../addons/store';
 import { openTemplatePicker } from '../../store/picker';
 import { openSettings } from '../../store/settingsUi';
@@ -33,6 +36,8 @@ export function buildCommands(): Command[] {
     { id: 'new-page', icon: 'plus', title: 'New page', run: openTemplatePicker },
     { id: 'today', icon: 'today', title: 'Open today in the journal', keys: 'Ctrl+Alt+D', run: () => openJournal(dateKey()) },
     { id: 'journal', icon: 'book', title: 'Open the journal', run: () => openJournal() },
+    { id: 'weekly', icon: 'calendar', title: 'Review my week…', run: () => openWeekly(route.name === 'library' ? useJournal.getState().date : dateKey()) },
+    { id: 'shortcuts', icon: 'keyboard', title: 'Keyboard shortcuts', keys: '?', run: openShortcuts },
     { id: 'switcher', icon: 'search', title: 'Open quick switcher', keys: `${MOD_LABEL}+O`, run: () => openNav('switcher') },
     { id: 'graph', icon: 'graph', title: 'Open graph view', run: () => openNav('graph') },
     {
@@ -109,6 +114,7 @@ export function buildCommands(): Command[] {
     list.push(
       ...(widgetsAvailableNow() ? [{ id: 'pin-page', icon: 'pin' as const, title: 'Pin this page to the desktop', run: () => void pinPage(useNotes.getState().pages[onPage]) }] : []),
       { id: 'outline', icon: 'outline', title: 'Show outline and links of this page', run: () => openNav('outline') },
+      { id: 'tidy', icon: 'pages', title: 'Tidy this page…', run: () => openTidy(onPage) },
       { id: 'undo', icon: 'undo', title: 'Undo', keys: `${MOD_LABEL}+Z`, run: () => void undo(onPage) },
       { id: 'redo', icon: 'redo', title: 'Redo', keys: `${MOD_LABEL}+Shift+Z`, run: () => void redo(onPage) },
     );

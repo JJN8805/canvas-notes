@@ -5,7 +5,7 @@ const el = (tagName: string, extra: Record<string, unknown> = {}) => ({ tagName,
 
 describe('which focused elements take typed text', () => {
   it('treats text fields as text entry', () => {
-    for (const e of [el('TEXTAREA'), el('INPUT', { type: 'text' }), el('SELECT'), el('DIV', { isContentEditable: true })]) {
+    for (const e of [el('TEXTAREA'), el('INPUT', { type: 'note', style: 'text' }), el('SELECT'), el('DIV', { isContentEditable: true })]) {
       expect(isEditableTarget(e)).toBe(true);
       expect(isTextEntry(e)).toBe(true);
     }

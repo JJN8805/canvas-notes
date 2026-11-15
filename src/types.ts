@@ -1,4 +1,6 @@
-export type BlockType = 'text' | 'image' | 'checklist' | 'code' | 'table' | 'frame' | 'sticky' | 'audio' | 'pdf' | 'card';
+/** Names of what can be added to a page: every box type, with the three styles of note named on their own ('text', 'sticky', 'code'). */
+export type AddKind = Exclude<BlockType, 'note'> | 'text' | 'sticky' | 'code';
+export type BlockType = 'note' | 'image' | 'checklist' | 'table' | 'frame' | 'audio' | 'pdf' | 'card';
 
 /** The muted colours offered for boxes, stickies and page cards. Their light and dark values are
  *  the `--n-*` tokens in styles.css; each has a matching `--n-*-ink` for text on top of it. */
@@ -20,14 +22,84 @@ interface BlockBase {
   /** Id of the frame directly containing this block, if any. Shared by every
    *  block type (including frames) so frames can nest inside frames. */
   frameId?: string | null;
+  /** Painted above the page's drawing instead of under it. Absent = under (how every page from before this looked). A frame's contents follow the frame. */
+  over?: boolean;
+  /** Pinned in place: it cannot be dragged, resized, nudged, aligned or deleted until unlocked. Absent = free. Older app versions ignore it. */
+  locked?: boolean;
+  /** Links from this box to other pages, cards or boxes (a frame is a box too). Absent = none. Stored in the page JSON, so they sync and older app versions ignore them. */
+  links?: BoxLink[];
   /** Background tint (a border for pictures). Absent or null = no colour. Frames use their own `color` instead. */
   tint?: NoteColor | null;
 }
 
-export interface TextBlock extends BlockBase {
-  type: 'text';
+/** Where a link leads: a page or card, and optionally one box (or frame) on it. */
+export interface BoxLink {
+  page: string;
+  block?: string;
+}
+
+/** Number formats a spreadsheet cell can show a value in. */
+export type NumberFormat = 'num' | 'int' | 'cur' | 'pct' | 'date';
+
+/** How one spreadsheet cell looks. Absent = "General", left for text and right for numbers. */
+export interface CellFormat {
+  b?: 1;
+  i?: 1;
+  /** Alignment. */
+  al?: 'l' | 'c' | 'r';
+  nf?: NumberFormat;
+  /** Decimal places for num, cur and pct. */
+  dec?: number;
+  bg?: NoteColor;
+}
+
+/**
+ * What turns a plain table into a spreadsheet: formulas in the cells (text starting with "=", worked out when shown), cell formats and
+ * column widths. Older app versions ignore it and show the cells as a table, formulas as text. Optional, so nothing before it changes.
+ */
+export interface CalcMeta {
+  /** This table is the whole page of a spreadsheet (a Workspace spreadsheet): the page opens as a spreadsheet, not a canvas. */
+  page?: true;
+  /** Formats by cell name ("B2"). */
+  fmt?: Record<string, CellFormat>;
+  /** Column widths in pixels by column number (0 = A). */
+  colW?: Record<string, number>;
+  /** How many of the first rows stay in view while scrolling. */
+  freeze?: number;
+}
+
+/** Marks a text box as the whole page of a document (a Workspace document): the page opens as a document, not a canvas. */
+export interface DocMeta {
+  page: true;
+  size?: 'letter' | 'a4';
+}
+
+/** Marks a frame as a slide of a presentation (a Workspace presentation). */
+export interface SlideMeta {
+  /** What the speaker will say. */
+  notes?: string;
+  /** The slide's background. Absent = white. */
+  bg?: NoteColor | null;
+}
+
+/** How a note looks and what it holds: 'text' = a formatted text box, 'sticky' = a small coloured note, 'code' = plain monospace text. */
+export type NoteStyle = 'text' | 'sticky' | 'code';
+export const NOTE_STYLES: NoteStyle[] = ['text', 'sticky', 'code'];
+/**
+ * The one box for writing. `style` chooses the look: a text box (formatted text), a sticky (a small coloured note: its colour is the
+ * block's `tint`, fixed size, long text scrolls) or code (plain monospace text, kept in `code`; `html` is then empty). The other
+ * fields apply to the styles they make sense for (`fill` text, `doc` text). Pages written before this type existed have
+ * 'text', 'sticky' and 'code' boxes: they are turned into notes when read (lib/note.ts `legacyNote`).
+ */
+export interface NoteBlock extends BlockBase {
+  type: 'note';
+  style: NoteStyle;
   html: string;
+  /** The text of a code note. Absent for the other styles. */
+  code?: string;
   fill?: boolean;
+  /** Set on the text of a Workspace document. */
+  doc?: DocMeta;
 }
 export interface ImageBlock extends BlockBase {
   type: 'image';
@@ -62,26 +134,21 @@ export interface ChecklistBlock extends BlockBase {
   items: ChecklistItem[];
   track?: ChecklistTrack;
 }
-export interface CodeBlock extends BlockBase {
-  type: 'code';
-  code: string;
-}
 export interface TableBlock extends BlockBase {
   type: 'table';
   rows: string[][];
   /** Set on the summary table of an attendance page: the tracked checklist it is built from. Absent on ordinary tables. */
   attendance?: { pageId: string; blockId: string };
+  /** Set when the table is a spreadsheet (see CalcMeta). */
+  calc?: CalcMeta;
 }
 export interface FrameBlock extends BlockBase {
   type: 'frame';
   title: string;
   color: GroupColor | NoteColor;
   collapsed: boolean;
-}
-/** A small coloured note. Its colour is the block's `tint` (no tint = plain paper). Fixed size; long text scrolls. */
-export interface StickyBlock extends BlockBase {
-  type: 'sticky';
-  html: string;
+  /** Set when the frame is a slide of a presentation. */
+  slide?: SlideMeta;
 }
 /** An audio clip (a file added or a recording). The bytes live in the file store under `fileId`, like pictures do. */
 export interface AudioBlock extends BlockBase {
@@ -108,7 +175,7 @@ export interface CardBlock extends BlockBase {
   type: 'card';
   cardId: string;
 }
-export type Block = TextBlock | ImageBlock | ChecklistBlock | CodeBlock | TableBlock | FrameBlock | StickyBlock | AudioBlock | PdfBlock | CardBlock;
+export type Block = NoteBlock | ImageBlock | ChecklistBlock | TableBlock | FrameBlock | AudioBlock | PdfBlock | CardBlock;
 
 export type ArrowheadMode = 'none' | 'one' | 'both';
 export type LineStyle = 'solid' | 'dashed';
@@ -139,6 +206,8 @@ export interface Sheet {
 }
 
 export interface PageDrawing {
+  /** The whole drawing sits behind every box (instead of in front of the ones not marked `over`). Absent = in front. */
+  behind?: boolean;
   scene: string;
   preview: string;
   x: number;
@@ -167,6 +236,8 @@ export interface Page {
   drawing?: PageDrawing | null;
   /** The page's one rectangle (canvas coordinates) that every box stays inside. Absent or null = an infinite page (every page from before this existed). */
   sheet?: Sheet | null;
+  /** The id of a stored picture shown as this page's cover in the library, instead of the automatic miniature. Absent or null = no cover. */
+  cover?: string | null;
   created: number;
   updated: number;
   /** Revision stored on disk. 0 means never saved. Used to detect edits from another window. */
@@ -182,6 +253,10 @@ export interface Group {
   color: GroupColor;
   /** The group this one is inside; null = top level. */
   parentId: string | null;
+  /** 'cards' = a folder or section of the Cards screen. Absent = an ordinary page group. Card folders are kept apart from page groups. */
+  scope?: 'cards';
+  /** A few words about what this folder or section is for (card folders only). Absent = none. */
+  description?: string;
 }
 
 export type Filter =

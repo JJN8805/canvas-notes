@@ -32,8 +32,8 @@ export function effectiveParents(groups: Group[]): Map<string, string | null> {
   return parent;
 }
 
-/** Groups in display order (each followed by its subgroups), with depth. Collapsed groups hide their subgroups. */
-export function groupTree(groups: Group[], collapsed: ReadonlySet<string> = new Set()): TreeRow[] {
+/** Groups in display order (each followed by its subgroups), with depth. */
+export function groupTree(groups: Group[]): TreeRow[] {
   const parents = effectiveParents(groups);
   const children = new Map<string | null, Group[]>();
   for (const g of groups) {
@@ -46,7 +46,7 @@ export function groupTree(groups: Group[], collapsed: ReadonlySet<string> = new 
     for (const g of children.get(parent) ?? []) {
       const kids = children.get(g.id) ?? [];
       rows.push({ group: g, depth, hasChildren: kids.length > 0 });
-      if (!collapsed.has(g.id)) walk(g.id, depth + 1);
+      walk(g.id, depth + 1);
     }
   };
   walk(null, 0);

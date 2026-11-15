@@ -669,7 +669,7 @@ slowMs = 0;
 if (await page.locator('.ai-card').count()) await page.click('.ai-card button[aria-label="Close AI"]');
 
 // write mode: action items as a checklist, a typed prompt into the empty box, and the palette command
-await page.dblclick('.ed-body', { position: { x: 300, y: 740 } });
+await page.dblclick('.ed-body', { position: { x: 120, y: 700 } });
 await page.waitForSelector('.ProseMirror-focused');
 await page.keyboard.press(' ');
 await page.waitForSelector('.ai-card[aria-label="Write with AI"]');
@@ -806,7 +806,7 @@ const firstNav = await page.locator('.side-section .nav-item').first().innerText
 check('a Chat entry appears first in the sidebar', /Chat/.test(firstNav), firstNav);
 await page.click('.side-section .nav-item:has-text("Chat")');
 await page.waitForSelector('.chatview');
-check('Chat is a full screen of its own, with an empty state and four starters', /What can I help with\?/.test(await page.locator('.chat-empty').innerText()) && (await page.locator('.chat-starters button').count()) === 4);
+check('Chat is a full screen of its own, with an empty state and five starters', /What can I help with\?/.test(await page.locator('.chat-empty').innerText()) && (await page.locator('.chat-starters button').count()) === 5);
 check('it shows the provider and model, and that it is on this computer', /Ollama · mock-model/.test(await page.locator('.chatview .main-title').innerText()) && (await page.locator('.chatview .ai-badge.dest-local').count()) === 1);
 check('"New chat" is disabled before anything is said', await page.locator('.chatview button:has-text("New chat")').isDisabled());
 check('the sidebar marks Chat as the current screen', (await page.locator('.nav-item[aria-current="true"]').innerText()).includes('Chat'));

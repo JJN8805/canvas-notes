@@ -1,20 +1,16 @@
 /** Making and changing cards. Pure card logic is in `lib/cards.ts`; saving, undo-free edits and sync go through the notes store. */
 import type { Page } from '../types';
 import { cardParts, newBody, newCardBlocks, withCover } from '../lib/cards';
-import { addBlock, createPage, getStorage, mutatePage, setPageGroup, useNotes } from './notes';
+import { addBlock, createPage, getStorage, mutatePage, useNotes } from './notes';
 import { prepareImage } from './images';
 
-export function createCard(label = '', groupId: string | null = null): Page {
-  return createPage({ kind: 'card', title: label, blocks: newCardBlocks(), groupId, tags: [] });
+/** A new card, in a card folder or section (or in none). */
+export function createCard(label = '', folderId: string | null = null): Page {
+  return createPage({ kind: 'card', title: label, blocks: newCardBlocks(), groupId: folderId, tags: [] });
 }
 
 export function setCardTags(id: string, tags: string[]) {
   mutatePage(id, (p) => void (p.tags = tags), { history: 'none' });
-}
-
-/** Puts the card in a group (its set), or in none. */
-export function setCardSet(id: string, groupId: string | null) {
-  setPageGroup(id, groupId);
 }
 
 export function setCardLabel(id: string, label: string) {

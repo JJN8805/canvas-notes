@@ -11,6 +11,9 @@ import { groupChoices } from './shared';
 import { pinPage } from '../../widgets';
 import { widgetsAvailableNow } from '../../widgets/host';
 import { Thumbnail } from './Thumbnail';
+import { chooseCover } from './chooseCover';
+import { removePageCover } from '../../store/pageCover';
+import { useImageUrl } from '../../lib/useImageUrl';
 import { COARSE, PAGE_MIME } from './shared';
 
 /* ---------------- Card ---------------- */
@@ -55,6 +58,8 @@ export const PageCard = memo(function PageCard({ page, group }: { page: Page; gr
           if (name !== null && saveAsTemplate(page.id, name)) toast(`Saved template “${name.trim() || page.title || 'Untitled template'}”`);
         },
       },
+      { label: page.cover ? 'Change cover image…' : 'Cover image…', action: () => chooseCover(page.id) },
+      ...(page.cover ? [{ label: 'Remove cover image', action: () => removePageCover(page.id) }] : []),
       { colors: true, title: 'Card color', current: page.color ?? null, pick: (c: NoteColor | null) => setPageColor(page.id, c) },
       { separator: true },
       { heading: 'Export as' },
@@ -126,7 +131,7 @@ export const PageCard = memo(function PageCard({ page, group }: { page: Page; gr
       onDragEnd={() => setDragging(false)}
     >
       {group && <div className="tab">{group.name}</div>}
-      <Thumbnail blocks={page.blocks} arrows={page.arrows} drawing={page.drawing} sheet={page.sheet} />
+      {page.cover ? <CoverPicture id={page.cover} /> : <Thumbnail blocks={page.blocks} arrows={page.arrows} drawing={page.drawing} sheet={page.sheet} />}
       <button
         ref={menuRef}
         className="icon-btn card-menu"
@@ -146,3 +151,13 @@ export const PageCard = memo(function PageCard({ page, group }: { page: Page; gr
   );
 });
 
+
+/** A page's cover picture, filling the card where the miniature would be. */
+function CoverPicture({ id }: { id: string }) {
+  const url = useImageUrl(id);
+  return (
+    <div className="thumb thumb-cover" aria-hidden="true">
+      {url ? <img src={url} alt="" draggable={false} /> : <div className="thumb-empty">{url === null ? 'Cover not found' : ''}</div>}
+    </div>
+  );
+}

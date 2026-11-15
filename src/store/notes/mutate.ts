@@ -5,6 +5,7 @@ import { deepClone } from '../../lib/util';
 import { reconcile } from '../../lib/attendance';
 import { keepPageInside, SHEET_LANDSCAPE, SHEET_PORTRAIT, sheetForContent, taller, wider } from '../../lib/sheet';
 import { liveDrawing } from '../../lib/drawing';
+import { layoutKey, type TidyResult } from '../../lib/tidy';
 import { history } from '../history';
 import type { Draft } from 'immer';
 import { get, peekStorage, set } from './state';
@@ -60,7 +61,23 @@ export function setPageDrawing(pageId: string, drawing: PageDrawing | null) {
   mutatePage(
     pageId,
     (p) => {
-      p.drawing = drawing;
+      // Drawing again keeps where the drawing sits (behind the boxes or not); erasing it forgets that.
+      p.drawing = drawing && p.drawing?.behind ? { ...drawing, behind: true } : drawing;
+    },
+    { history: 'none' },
+  );
+}
+
+/** Puts the page's drawing behind every box (true) or in front of the boxes that are not marked as over it (false). */
+export function setDrawingBehind(pageId: string, behind: boolean) {
+  const d = get().pages[pageId]?.drawing;
+  if (!d || !!d.behind === behind) return;
+  mutatePage(
+    pageId,
+    (p) => {
+      if (!p.drawing) return;
+      if (behind) p.drawing.behind = true;
+      else delete p.drawing.behind;
     },
     { history: 'none' },
   );
@@ -89,6 +106,28 @@ export function setPageSize(pageId: string, size: PageSize) {
   );
 }
 
+/**
+ * Applies a tidy proposal (lib/tidy.ts) as ONE undo step. Refuses, and changes nothing, when the page's layout is no longer the one
+ * the proposal was worked out from (the page was edited while it was on show).
+ */
+export function applyTidy(pageId: string, result: TidyResult): 'applied' | 'stale' | 'nothing' {
+  const page = get().pages[pageId];
+  if (!page) return 'stale';
+  if (!result.changed) return 'nothing';
+  if (layoutKey(page.blocks) !== result.basis) return 'stale';
+  mutatePage(pageId, (p) => {
+    for (const b of p.blocks) {
+      const m = result.moves.get(b.id);
+      if (!m || b.locked) continue; // a proposal made before the box was locked must not move it
+      b.x = m.x;
+      b.y = m.y;
+      if (m.w !== undefined) b.w = m.w;
+    }
+    if (result.sheet) p.sheet = result.sheet;
+  });
+  return 'applied';
+}
+
 /** Gives a finite page more room below or to the right. Nothing on it moves. */
 export function growPage(pageId: string, direction: 'down' | 'right') {
   mutatePage(
@@ -108,7 +147,7 @@ export function setColor(pageId: string, ids: readonly string[], color: NoteColo
   if (!applyColor(deepClone(page.blocks) as Block[], ids, color)) return;
   mutatePage(pageId, (p) => void applyColor(p.blocks as Block[], ids, color));
   // The next sticky starts with the colour last picked for a sticky.
-  if (color && page.blocks.some((b) => b.type === 'sticky' && ids.includes(b.id))) rememberStickyColor(color, peekStorage());
+  if (color && page.blocks.some((b) => b.type === 'note' && b.style === 'sticky' && ids.includes(b.id))) rememberStickyColor(color, peekStorage());
 }
 
 /** The colour of the page's card in the library. Not part of the canvas undo history. */

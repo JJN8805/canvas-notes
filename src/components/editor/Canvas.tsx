@@ -7,8 +7,8 @@ import {
   addBlock,
   beginGesture,
   bringToFront,
-  deleteBlocks,
   duplicateBlocks,
+  duplicateBlocksMap,
   endGesture,
   mutatePage,
   useNotes,
@@ -18,6 +18,7 @@ import {
   canvasApi,
   editorRegistry,
   freshText,
+  setHand,
   setSelectMode,
   setSelected,
   setSelectedArrow,
@@ -27,14 +28,24 @@ import {
 } from '../../store/canvas';
 import { useDraw } from '../../store/draw';
 import { dragsStickyBody } from '../../lib/colors';
+import { kindClass } from '../../lib/note';
+
+const kindClassOf = (b: { type: string; style?: unknown } | undefined) => (b ? kindClass(b) : '');
 import { liveDrawing, svgSrc } from '../../lib/drawing';
 import {
   blockHeight,
   clamp,
+  isEditableTarget,
   isFixedHeight,
+  modKey,
   snap,
 } from '../../lib/util';
 import { inkClipPath } from '../../lib/sheet';
+import { splitByDrawing } from '../../lib/layers';
+import { openMenu, openMenuAt } from '../../store/ui';
+import { Minimap } from './Minimap';
+import { boxMenu, canvasMenu, deleteWithUndo } from './actions';
+import { arrangeMenu, layerMenu } from './layerMenu';
 import { BlockFrame } from './BlockFrame';
 import { FrameChrome } from './FrameChrome';
 import { usePrefs } from '../../store/prefs';
@@ -70,6 +81,9 @@ type Rect = { x: number; y: number; w: number; h: number };
 export function Canvas({ pageId }: { pageId: string }) {
   const blocks = useNotes((s) => s.pages[pageId]?.blocks ?? EMPTY);
   const selected = useCanvas((s) => s.selected);
+  const minimapOn = usePrefs((s) => s.minimap);
+  const editingAtPress = useRef(false);
+  const hand = useCanvas((s) => s.hand);
   const zoom = useCanvas((s) => s.zoom);
   const selectMode = useCanvas((s) => s.selectMode);
 
@@ -312,12 +326,26 @@ export function Canvas({ pageId }: { pageId: string }) {
     setView({ zoom: f.zoom, left: f.x * f.zoom, top: f.y * f.zoom });
   }, [setView]);
 
+  /** Zooms and scrolls so the selected boxes (and what is inside a selected frame) fill the view. */
+  const fitSelection = useCallback(() => {
+    const v = viewportRef.current;
+    if (!v) return;
+    const sel = new Set(useCanvas.getState().selected);
+    const boxes: Rect[] = blocksRef.current
+      .filter((b) => sel.has(b.id))
+      .map((b) => ({ x: b.x, y: b.y, w: b.w, h: heights.current.get(b.id) ?? blockHeight(b) }));
+    const content = contentBounds(boxes);
+    if (!content) return;
+    const f = fitView(content, v.clientWidth, v.clientHeight, MIN_ZOOM);
+    setView({ zoom: f.zoom, left: f.x * f.zoom, top: f.y * f.zoom });
+  }, [setView]);
+
   useEffect(() => {
-    canvasApi.current = { worldPoint, visibleSpot, focusBlock, zoomTo, getView, setView };
+    canvasApi.current = { worldPoint, visibleSpot, focusBlock, zoomTo, getView, setView, fit: fitContent, fitSelection };
     return () => {
       canvasApi.current = null;
     };
-  }, [worldPoint, visibleSpot, focusBlock, zoomTo, getView, setView]);
+  }, [worldPoint, visibleSpot, focusBlock, zoomTo, getView, setView, fitContent, fitSelection]);
 
   const blurInside = () => {
     const a = document.activeElement as HTMLElement | null;
@@ -346,13 +374,19 @@ export function Canvas({ pageId }: { pageId: string }) {
         const b = page.blocks.find((x) => x.id === sid);
         if (b?.type === 'frame') for (const d of frameDescendants(page.blocks, sid)) dragIds.add(d);
       }
+      // Locked boxes stay where they are; dragging one only selects it.
+      for (const d of [...dragIds]) if (page.blocks.find((x) => x.id === d)?.locked) dragIds.delete(d);
+      if (!dragIds.has(id)) return;
+      const movable = sel.filter((s) => dragIds.has(s));
       bringToFront(pageId, [...dragIds]);
 
-      const starts = new Map(page.blocks.filter((b) => dragIds.has(b.id)).map((b) => [b.id, { x: b.x, y: b.y }]));
+      let starts = new Map(page.blocks.filter((b) => dragIds.has(b.id)).map((b) => [b.id, { x: b.x, y: b.y }]));
       const anchor = starts.get(id)!;
       const rectOf = (b: Block): BoxRect => ({ x: b.x, y: b.y, w: b.w, h: heights.current.get(b.id) ?? blockHeight(b) });
       const group = boundsOf(page.blocks.filter((b) => starts.has(b.id)).map(rectOf));
-      const others = page.blocks.filter((b) => !starts.has(b.id)).map(rectOf);
+      let others = page.blocks.filter((b) => !starts.has(b.id)).map(rectOf);
+      // Ctrl/Cmd + drag drags a copy and leaves the original (Miro, Freeform). Made on the first real movement, so a plain Ctrl+click copies nothing.
+      let copyMode = modKey(e) && e.pointerType !== 'touch';
       beginGesture(pageId);
 
       const v = viewportRef.current!;
@@ -366,6 +400,7 @@ export function Canvas({ pageId }: { pageId: string }) {
       let raf = 0;
       let edgeRaf = 0;
       let moved = false;
+      let copied: Map<string, string> | null = null;
 
       const apply = () => {
         raf = 0;
@@ -422,6 +457,19 @@ export function Canvas({ pageId }: { pageId: string }) {
       const move = (ev: PointerEvent) => {
         if (!moved && Math.hypot(ev.clientX - s0.x, ev.clientY - s0.y) < 5) return;
         moved = true;
+        if (copyMode) {
+          copyMode = false;
+          const map = duplicateBlocksMap(pageId, [...dragIds], { history: 'none' });
+          const fresh = useNotes.getState().pages[pageId];
+          if (fresh) {
+            const keep = starts;
+            starts = new Map([...keep].map(([oid, pos]) => [map.get(oid) ?? oid, pos]));
+            others = fresh.blocks.filter((b) => !starts.has(b.id)).map(rectOf);
+            // The copies are what is selected and dragged from here on, from where the originals were.
+            setSelected(movable.map((m) => map.get(m) ?? m));
+            copied = new Map(movable.map((m) => [m, map.get(m) ?? m]));
+          }
+        }
         last = ev;
         schedule();
         if (!edgeRaf) edgeRaf = requestAnimationFrame(edge);
@@ -444,7 +492,7 @@ export function Canvas({ pageId }: { pageId: string }) {
           const latest = useNotes.getState().pages[pageId];
           if (latest) {
             const updates = new Map<string, string | null>();
-            for (const sid of sel) {
+            for (const sid of movable.map((m) => copied?.get(m) ?? m)) {
               const b = latest.blocks.find((x) => x.id === sid);
               if (!b) continue;
               const rect: BoxRect = { x: b.x, y: b.y, w: b.w, h: heights.current.get(b.id) ?? blockHeight(b) };
@@ -479,7 +527,7 @@ export function Canvas({ pageId }: { pageId: string }) {
       e.preventDefault();
       e.stopPropagation();
       const b = useNotes.getState().pages[pageId]?.blocks.find((x) => x.id === id);
-      if (!b) return;
+      if (!b || b.locked) return;
       const el = worldRef.current?.querySelector<HTMLElement>(`[data-id="${id}"]`);
       const startH = isFixedHeight(b) ? b.h : Math.max(b.h, el?.offsetHeight ?? b.h);
       const aspect = b.type === 'image' && b.aspect ? b.aspect : b.w / startH;
@@ -668,7 +716,7 @@ export function Canvas({ pageId }: { pageId: string }) {
       const text = target.closest('.text-editor');
       if (
         dragsStickyBody({
-          type: useNotes.getState().pages[pageId]?.blocks.find((b) => b.id === id)?.type ?? '',
+          type: kindClassOf(useNotes.getState().pages[pageId]?.blocks.find((b) => b.id === id)),
           pointerType: e.pointerType,
           shiftKey: e.shiftKey,
           editing: !!text?.contains(document.activeElement),
@@ -746,6 +794,9 @@ export function Canvas({ pageId }: { pageId: string }) {
     }
     if (!onEmpty || e.button !== 0) return;
     blurInside();
+    // Clicking the page itself also ends typing in the title or tag fields, so the one-letter keys work again right away.
+    const typing = document.activeElement;
+    if (typing instanceof HTMLElement && isEditableTarget(typing)) typing.blur();
     if (e.pointerType === 'touch') {
       // Let touch scroll the canvas natively; a tap just clears the selection.
       setSelectMode(false);
@@ -799,7 +850,7 @@ export function Canvas({ pageId }: { pageId: string }) {
 
   useViewportZoom(viewportRef, zoomTo);
   useEmptyBoxCleanup(pageId, selected);
-  useCanvasKeyboard({ pageId, viewportRef, worldRef, blocksRef, pointer, spaceDown, setPanMode, focusBlock, visibleSpot, zoomTo, worldPoint, fitContent });
+  useCanvasKeyboard({ pageId, viewportRef, worldRef, blocksRef, pointer, spaceDown, setPanMode, focusBlock, visibleSpot, zoomTo, worldPoint, fitContent, fitSelection });
 
   /* ---------- file drop ---------- */
 
@@ -814,17 +865,67 @@ export function Canvas({ pageId }: { pageId: string }) {
   const hidden = useMemo(() => hiddenBlockIds(blocks), [blocks]);
   const ordered = useMemo(() => paintOrder(blocks).filter((b) => !hidden.has(b.id)), [blocks, hidden]);
   const visibleBlocks = useMemo(() => blocks.filter((b) => !hidden.has(b.id)), [blocks, hidden]);
+  const { below: under, above: over } = useMemo(() => splitByDrawing(ordered, blocks), [ordered, blocks]);
+  const renderBlock = (b: Block) =>
+    b.type === 'frame' ? (
+      <FrameChrome key={b.id} block={b} selected={selSet.has(b.id)} single={single && selSet.has(b.id)} />
+    ) : (
+      <BlockFrame key={b.id} block={b} selected={selSet.has(b.id)} single={single && selSet.has(b.id)} />
+    );
+  const inkEl =
+    !drawMode && liveDrawing(drawing) ? (
+      <img
+        key="ink"
+        className="ink"
+        alt=""
+        draggable={false}
+        src={svgSrc(drawing!.preview)}
+        style={{ left: drawing!.x, top: drawing!.y, width: drawing!.w, height: drawing!.h, clipPath: sheet ? inkClipPath(drawing!, sheet) : undefined }}
+      />
+    ) : null;
 
   return (
     <CanvasCtx.Provider value={ctx}>
       <div
         ref={viewportRef}
-        className={`viewport pan-${panMode}${selectMode ? ' select-mode' : ''}`}
+        className={`viewport pan-${panMode}${selectMode ? ' select-mode' : ''}${hand ? ' hand-on' : ''}`}
         onContextMenu={(e) => {
           // A long-press on a phone shouldn't open the system menu while selecting.
-          if (useCanvas.getState().selectMode || longPress.current) e.preventDefault();
+          if (useCanvas.getState().selectMode || longPress.current) {
+            e.preventDefault();
+            return;
+          }
+          const t = e.target as HTMLElement;
+          // Right-click while typing in a box, or on a link or media player, keeps the system menu (spelling, paste, copy link…).
+          // On a box you are not typing in, the box menu opens, so a sticky or text box is as easy to right-click as any other.
+          if (t.closest('a[href], audio, video, select')) return;
+          if (editingAtPress.current && t.closest('input, textarea, [contenteditable="true"]')) return;
+          const box = t.closest<HTMLElement>('[data-id]');
+          const onEmpty = t === worldRef.current || t === sizerRef.current || t === viewportRef.current;
+          if (!box && !onEmpty) return;
+          e.preventDefault();
+          blurInside();
+          const v = viewportRef.current!;
+          if (box) {
+            const id = box.dataset.id!;
+            let ids = useCanvas.getState().selected;
+            if (!ids.includes(id)) {
+              ids = [id];
+              setSelected(ids);
+            }
+            openMenuAt(v, e.clientX, e.clientY, boxMenu(pageId, ids));
+          } else {
+            setSelected([]);
+            openMenuAt(v, e.clientX, e.clientY, canvasMenu(pageId, worldPoint(e.clientX, e.clientY), focusBlock));
+          }
         }}
         tabIndex={-1}
+        onPointerDownCapture={(e) => {
+          // Pressing the right button moves the caret before the menu event arrives, so what was being edited is noted first.
+          if (e.button !== 2) return;
+          const ed = (e.target as HTMLElement).closest('input, textarea, [contenteditable="true"]');
+          editingAtPress.current = !!ed && (ed === document.activeElement || ed.contains(document.activeElement));
+        }}
         onPointerDown={onViewportPointerDown}
         onDoubleClick={onDoubleClick}
         onDragEnter={(e) => {
@@ -864,22 +965,11 @@ export function Canvas({ pageId }: { pageId: string }) {
                 style={{ left: sheet.x, top: sheet.y, width: sheet.w, height: sheet.h, backgroundPosition: `${4 - sheet.x}px ${4 - sheet.y}px` }}
               />
             )}
-            {ordered.map((b) =>
-              b.type === 'frame' ? (
-                <FrameChrome key={b.id} block={b} selected={selSet.has(b.id)} single={single && selSet.has(b.id)} />
-              ) : (
-                <BlockFrame key={b.id} block={b} selected={selSet.has(b.id)} single={single && selSet.has(b.id)} />
-              ),
-            )}
-            {!drawMode && liveDrawing(drawing) && (
-              <img
-                className="ink"
-                alt=""
-                draggable={false}
-                src={svgSrc(drawing!.preview)}
-                style={{ left: drawing!.x, top: drawing!.y, width: drawing!.w, height: drawing!.h, clipPath: sheet ? inkClipPath(drawing!, sheet) : undefined }}
-              />
-            )}
+            {/* The drawing is one more layer: over the boxes by default, behind them all when asked, and boxes marked "over" sit above it. */}
+            {inkEl && drawing?.behind && inkEl}
+            {(drawing?.behind ? ordered : under).map(renderBlock)}
+            {inkEl && !drawing?.behind && inkEl}
+            {!drawing?.behind && over.map(renderBlock)}
             <ArrowLayer pageId={pageId} blocks={visibleBlocks} heights={heights} connecting={connecting} />
             {guides.map((g, i) =>
               g.axis === 'x' ? (
@@ -894,6 +984,31 @@ export function Canvas({ pageId }: { pageId: string }) {
           </div>
         </div>
       </div>
+      {minimapOn && (
+        <Minimap
+          boxes={blocks.map((b) => ({ x: b.x, y: b.y, w: b.w, h: heights.current.get(b.id) ?? blockHeight(b) }))}
+          scroller={viewportRef.current}
+          viewRect={() => {
+            const v = viewportRef.current;
+            if (!v) return null;
+            const z = useCanvas.getState().zoom;
+            const c = viewCorner();
+            return { x: c.x, y: c.y, w: v.clientWidth / z, h: v.clientHeight / z };
+          }}
+          goTo={(cx, cy) => {
+            const v = viewportRef.current;
+            if (!v) return;
+            const z = useCanvas.getState().zoom;
+            setView({ zoom: z, left: cx * z - v.clientWidth / 2, top: cy * z - v.clientHeight / 2 });
+          }}
+        />
+      )}
+      {hand && (
+        <div className="hand-badge" role="status">
+          Hand tool: drag to move around
+          <button onClick={() => setHand(false)}>Done (Esc)</button>
+        </div>
+      )}
       {dropping && <div className="drop-hint">Drop images to place them here</div>}
       {(selected.length > 1 || selectMode) && (
         <div className="multi-bar" role="toolbar" aria-label="Selected boxes">
@@ -904,6 +1019,12 @@ export function Canvas({ pageId }: { pageId: string }) {
           <button className="btn" disabled={!selected.length} onClick={() => setSelected(duplicateBlocks(pageId, selected))}>
             Duplicate
           </button>
+          <button className="btn" disabled={selected.length < 2} onClick={(e) => openMenu(e.currentTarget, arrangeMenu(pageId, selected))}>
+            Align
+          </button>
+          <button className="btn" disabled={!selected.length} onClick={(e) => openMenu(e.currentTarget, layerMenu(pageId, selected))}>
+            Layer
+          </button>
           {canPin && (
             <button className="btn" disabled={!selected.length} onClick={() => void pinBlocks(pageId, blocks.filter((b) => selSet.has(b.id)))}>
               Pin to desktop
@@ -913,8 +1034,7 @@ export function Canvas({ pageId }: { pageId: string }) {
             className="btn"
             disabled={!selected.length}
             onClick={() => {
-              deleteBlocks(pageId, selected);
-              setSelected([]);
+              deleteWithUndo(pageId, selected);
             }}
           >
             Delete

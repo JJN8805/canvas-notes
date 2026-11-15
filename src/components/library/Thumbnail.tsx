@@ -1,9 +1,11 @@
 import { useNotes } from '../../store/notes';
+import { isStyle, kindClass } from '../../lib/note';
 import { isCard } from '../../lib/pages';
 import { cardInitial, cardLabel, cardParts } from '../../lib/cards';
 import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { Arrow, Block, PageDrawing, Sheet } from '../../types';
 import { inkClipPath, inkOnSheet } from '../../lib/sheet';
+import { splitByDrawing } from '../../lib/layers';
 import { frameInk, tintVars } from '../../lib/colors';
 import { liveDrawing, svgSrc, unionBounds } from '../../lib/drawing';
 import { blockHeight, colorVar, isFixedHeight, sanitizeHtml } from '../../lib/util';
@@ -59,6 +61,33 @@ export const Thumbnail = memo(function Thumbnail({
     };
   }, [visible, ink, sheet]);
 
+  const split = useMemo(() => (layout ? splitByDrawing(layout.sorted, blocks) : { below: [] as Block[], above: [] as Block[] }), [layout, blocks]);
+  type Lay = NonNullable<typeof layout>;
+  const boxEl = (b: Block, l: Lay) => (
+    <div
+      key={b.id}
+      className={`block b-${kindClass(b)}${isStyle(b, 'text') && b.fill ? ' fill' : ''}`}
+      style={{
+        left: b.x - l.minX + PAD,
+        top: b.y - l.minY + PAD,
+        width: b.w,
+        ...(isFixedHeight(b) || b.type === 'frame' ? { height: blockHeight(b) } : { minHeight: b.h }),
+        ...tintVars(b),
+      } as CSSProperties}
+    >
+      <StaticBody block={b} />
+    </div>
+  );
+  const inkEl = (d: PageDrawing, l: Lay) => (
+    <img
+      key="ink"
+      className="ink"
+      alt=""
+      src={svgSrc(d.preview)}
+      style={{ left: d.x - l.minX + PAD, top: d.y - l.minY + PAD, width: d.w, height: d.h, clipPath: sheet ? inkClipPath(d, sheet) : undefined }}
+    />
+  );
+
   let transform = 'scale(0)';
   if (layout && box.w) {
     const s = Math.min(box.w / layout.w, box.h / layout.h, MAX_SCALE);
@@ -73,29 +102,10 @@ export const Thumbnail = memo(function Thumbnail({
         <div className="thumb-empty">Empty page</div>
       ) : (
         <div className="mini" style={{ width: layout.w, height: layout.h, transform }}>
-          {layout.sorted.map((b) => (
-            <div
-              key={b.id}
-              className={`block b-${b.type}${b.type === 'text' && b.fill ? ' fill' : ''}`}
-              style={{
-                left: b.x - layout.minX + PAD,
-                top: b.y - layout.minY + PAD,
-                width: b.w,
-                ...(isFixedHeight(b) || b.type === 'frame' ? { height: blockHeight(b) } : { minHeight: b.h }),
-                ...tintVars(b),
-              } as CSSProperties}
-            >
-              <StaticBody block={b} />
-            </div>
-          ))}
-          {ink && (
-            <img
-              className="ink"
-              alt=""
-              src={svgSrc(ink.preview)}
-              style={{ left: ink.x - layout.minX + PAD, top: ink.y - layout.minY + PAD, width: ink.w, height: ink.h, clipPath: sheet ? inkClipPath(ink, sheet) : undefined }}
-            />
-          )}
+          {ink?.behind && inkEl(ink, layout)}
+          {(ink?.behind ? layout.sorted : split.below).map((b) => boxEl(b, layout))}
+          {ink && !ink.behind && inkEl(ink, layout)}
+          {!ink?.behind && split.above.map((b) => boxEl(b, layout))}
           {arrows.length > 0 && (
             <svg className="mini-arrows" aria-hidden="true">
               {arrows.map((a) => {
@@ -122,8 +132,14 @@ export const Thumbnail = memo(function Thumbnail({
 
 export function StaticBody({ block: b }: { block: Block }) {
   switch (b.type) {
-    case 'text':
-    case 'sticky':
+    case 'note':
+      if (b.style === 'code') {
+        return (
+          <div className="body">
+            <pre>{b.code ?? ''}</pre>
+          </div>
+        );
+      }
       return <div className="body prose" dangerouslySetInnerHTML={{ __html: sanitizeHtml(b.html) }} />;
     case 'checklist':
       return (
@@ -134,12 +150,6 @@ export function StaticBody({ block: b }: { block: Block }) {
               <div className="t">{i.text}</div>
             </div>
           ))}
-        </div>
-      );
-    case 'code':
-      return (
-        <div className="body">
-          <pre>{b.code}</pre>
         </div>
       );
     case 'table':

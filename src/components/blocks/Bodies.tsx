@@ -2,7 +2,7 @@ import { Fragment, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { Draft } from 'immer';
 import { dailyTitle } from '../../lib/daily';
-import type { ChecklistBlock, CodeBlock, ImageBlock, TableBlock } from '../../types';
+import type { ChecklistBlock, ImageBlock, NoteBlock, TableBlock } from '../../types';
 import { updateBlock } from '../../store/notes';
 import { newId } from '../../lib/util';
 import { dropIndex, moveItem } from '../../lib/reorder';
@@ -183,16 +183,16 @@ export function ChecklistBody({ block }: { block: ChecklistBlock }) {
 
 /* ---------------- Code ---------------- */
 
-export function CodeBody({ block }: { block: CodeBlock }) {
+export function CodeBody({ block }: { block: NoteBlock }) {
   const { pageId } = useCanvasCtx();
   const set = (v: string) =>
-    updateBlock<CodeBlock>(pageId, block.id, (b) => {
+    updateBlock<NoteBlock>(pageId, block.id, (b) => {
       b.code = v;
     }, { history: { key: 'code:' + block.id } });
   return (
     <div className="body">
       <AutoTextarea
-        value={block.code}
+        value={block.code ?? ''}
         onValue={set}
         wrap="off"
         spellCheck={false}

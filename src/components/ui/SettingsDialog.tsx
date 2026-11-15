@@ -7,6 +7,7 @@ import {
   setProfileName,
   setCustomTheme,
   setPalette,
+  setKeymap,
   setSnap,
   setTheme,
   setTrashDays,
@@ -22,14 +23,14 @@ import { openSyncPanel, useSync } from '../../sync/controller';
 import { ask, confirmDanger, toast } from '../../store/ui';
 import { Avatar } from './Avatar';
 import { Section, Switch } from './SettingsParts';
+import { GeneralTab } from './GeneralTab';
 import { DesktopTab } from './SettingsDesktop';
 import { AddonsTab } from './SettingsAddons';
 import { CUSTOM_PALETTE, DEFAULT_CUSTOM, DEFAULT_PALETTE, isReadable, PRESETS, type ThemeColors } from '../../lib/themes';
-import { version } from '../../../package.json';
 
-const TABS = ['Profile', 'Appearance', 'Editor', 'Sync', 'Desktop', 'Add-ons', 'Data', 'About'] as const;
+const TABS = ['General', 'Profile', 'Appearance', 'Editor', 'Sync', 'Desktop', 'Add-ons', 'Data', 'About'] as const;
 type Tab = (typeof TABS)[number];
-const TAB_ICONS: Record<Tab, IconName> = { Profile: 'user', Appearance: 'palette', Editor: 'edit', Sync: 'sync', Desktop: 'monitor', 'Add-ons': 'puzzle', Data: 'database', About: 'info' };
+const TAB_ICONS: Record<Tab, IconName> = { General: 'settings', Profile: 'user', Appearance: 'palette', Editor: 'edit', Sync: 'sync', Desktop: 'monitor', 'Add-ons': 'puzzle', Data: 'database', About: 'info' };
 
 export function SettingsDialog() {
   const open = useSettingsUi((s) => s.open);
@@ -37,7 +38,7 @@ export function SettingsDialog() {
 }
 
 function Dialog() {
-  const [tab, setTab] = useState<Tab>('Profile');
+  const [tab, setTab] = useState<Tab>('General');
   const closeRef = useRef<HTMLButtonElement>(null);
   const prevFocus = useRef<Element | null>(document.activeElement);
 
@@ -71,6 +72,7 @@ function Dialog() {
           ))}
         </div>
         <div className="set-body" role="tabpanel" aria-label={tab}>
+          {tab === 'General' && <GeneralTab />}
           {tab === 'Profile' && <ProfileTab />}
           {tab === 'Appearance' && <AppearanceTab />}
           {tab === 'Editor' && <EditorTab />}
@@ -407,6 +409,7 @@ function DataTab() {
           <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={(e) => e.target.files?.[0] && void importFile(e.target.files[0])} />
         </div>
       </Section>
+      <StorageSection />
       <Section title="Trash">
         <label className="set-row">
           <span>Empty deleted pages after</span>
@@ -424,46 +427,178 @@ function DataTab() {
   );
 }
 
+/* ---------------- Storage ---------------- */
+
+/** How much room the notes take and how much of it is shared instead of copied. Pictures and page history keep each distinct thing once. */
+function StorageSection() {
+  const [report, setReport] = useState<StorageReport | null>(null);
+  const [busy, setBusy] = useState(false);
+  const refresh = () => getStorage().report().then(setReport, () => setReport(null));
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  async function tidy() {
+    setBusy(true);
+    try {
+      const r = await getStorage().tidy();
+      await refresh();
+      toast(
+        r.filesMerged || r.versionsConverted
+          ? `Tidied: ${r.filesMerged ? `${r.filesMerged} duplicate file${r.filesMerged === 1 ? '' : 's'} merged (${formatSize(r.bytesFreed)} freed)` : 'no duplicate files'}${r.versionsConverted ? `, ${r.versionsConverted} old version${r.versionsConverted === 1 ? '' : 's'} converted` : ''}.`
+          : 'Nothing to tidy: everything is already stored once.',
+      );
+    } catch (e) {
+      toast(`Couldn’t tidy: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const percent = report ? savedPercent(report) : 0;
+  return (
+    <Section title="Storage">
+      <p>
+        Every picture and every box of page history is kept once, however many pages or versions use it. Adding the same picture again, or editing one box of a page, adds almost nothing.
+      </p>
+      {report && (
+        <>
+          <div className="storage-lines">
+            {reportLines(report).map((l) => (
+              <div key={l.label} className="storage-line">
+                <span className="storage-label">{l.label}</span>
+                <span className="storage-value">{l.value}</span>
+                <span className={'storage-saved' + (l.saved ? ' on' : '')}>{l.saved ? `${l.saved} saved by sharing` : ''}</span>
+                <span className="storage-note">{l.note}</span>
+              </div>
+            ))}
+          </div>
+          {percent > 0 && <p className="storage-total">Altogether this takes {percent}% less room than keeping a copy for every use.</p>}
+          {report.pending > 0 && <p>{report.pending} item{report.pending === 1 ? ' is' : 's are'} from an earlier version and not shared yet. The app does this in the background; <strong>Tidy now</strong> does it straight away.</p>}
+        </>
+      )}
+      <div className="row start">
+        <button className="btn" disabled={busy} onClick={() => void tidy()}>
+          Tidy now
+        </button>
+      </div>
+    </Section>
+  );
+}
+
 /* ---------------- About ---------------- */
 
-const SHORTCUTS: [string, string][] = [
-  ['Ctrl + Z / Ctrl + Shift + Z', 'Undo / redo'],
-  ['Ctrl + D', 'Duplicate selected boxes'],
-  ['Ctrl + A', 'Select all boxes'],
-  ['Delete', 'Remove selected boxes'],
-  ['S', 'New sticky note'],
-  ['Ctrl + P', 'Command palette'],
-  ['Ctrl + O', 'Quick switcher: find and open a page'],
-  ['Ctrl + Alt + D', 'Open today’s page'],
-  ['Space + drag', 'Pan the page'],
-  ['Ctrl + scroll', 'Zoom'],
-  ['Ctrl + 1', 'Zoom to fit everything on the page'],
-  ['Alt while dragging', 'Move without snapping'],
+import { shortcutGroups } from '../../lib/shortcuts';
+import { reportLines, savedPercent } from '../../lib/storageReport';
+import { formatSize } from '../../lib/media';
+import type { StorageReport } from '../../storage/types';
+import { DEFAULT_KEYMAP, isDefaultKeymap, KEY_ACTIONS, setKey, type KeyAction } from '../../lib/keymap';
+
+/** The one-letter keys on a page, each with a button to change it: press the button, then the new letter. */
+const CREDITS: [string, string][] = [
+  ['Tauri', 'MIT / Apache-2.0'],
+  ['React', 'MIT'],
+  ['TipTap and ProseMirror', 'MIT'],
+  ['Excalidraw', 'MIT'],
+  ['SQLite', 'Public domain'],
+  ['PDF.js', 'Apache-2.0'],
+  ['Zustand and Immer', 'MIT'],
+  ['DOMPurify', 'Apache-2.0 / MPL-2.0'],
+  ['fflate, idb, Turndown, html-to-image', 'MIT / ISC'],
+  ['Onest and JetBrains Mono fonts', 'SIL Open Font License'],
 ];
 
+function QuickKeys() {
+  const keymap = usePrefs((s) => s.keymap);
+  const [editing, setEditing] = useState<KeyAction | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    if (!editing) return;
+    // Captured before the dialog sees it, so Esc cancels the change instead of closing Settings.
+    const onKey = (e: KeyboardEvent) => {
+      if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        setEditing(null);
+        setError('');
+        return;
+      }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const m = /^Key([A-Z])$/.exec(e.code);
+      const r = setKey(keymap, editing, m ? m[1] : e.key);
+      if (!r.ok) {
+        setError(r.error);
+        return;
+      }
+      setKeymap(r.map, getStorage());
+      setEditing(null);
+      setError('');
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [editing, keymap]);
+  return (
+    <div className="quickkeys">
+      <h4 className="kv-title">One-letter keys (click one to change it)</h4>
+      <div className="quickkeys-grid">
+        {KEY_ACTIONS.map((a) => (
+          <span key={a.id} className="quickkey">
+            <button
+              className={'btn quickkey-btn' + (editing === a.id ? ' on' : '')}
+              aria-label={`${a.label}: ${keymap[a.id]}. Change`}
+              onClick={() => {
+                setError('');
+                setEditing(editing === a.id ? null : a.id);
+              }}
+            >
+              {editing === a.id ? 'Press a letter…' : keymap[a.id]}
+            </button>
+            <span>{a.label}</span>
+          </span>
+        ))}
+      </div>
+      {error && <p className="quickkeys-error" role="alert">{error}</p>}
+      {!isDefaultKeymap(keymap) && (
+        <button className="btn" onClick={() => setKeymap(DEFAULT_KEYMAP, getStorage())}>
+          Reset to the usual keys
+        </button>
+      )}
+    </div>
+  );
+}
+
 function AboutTab() {
-  const kind = useNotes((s) => s.storageKind);
-  const where = useNotes((s) => s.storageLocation);
+  const keymap = usePrefs((s) => s.keymap);
   return (
     <>
-      <Section title="Canvas Notes">
-        <div className="kv">
-          <span className="k">Version</span>
-          <span className="v">{version}</span>
-          <span className="k">Stored</span>
-          <span className="v">{kind === 'desktop' ? where : 'In this browser only (development mode)'}</span>
-        </div>
-        <p>Your notes stay on your devices. Nothing is sent over the internet.</p>
+      <Section title="Privacy">
+        <p>Your notes stay on your devices. Nothing is sent over the internet unless you switch on an AI add-on and press Send on a preview of exactly what leaves. Sync runs directly between your own devices, encrypted with a code that never crosses the network.</p>
+      </Section>
+      <Section title="Built with">
+        <ul className="credits">
+          {CREDITS.map(([name, licence]) => (
+            <li key={name}>
+              <span>{name}</span>
+              <span className="muted">{licence}</span>
+            </li>
+          ))}
+        </ul>
       </Section>
       <Section title="Keyboard shortcuts">
-        <div className="kv">
-          {SHORTCUTS.map(([k, v]) => (
-            <span key={k} className="kv-row">
-              <kbd>{k}</kbd>
-              <span>{v}</span>
-            </span>
-          ))}
-        </div>
+        <p className="muted">Press <kbd>?</kbd> on a page to see this list there.</p>
+        <QuickKeys />
+        {shortcutGroups(keymap).map((g) => (
+          <div key={g.title} className="kv">
+            <h4 className="kv-title">{g.title}</h4>
+            {g.rows.map(([k, v]) => (
+              <span key={k} className="kv-row">
+                <kbd>{k}</kbd>
+                <span>{v}</span>
+              </span>
+            ))}
+          </div>
+        ))}
       </Section>
     </>
   );

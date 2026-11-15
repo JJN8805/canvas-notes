@@ -1,10 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { memoryGraph } from './graphdb';
 
 vi.mock('../src/components/library/Thumbnail', () => ({ StaticBody: () => null }));
 vi.mock('../src/store/ui', () => ({ toast: () => {}, openMenu: () => {}, useUi: { getState: () => ({}) } }));
 
-import { GraphMirror } from '../src/graph/mirror';
 import { pageToMarkdown } from '../src/export/export';
 import { cardLabel, cardText, newCardBlocks } from '../src/lib/cards';
 import { isCard, libraryPages } from '../src/lib/pages';
@@ -16,7 +14,7 @@ import type { Block, CardBlock, Page } from '../src/types';
 
 const card = (id: string, title: string, html = ''): Page => ({
   id, title, groupId: null, tags: [], arrows: [], created: 1, updated: 1, rev: 1, kind: 'card',
-  blocks: newCardBlocks().map((b) => (b.type === 'text' ? { ...b, html } : b)),
+  blocks: newCardBlocks().map((b) => ((b.type === 'note' && b.style === 'text') ? { ...b, html } : b)),
 });
 const page = (id: string, blocks: Block[] = []): Page => ({ id, title: 'My page', groupId: null, tags: [], blocks, arrows: [], created: 1, updated: 1, rev: 1 });
 const box = (id: string, cardId: string, extra: Partial<CardBlock> = {}): CardBlock => ({ id, type: 'card', x: 0, y: 0, w: 220, h: 40, z: 1, cardId, ...extra });
@@ -64,15 +62,6 @@ describe('a card on a page', () => {
   it('is found by has:card', () => {
     const pages = [page('with', [box('b', 'c1')]), page('without')];
     expect(searchPages(pages, 'has:card').map((p) => p.id)).toEqual(['with']);
-  });
-
-  it('is stored in the link graph as an embed, with its real kind kept', async () => {
-    const g = await memoryGraph();
-    const mirror = new GraphMirror(g.repo);
-    await mirror.page({ id: 'p', title: 'My page', groupId: null, tags: [], blocks: [box('b', 'c1')], arrows: [], created: 5 });
-    const rows = await g.repo.listBlocks('p');
-    expect(rows.map((r) => [r.id, r.type])).toEqual([['b', 'embed']]);
-    expect(JSON.parse(rows[0].content)).toMatchObject({ kind: 'card', cardId: 'c1' });
   });
 });
 

@@ -203,7 +203,7 @@ describe('which add-ons are on', () => {
     expect(parseEnabled('["ai","ocr","ai","from-the-future",7]')).toEqual(['ai', 'ocr']);
   });
   it('lists each add-on with a plain privacy statement', () => {
-    expect(ADDONS.map((a) => a.id)).toEqual(['ai', 'ocr']);
+    expect(ADDONS.map((a) => a.id)).toEqual(['ai', 'ocr', 'office']);
     for (const a of ADDONS) expect(a.privacy.length).toBeGreaterThan(20);
     expect(ADDONS.find((a) => a.id === 'ocr')!.privacy).toMatch(/only to Ollama on this computer/);
   });

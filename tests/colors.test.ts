@@ -15,7 +15,7 @@ import { history } from '../src/store/history';
 import { useNotes, setColor, setPageColor, undo, redo } from '../src/store/notes';
 import { NOTE_COLORS, type Block, type Page } from '../src/types';
 
-const text = (id: string, extra: Partial<Block> = {}) => ({ id, type: 'text', x: 0, y: 0, w: 200, h: 40, z: 1, html: '<p>x</p>', ...extra }) as Block;
+const text = (id: string, extra: Partial<Block> = {}) => ({ id, type: 'note', style: 'text', x: 0, y: 0, w: 200, h: 40, z: 1, html: '<p>x</p>', ...extra }) as Block;
 const frame = (id: string, color: string = 'teal') => ({ id, type: 'frame', x: 0, y: 0, w: 300, h: 200, z: 0, title: 'F', color, collapsed: false }) as Block;
 const image = (id: string) => ({ id, type: 'image', x: 0, y: 0, w: 100, h: 100, z: 1, imageId: 'i', aspect: 1 }) as Block;
 const page = (extra: Partial<Page> = {}): Page => ({ id: 'p', title: 'T', groupId: null, tags: [], blocks: [], arrows: [], created: 1, updated: 1, rev: 0, ...extra });
@@ -205,10 +205,10 @@ describe('colour on every kind of box', () => {
   const all = (): Block[] => [
     text('t'),
     { id: 'c', type: 'checklist', x: 0, y: 0, w: 100, h: 40, z: 1, items: [] } as Block,
-    { id: 'k', type: 'code', x: 0, y: 0, w: 100, h: 40, z: 1, code: '' } as Block,
+    { id: 'k', type: 'note', style: 'code', x: 0, y: 0, w: 100, h: 40, z: 1, code: '' } as Block,
     { id: 'tb', type: 'table', x: 0, y: 0, w: 100, h: 40, z: 1, rows: [['a']] } as Block,
     image('i'),
-    { id: 's', type: 'sticky', x: 0, y: 0, w: 200, h: 200, z: 1, html: '' } as Block,
+    { id: 's', type: 'note', style: 'sticky', x: 0, y: 0, w: 200, h: 200, z: 1, html: '' } as Block,
     frame('f'),
   ];
   const ids = all().map((b) => b.id);

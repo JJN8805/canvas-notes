@@ -1,13 +1,17 @@
 import type { CSSProperties } from 'react';
 import { ResizeHandles } from './ResizeHandles';
 import type { FrameBlock, GroupColor, NoteColor } from '../../types';
-import { colorOf, frameInk } from '../../lib/colors';
-import { deleteBlocks, duplicateBlocks, setColor, updateBlock } from '../../store/notes';
+import { colorOf, frameInk, noteVar } from '../../lib/colors';
+import { duplicateBlocks, setColor, updateBlock } from '../../store/notes';
 import { setSelected } from '../../store/canvas';
 import { openMenu } from '../../store/ui';
 import { blockHeight, colorVar } from '../../lib/util';
+import { LinkBadge } from './LinkBadge';
+import { openLinkDialog } from '../../store/boxLinks';
 import { Icon } from '../ui/Icon';
 import { useCanvasCtx } from './context';
+import { layerMenu } from './layerMenu';
+import { deleteWithUndo } from './actions';
 
 export function FrameChrome({
   block,
@@ -33,15 +37,21 @@ export function FrameChrome({
 
   return (
     <div
-      className={`block b-frame${selected ? ' sel' : ''}${block.collapsed ? ' collapsed' : ''}`}
+      className={`block b-frame${selected ? ' sel' : ''}${block.collapsed ? ' collapsed' : ''}${block.locked ? ' locked' : ''}`}
       data-id={block.id}
       style={style}
       onPointerDownCapture={(e) => ctx.pointerDownBlock(e, block.id)}
     >
+      <LinkBadge block={block} pageId={pageId} />
+      {block.locked && (
+        <span className="lock-badge" role="img" aria-label="Locked" title="Locked: it can’t be moved or deleted. Right-click to unlock.">
+          <Icon name="lock" size={11} />
+        </span>
+      )}
       {!block.collapsed && (
         <div
           className="frame-body"
-          style={{ background: `color-mix(in srgb, ${colorVar(block.color)} 12%, transparent)`, borderColor: colorVar(block.color) }}
+          style={{ background: block.slide ? (block.slide.bg ? `color-mix(in srgb, ${noteVar(block.slide.bg)} 60%, #fff)` : '#fff') : `color-mix(in srgb, ${colorVar(block.color)} 12%, transparent)`, borderColor: colorVar(block.color) }}
         />
       )}
       <div className="frame-head" style={{ background: colorVar(block.color), color: frameInk(block.color) ?? undefined }} onPointerDown={(e) => startMove(e, block.id)}>
@@ -91,6 +101,20 @@ export function FrameChrome({
           }}
         />
         <button
+          aria-label="Layer"
+          title="Layer: forward, backward, over the drawing"
+          onPointerDown={stop}
+          onClick={(e) => {
+            stop(e);
+            openMenu(e.currentTarget, layerMenu(pageId, [block.id]));
+          }}
+        >
+          <Icon name="layer" size={13} />
+        </button>
+        <button aria-label="Links" title="Links" onPointerDown={stop} onClick={(e) => { stop(e); openLinkDialog(pageId, block.id); }}>
+          <Icon name="link" size={13} />
+        </button>
+        <button
           aria-label="Duplicate frame"
           title="Duplicate"
           onPointerDown={stop}
@@ -107,8 +131,7 @@ export function FrameChrome({
           onPointerDown={stop}
           onClick={(e) => {
             stop(e);
-            deleteBlocks(pageId, [block.id]);
-            setSelected([]);
+            deleteWithUndo(pageId, [block.id]);
           }}
         >
           <Icon name="trash" size={13} />

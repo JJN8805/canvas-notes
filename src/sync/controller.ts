@@ -3,7 +3,7 @@ import { isTauri } from '../storage';
 import { usePrefs } from '../store/prefs';
 import { flushAll, getStorage, refreshFromDisk, resolveDailyDuplicates, useNotes } from '../store/notes';
 import { toast } from '../store/ui';
-import { handleRequest, syncWithLaptop, type SyncReport, type SyncRequest } from './engine';
+import { DATA_FORMAT, handleRequest, peerTooOld, PEER_TOO_OLD, syncWithLaptop, type Hello, type SyncReport, type SyncRequest } from './engine';
 
 export const SYNC_PORT = 47821;
 const AUTO_INTERVAL = 2 * 60 * 1000;
@@ -140,7 +140,7 @@ async function initLaptop() {
         set({ lastPhoneSync: now });
         void saveSetting('sync.lastPhoneSync', String(now));
       }
-      const result = await handleRequest(getStorage().sync, req, { beforeRead: flushAll, afterWrite: refreshSoon });
+      const result = await handleRequest(getStorage().sync, req, { beforeRead: flushAll, afterWrite: refreshSoon, minFormat: DATA_FORMAT });
       reply = JSON.stringify({ ok: true, result });
     } catch (e) {
       reply = JSON.stringify({ ok: false, error: e instanceof Error ? e.message : String(e) });
@@ -214,7 +214,7 @@ async function initPhone() {
 function sender(address: string, code: string) {
   const url = endpointFor(address);
   return async <T,>(req: SyncRequest): Promise<T> => {
-    const raw = await invokeCmd<string>('sync_client_request', { url, code, body: JSON.stringify(req) });
+    const raw = await invokeCmd<string>('sync_client_request', { url, code, body: JSON.stringify({ ...req, format: DATA_FORMAT }) });
     const res = JSON.parse(raw) as { ok: boolean; result?: T; error?: string };
     if (!res.ok) throw new Error(res.error || 'The laptop couldn’t complete the sync.');
     return res.result as T;
@@ -234,8 +234,9 @@ export async function connect(address: string, rawCode: string): Promise<boolean
   }
   set({ busy: true, error: '' });
   try {
-    const hello = await sender(address, code)<{ app: string }>({ op: 'hello' });
+    const hello = await sender(address, code)<Hello>({ op: 'hello' });
     if (hello.app !== 'canvas-notes') throw new Error('That address isn’t a Canvas Notes laptop.');
+    if (peerTooOld(hello)) throw new Error(PEER_TOO_OLD);
     await saveSetting('sync.peerAddress', address.trim());
     await saveSetting('sync.peerCode', code);
     set({ peerAddress: address.trim(), peerCode: code, connected: true, busy: false });

@@ -15,7 +15,7 @@ import { history } from '../src/store/history';
 import type { Block, Page } from '../src/types';
 
 const base = (extra: Partial<Page>): Page => ({ id: 'x', title: '', groupId: null, tags: [], blocks: [], arrows: [], created: 1, updated: 1, rev: 0, ...extra });
-const box = (id: string, x: number, y: number, w = 200, h = 100): Block => ({ id, type: 'text', x, y, w, h, z: 1, html: '<p>hi</p>' }) as Block;
+const box = (id: string, x: number, y: number, w = 200, h = 100): Block => ({ id, type: 'note', style: 'text', x, y, w, h, z: 1, html: '<p>hi</p>' }) as Block;
 
 describe('sheet maths', () => {
   it('accepts a sane sheet and rejects anything else', () => {

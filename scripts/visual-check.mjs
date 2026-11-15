@@ -190,6 +190,13 @@ await page.waitForSelector('.book-page-body .editor', { timeout: 8000 }).catch((
 if ((await page.locator('.book-page-body .ed-head .ed-title, .book-page-body .ed-head .ed-back').count()) !== 0) problems.push('journal: the page inside the book should have the cut-down header (no title, no back button)');
 if ((await page.locator('.sidebar .nav-item:has-text("Journal") .cnt').innerText()) !== '1') problems.push('journal: the sidebar should count one day written');
 await shot('journal-today');
+// the weekly review opens over the Journal, shows seven days, and closes without making a page
+await page.click('.journal-bar button:has-text("Week")');
+await page.waitForSelector('.dialog.weekly');
+if ((await page.locator('.dialog.weekly section[aria-label="The days"] li').count()) !== 7) problems.push('weekly: the review should list seven days');
+await shot('journal-week-review');
+await page.keyboard.press('Escape');
+await page.waitForFunction(() => !document.querySelector('.dialog.weekly'));
 if ((await page.locator('.book-page.right').count()) !== 1 || (await page.locator('.book-page.left, .book-spine, .journal-bar button:has-text("One page"), .journal-bar button:has-text("Two pages")').count()) !== 0) problems.push('journal: exactly one page should show, with no two-page option');
 if ((await page.locator('.journal-bar button:has-text("Attendance")').count()) !== 1) problems.push('journal: the Attendance button should be at the top of the Journal');
 await page.click('.journal-bar button:has-text("Attendance")');
@@ -333,39 +340,51 @@ await page.fill('input[aria-label="Search cards"]', 'basil');
 await shot('cards-search');
 await page.fill('input[aria-label="Search cards"]', '');
 
-// Card tags and sets: tag two cards, filter by a tag chip, put a card in a set and show only that set
+// Card folders: make a folder with a section inside, then tag two cards and file one in the section
+await page.click('.cf-new');
+await page.fill('.dialog input', 'Trips');
+await page.keyboard.press('Enter');
+await page.waitForSelector('.cf-crumbs');
+await page.click('.cf-main button:has-text("New section")');
+await page.fill('.dialog input', 'Europe');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(250);
+await shot('cards-folder-with-section');
+await page.click('.cf-root');
 for (const [label, tag] of [['Tokyo', 'travel'], ['Garden', 'plants']]) {
   await page.click(`.ctile:has-text("${label}")`);
   await page.waitForSelector('.card-detail');
   await page.fill('input[aria-label="Add a tag to this card"]', tag);
   await page.keyboard.press('Enter');
   if (label === 'Tokyo') {
-    const opts = await page.locator('select[aria-label="Set (group) this card belongs to"] option').count();
-    if (opts < 2) problems.push('card sets: the set picker lists no groups');
-    else await page.selectOption('select[aria-label="Set (group) this card belongs to"]', { index: 1 });
+    const opts = await page.locator('select[aria-label^="Folder or section"] option').count();
+    if (opts < 3) problems.push('card folders: the folder picker should list Unfiled, Trips and Trips / Europe');
+    else await page.selectOption('select[aria-label^="Folder or section"]', { label: 'Trips / Europe' });
     await shot('card-detail-tags');
   }
   await page.click('.card-detail button:has-text("Done")');
 }
+// the top shows the cards that are not in a folder: Tokyo went into the section
+if ((await page.locator('.cf-main > .cgrid .ctile').count()) !== 2) problems.push('card folders: the top should show the two cards that are not in a folder');
 await page.click('.tagbar button:has-text("#plants")');
 if ((await page.locator('.ctile').count()) !== 1) problems.push('card tags: the #plants chip should leave exactly one card');
 await shot('cards-tag-filter');
 await page.click('.tagbar button:has-text("#plants")');
-await page.selectOption('select[aria-label="Show set of cards"]', '-');
-if ((await page.locator('.ctile').count()) !== 2) problems.push('card sets: "No set" should show the two cards not put in a set');
-await shot('cards-set-filter');
-await page.selectOption('select[aria-label="Show set of cards"]', '');
-
-// Board: columns per set, drag a card to another column
-await page.click('button.seg-btn:has-text("Board")');
-await shot('cards-board');
-const colCount = async (title) => Number(await page.locator(`.kb-col:has(h2[title="${title}"]) .kb-head .cnt`).textContent());
-const workBefore = await colCount('Work');
-await page.locator('.kb-card:has-text("Garden")').dragTo(page.locator('.kb-col:has(h2[title="Work"]) .kb-body'));
-const workAfter = await colCount('Work');
-if (workAfter !== workBefore + 1) problems.push(`card board: dragging Garden onto Work should add one card there (had ${workBefore}, now ${workAfter})`);
-await shot('cards-board-dragged');
-await page.click('button.seg-btn:has-text("Gallery")');
+// searching at the top looks through every folder and section
+await page.fill('input[aria-label="Search cards"]', 'Tokyo');
+if ((await page.locator('.ctile').count()) !== 1) problems.push('card folders: searching at the top should find a card inside a section');
+await page.fill('input[aria-label="Search cards"]', '');
+await page.click('.cf-tree .cf-go:has-text("Europe")');
+if ((await page.locator('.cf-main .ctile').count()) !== 1) problems.push('card folders: the Europe section should hold the Tokyo card');
+await page.click('.cf-root');
+// drag a card onto a folder in the tree
+await page.locator('.cf-card:has-text("Garden")').dragTo(page.locator('.cf-tree .cf-row', { hasText: 'Trips' }));
+await page.waitForTimeout(300);
+if ((await page.locator('.cf-main > .cgrid .ctile').count()) !== 1) problems.push('card folders: dragging Garden onto Trips should take it off the top');
+await page.click('.cf-tree .cf-go:has-text("Trips")');
+if ((await page.locator('.cf-main > .cgrid .ctile').count()) !== 1 || (await page.locator('.cf-main .section').count()) !== 1) problems.push('card folders: Trips should show its Europe section and the Garden card');
+await shot('cards-folder-dragged');
+await page.click('.cf-root');
 
 // Cards on a page: make one from the toolbar, tap it open, drag it, add an existing card, delete a box (the card must survive)
 await page.click('.sidebar >> text=All pages');
@@ -457,6 +476,42 @@ await shot('widget-page', w);
 await w.goto(`${URL}/?widget=${pageId}&block=missing`, { waitUntil: 'domcontentloaded' });
 await w.waitForSelector('.widget-gone');
 await shot('widget-deleted', w);
+
+// Workspace: documents, spreadsheets, presentations, and the graph (the add-on is switched on in Settings first)
+await page.goto(URL + '#/');
+await page.waitForSelector('.sidebar');
+await page.click('.side-settings');
+await page.click('[role=tab]:has-text("Add-ons")');
+await page.click('button[role=switch]:has-text("Turn on Workspace")');
+await page.waitForSelector('.ai-settings:has-text("Open Workspace")');
+await shot('settings-addons-workspace');
+await page.keyboard.press('Escape');
+await page.click('.sidebar >> text=Workspace');
+await page.waitForSelector('.office-hub');
+await shot('workspace-hub');
+await page.click('.office-col[aria-label="Document"] .office-starter:has-text("Report")');
+await page.waitForSelector('.doc-paper');
+await shot('workspace-document');
+await page.goto(URL + '#/');
+await page.click('.sidebar >> text=Workspace');
+await page.click('.office-col[aria-label="Spreadsheet"] .office-starter:has-text("Monthly budget")');
+await page.waitForSelector('.sheet-table');
+await shot('workspace-spreadsheet');
+await page.goto(URL + '#/');
+await page.click('.sidebar >> text=Workspace');
+await page.click('.office-col[aria-label="Presentation"] .office-starter:has-text("Pitch")');
+await page.waitForSelector('.slides-panel');
+await shot('workspace-presentation');
+await page.click('.slides-head button:has-text("Present")');
+await page.waitForSelector('.present');
+await shot('workspace-present');
+await page.keyboard.press('Escape');
+await page.goto(URL + '#/');
+await page.click('.sidebar >> text=Cards');
+await page.click('button:has-text("New card")');
+await page.waitForSelector('.card-detail');
+await page.keyboard.type('A card');
+await shot('card-detail-new');
 
 await browser.close();
 console.log(`${n} screenshots in ${OUT}`);

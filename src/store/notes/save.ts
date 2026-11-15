@@ -123,7 +123,10 @@ export async function refreshFromDisk() {
     for (const id of Object.keys(s.pages)) {
       if (!onDisk.has(id) && !busy(id) && s.pages[id].rev > 0) delete s.pages[id];
     }
-    if (groupsTimer === null && groupsRunning === null) s.groups = groups;
+    if (groupsTimer === null && groupsRunning === null) {
+      s.groups = groups.filter((g) => g.scope !== 'cards');
+      s.cardFolders = groups.filter((g) => g.scope === 'cards');
+    }
   });
   if (replaced.length) {
     replaced.forEach((id) => history.clear(id));
@@ -144,7 +147,8 @@ export async function flushGroups() {
   if (groupsRunning) await groupsRunning;
   groupsRunning = (async () => {
     try {
-      await getStorage().saveGroups(deepClone(get().groups));
+      // Page groups and card folders are stored together (one table, told apart by `scope`), so both go in every save.
+      await getStorage().saveGroups(deepClone([...get().groups, ...get().cardFolders]));
     } catch (e) {
       console.error(e);
       lastError = 'Couldn’t save groups.';

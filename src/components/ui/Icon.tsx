@@ -196,6 +196,24 @@ const PATHS = {
     </>
   ),
   chevron: <path d="M6 8l4 4 4-4" />,
+  sidebar: (
+    <>
+      <rect x="3" y="4" width="14" height="12" rx="1.5" />
+      <path d="M8 4v12" />
+    </>
+  ),
+  lock: (
+    <>
+      <rect x="4.5" y="9" width="11" height="7.5" rx="1.5" />
+      <path d="M7 9V6.5a3 3 0 016 0V9" />
+    </>
+  ),
+  map: (
+    <>
+      <rect x="3" y="4" width="14" height="12" rx="1.5" />
+      <rect x="9" y="9" width="6" height="5" rx="1" />
+    </>
+  ),
 } as const;
 
 export type IconName = keyof typeof PATHS | 'more' | 'grip';

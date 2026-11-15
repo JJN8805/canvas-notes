@@ -37,7 +37,7 @@ export function applyChanges(pageId: string, changes: readonly ProposedChange[],
               ? { ...BLOCK_DEFAULTS.sticky(), html: markdownToHtml(op.markdown) }
               : { ...BLOCK_DEFAULTS.text(), w: 420, html: markdownToHtml(op.markdown) };
         const id = newId();
-        p.blocks.push({ ...fields, id, type: op.what, x: Math.round(spot.x), y: Math.round(spot.y + offset), z: maxZ(p.blocks as Block[]) + 1 } as unknown as Draft<Block>);
+        p.blocks.push({ ...fields, id, type: op.what === 'checklist' ? 'checklist' : 'note', x: Math.round(spot.x), y: Math.round(spot.y + offset), z: maxZ(p.blocks as Block[]) + 1 } as unknown as Draft<Block>);
         offset += 140;
         report.applied++;
         report.touched.push(id);
@@ -45,8 +45,8 @@ export function applyChanges(pageId: string, changes: readonly ProposedChange[],
       }
       const known = aliases[op.box];
       const b = known && p.blocks.find((x) => x.id === known.id);
-      // checked again here: the proposal may have sat on screen while the box was edited
-      if (!b || fingerprint(b as Block) !== known.fp) {
+      // checked again here: the proposal may have sat on screen while the box was edited or locked
+      if (!b || b.locked || fingerprint(b as Block) !== known.fp) {
         report.skipped++;
         continue;
       }

@@ -7,6 +7,8 @@ export interface Pending {
   wire: string;
   shared?: Message['shared'];
   aliases?: Message['aliases'];
+  /** Instructions the app adds besides the standard ones (shown to the user too). */
+  system?: string;
   history: string[];
 }
 

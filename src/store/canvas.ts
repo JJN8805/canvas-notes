@@ -15,6 +15,8 @@ interface CanvasState {
   activeEditor: Editor | null;
   /** Touch screens: taps add/remove boxes from the selection instead of editing them. */
   selectMode: boolean;
+  /** The hand tool (H): dragging pans instead of selecting, until it is switched off. */
+  hand: boolean;
 }
 
 // Plain zustand (no immer): TipTap editors must not be frozen.
@@ -24,10 +26,13 @@ export const useCanvas = create<CanvasState>(() => ({
   zoom: 1,
   activeEditor: null,
   selectMode: false,
+  hand: false,
 }));
 
 /** Text boxes just made by double-click or the Text tool: dropped again if they are left empty when deselected. */
 export const freshText = new Set<string>();
+
+export const setHand = (on: boolean) => useCanvas.setState({ hand: on });
 
 export function setSelected(ids: string[]) {
   const cur = useCanvas.getState();
@@ -45,7 +50,7 @@ export function setSelectMode(on: boolean) {
 }
 
 export function resetCanvas() {
-  useCanvas.setState({ selected: [], selectedArrow: null, zoom: 1, activeEditor: null, selectMode: false });
+  useCanvas.setState({ selected: [], selectedArrow: null, zoom: 1, activeEditor: null, selectMode: false, hand: false });
 }
 
 export interface CanvasView {
@@ -64,6 +69,10 @@ export interface CanvasApi {
   /** The zoom and scroll position (in screen pixels) of the visible part of the page. */
   getView(): CanvasView;
   setView(view: CanvasView): void;
+  /** Zoom and scroll so everything on the page is in view. */
+  fit(): void;
+  /** The same for the selected boxes. */
+  fitSelection(): void;
 }
 export const canvasApi: { current: CanvasApi | null } = { current: null };
 

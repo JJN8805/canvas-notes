@@ -51,7 +51,7 @@ describe('the starter templates', () => {
 
   it('put the brainstorm stickies inside frames, and use the note colours', () => {
     const b = builtinTemplates().find((x) => x.id === BUILTIN_IDS.brainstorm)!;
-    const stickies = b.blocks.filter((x) => x.type === 'sticky');
+    const stickies = b.blocks.filter((x) => (x.type === 'note' && x.style === 'sticky'));
     expect(stickies.length).toBeGreaterThanOrEqual(4);
     expect(stickies.every((s) => !!s.frameId && !!s.tint)).toBe(true);
     expect(b.blocks.filter((x) => x.type === 'frame').length).toBeGreaterThanOrEqual(3);
@@ -82,7 +82,7 @@ describe('form fields', () => {
   it('draw a label and an input, and report where the next field starts', () => {
     const b = builder('t');
     const next = field(b, 100, 200, 300, 'Name', 'short');
-    expect(b.blocks.map((x) => x.type)).toEqual(['text', 'text']);
+    expect(b.blocks.map((x) => x.type)).toEqual(['note', 'note']);
     expect(b.blocks[1]).toMatchObject({ x: 100, y: 240, w: 300, fill: true });
     expect(next).toBeGreaterThan(b.blocks[1].y + b.blocks[1].h);
   });
@@ -97,7 +97,7 @@ describe('form fields', () => {
 
   it('make the form builder carry every kind of field plus a flow of arrows', () => {
     const f = builtinTemplates().find((x) => x.id === MORE_IDS.formBuilder)!;
-    expect(f.blocks.filter((x) => x.type === 'text' && x.fill).length).toBeGreaterThanOrEqual(7);
+    expect(f.blocks.filter((x) => (x.type === 'note' && x.style === 'text') && x.fill).length).toBeGreaterThanOrEqual(7);
     expect(f.blocks.some((x) => x.type === 'checklist')).toBe(true);
     expect(f.arrows.length).toBeGreaterThanOrEqual(2);
   });
@@ -105,7 +105,7 @@ describe('form fields', () => {
   it('draw inputs as filled text boxes and size every frame to its contents', () => {
     const all = builtinTemplates();
     const f = all.find((x) => x.id === MORE_IDS.formBuilder)!;
-    const inputs = f.blocks.filter((x) => x.type === 'text' && x.fill);
+    const inputs = f.blocks.filter((x) => (x.type === 'note' && x.style === 'text') && x.fill);
     expect(inputs.length).toBeGreaterThanOrEqual(7);
     expect(f.blocks.some((x) => x.type === 'table')).toBe(false);
     // no frame leaves a big empty strip at the bottom: its boxes reach close to its lower edge
@@ -114,7 +114,7 @@ describe('form fields', () => {
       for (const fr of t.blocks.filter((x) => x.type === 'frame')) {
         const kids = t.blocks.filter((x) => x.frameId === fr.id);
         if (!kids.length) continue;
-        const reach = Math.max(...kids.map((k) => k.y + (k.type === 'sticky' ? k.h : k.type === 'table' ? k.h + 24 * k.rows.length : k.type === 'checklist' ? k.h + 32 * k.items.length : k.h)));
+        const reach = Math.max(...kids.map((k) => k.y + ((k.type === 'note' && k.style === 'sticky') ? k.h : k.type === 'table' ? k.h + 24 * k.rows.length : k.type === 'checklist' ? k.h + 32 * k.items.length : k.h)));
         expect(fr.y + fr.h - reach, `${t.title} / ${fr.type === 'frame' ? fr.title : ''}`).toBeLessThan(220);
       }
     }

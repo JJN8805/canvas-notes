@@ -3,7 +3,7 @@ import { parseQuery, searchPages } from '../src/lib/search';
 import type { Block, Group, Page } from '../src/types';
 
 const D = (s: string) => new Date(`${s}T12:00:00`).getTime();
-const text = (html: string): Block => ({ id: 't' + html, type: 'text', x: 0, y: 0, w: 1, h: 1, z: 1, html }) as Block;
+const text = (html: string): Block => ({ id: 't' + html, type: 'note', style: 'text', x: 0, y: 0, w: 1, h: 1, z: 1, html }) as Block;
 const image = (): Block => ({ id: 'i', type: 'image', x: 0, y: 0, w: 1, h: 1, z: 1, imageId: 'x', aspect: 1 }) as Block;
 const page = (id: string, title: string, extra: Partial<Page> = {}): Page => ({
   id, title, groupId: null, tags: [], blocks: [], arrows: [], created: 1, updated: D('2026-03-10'), rev: 0, ...extra,

@@ -1,4 +1,5 @@
 import DOMPurify from 'dompurify';
+import { safeStyle } from './richStyle';
 import type { Block, GroupColor, NoteColor } from '../types';
 import { GROUP_COLORS, NOTE_COLORS } from '../types';
 
@@ -47,12 +48,22 @@ export function timeAgo(ts: number): string {
 
 const ALLOWED_TAGS = ['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'code', 'pre', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'blockquote', 'a', 'hr', 'span'];
 const sanitizeCache = new Map<string, string>();
+// Rich text may carry a font size, colours and alignment as inline styles, and nothing else (see lib/richStyle.ts).
+// (Without a window, as in unit tests, DOMPurify is a stub with no hooks; nothing is rendered there.)
+if (typeof DOMPurify.addHook === 'function') {
+  DOMPurify.addHook('uponSanitizeAttribute', (_node, data) => {
+    if (data.attrName !== 'style') return;
+    const css = safeStyle(data.attrValue);
+    if (css) data.attrValue = css;
+    else data.keepAttr = false;
+  });
+}
 
 /** Sanitise stored rich text before rendering it outside the editor (thumbnails). */
 export function sanitizeHtml(html: string): string {
   const hit = sanitizeCache.get(html);
   if (hit !== undefined) return hit;
-  const clean = DOMPurify.sanitize(html, { ALLOWED_TAGS, ALLOWED_ATTR: ['href'] });
+  const clean = DOMPurify.sanitize(html, { ALLOWED_TAGS, ALLOWED_ATTR: ['href', 'style'] });
   if (sanitizeCache.size > 500) sanitizeCache.clear();
   sanitizeCache.set(html, clean);
   return clean;
@@ -84,13 +95,11 @@ export function textToHtml(text: string): string {
 }
 
 export const BLOCK_LABEL: Record<Block['type'], string> = {
-  text: 'Text',
+  note: 'Note',
   image: 'Image',
   checklist: 'List',
-  code: 'Code',
   table: 'Table',
   frame: 'Frame',
-  sticky: 'Sticky',
   audio: 'Audio',
   pdf: 'PDF',
   card: 'Card',
@@ -98,13 +107,10 @@ export const BLOCK_LABEL: Record<Block['type'], string> = {
 
 export function blockText(b: Block): string {
   switch (b.type) {
-    case 'text':
-    case 'sticky':
-      return htmlToText(b.html);
+    case 'note':
+      return b.style === 'code' ? (b.code ?? '') : htmlToText(b.html);
     case 'checklist':
       return b.items.map((i) => i.text).join(' ');
-    case 'code':
-      return b.code;
     case 'table':
       return b.rows.flat().join(' ');
     case 'image':
@@ -121,7 +127,7 @@ export function blockText(b: Block): string {
 export const FRAME_HEAD_H = 32;
 
 /** Pictures, stickies, audio players and PDFs keep the height they were given; every other box grows with its content. */
-export const isFixedHeight = (b: Block) => b.type === 'image' || b.type === 'sticky' || b.type === 'audio' || b.type === 'pdf';
+export const isFixedHeight = (b: Block) => b.type === 'image' || (b.type === 'note' && b.style === 'sticky') || b.type === 'audio' || b.type === 'pdf';
 
 export function blockHeight(b: Block): number {
   if (b.type === 'frame') return b.collapsed ? FRAME_HEAD_H : b.h;

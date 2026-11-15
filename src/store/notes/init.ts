@@ -3,7 +3,7 @@ import { seedBuiltinTemplates } from '../../lib/builtinTemplates';
 import { loadPrefs, usePrefs } from '../prefs';
 import { loadAddons } from '../../addons/store';
 import { deepClone } from '../../lib/util';
-import { fileIdsOf } from '../../lib/files';
+import { pageFileIds } from '../../lib/files';
 import { isTauri, openStorage } from '../../storage';
 import { toast } from '../ui';
 import { Snapshot } from '../../storage/types';
@@ -32,27 +32,27 @@ export async function doInit() {
     await seedBuiltinTemplates(storage).catch((e) => console.warn('Starter templates failed', e));
     const { pages, groups } = await storage.loadAll();
     const location = await storage.location().catch(() => '');
-    let collapsed: string[] = [];
-    try {
-      collapsed = JSON.parse((await storage.getSetting('ui.collapsedGroups')) ?? '[]');
-    } catch {
-      /* ignore */
-    }
     await loadPrefs(storage);
     void loadAddons(storage); // add-ons that are switched on start in the background; the app does not wait for them
     set((s) => {
       s.pages = Object.fromEntries(pages.map((p) => [p.id, p]));
-      s.groups = groups;
+      s.groups = groups.filter((g) => g.scope !== 'cards');
+      s.cardFolders = groups.filter((g) => g.scope === 'cards');
       s.storageKind = storage.kind;
       s.storageLocation = location;
-      s.collapsed = Array.isArray(collapsed) ? collapsed : [];
       s.status = 'ready';
     });
     // Pages deleted longer ago than the Trash setting allows (30 days unless changed) are emptied for good (their deletion still syncs).
     await storage.purgeExpiredTrash(Date.now() - usePrefs.getState().trashDays * 24 * 3600_000).catch((e) => console.warn('Trash cleanup failed', e));
     await loadTrash();
+    // Data written by earlier versions is brought into the shared form (same picture twice becomes one file, old history becomes shared
+    // boxes) in the background, a little at a time, before pictures nothing uses any more are cleared out.
     // Images deleted from pages are kept until the next launch so undo can bring them back.
-    storage.pruneImages(usedImageIds(pages)).catch((e) => console.warn('Image cleanup failed', e));
+    void storage
+      .tidy()
+      .catch((e) => console.warn('Tidying storage failed', e))
+      .then(() => storage.pruneImages(usedImageIds(pages)))
+      .catch((e) => console.warn('Image cleanup failed', e));
 
     window.addEventListener('focus', () => void refreshFromDisk());
     document.addEventListener('visibilitychange', () => {
@@ -123,7 +123,7 @@ export async function restoreSnapshot(pageId: string, snap: Snapshot) {
 
 export function usedImageIds(pages: Page[]): Set<string> {
   const ids = new Set<string>();
-  for (const p of pages) for (const id of fileIdsOf(p.blocks)) ids.add(id);
+  for (const p of pages) for (const id of pageFileIds(p)) ids.add(id);
   return ids;
 }
 

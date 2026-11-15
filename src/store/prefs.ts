@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { NoteColor } from '../types';
 import { cleanColor } from '../lib/colors';
+import { cleanKeymap, DEFAULT_KEYMAP, isDefaultKeymap, type Keymap } from '../lib/keymap';
 import { activeTheme, cleanCustom, cleanPalette, themeVars, VAR_NAMES, DEFAULT_CUSTOM, DEFAULT_PALETTE, type ThemeColors } from '../lib/themes';
 import { cleanName, cleanProfileColor, cleanTheme, cleanTrashDays, DEFAULT_TRASH_DAYS, type ProfileColor, type Theme } from '../lib/settings';
 
@@ -10,6 +11,8 @@ const THEME_KEY = 'ui.theme';
 const NAME_KEY = 'profile.name';
 const PROFILE_COLOR_KEY = 'profile.color';
 const SNAP_KEY = 'editor.snap';
+const MINIMAP_KEY = 'editor.minimap';
+const KEYMAP_KEY = 'editor.keymap';
 const TRASH_KEY = 'trash.days';
 const AUTO_SYNC_KEY = 'sync.auto';
 const PALETTE_KEY = 'ui.palette';
@@ -28,6 +31,10 @@ export interface Prefs {
   profileColor: ProfileColor;
   /** Snap to other boxes and the grid while dragging (Alt still turns it off for one drag). */
   snap: boolean;
+  /** The small map in the corner of a page (shown only when there is more page than fits the view). */
+  minimap: boolean;
+  /** The one-letter keys on a page (lib/keymap.ts). */
+  keymap: Keymap;
   /** Days a deleted page stays in Trash. */
   trashDays: number;
   /** Sync in the background (on opening, every two minutes, after edits) rather than only on request. */
@@ -44,6 +51,8 @@ export const usePrefs = create<Prefs>(() => ({
   profileName: '',
   profileColor: 'ultra',
   snap: true,
+  minimap: true,
+  keymap: DEFAULT_KEYMAP,
   trashDays: DEFAULT_TRASH_DAYS,
   autoSync: true,
 }));
@@ -68,8 +77,8 @@ export function applyTheme(theme: Theme, palette = usePrefs.getState().palette, 
 
 export async function loadPrefs(storage: SettingsStore) {
   const get = (k: string) => storage.getSetting(k).catch(() => null);
-  const [sticky, daily, theme, name, color, snap, trash, auto, palette, custom] = await Promise.all(
-    [STICKY_KEY, DAILY_KEY, THEME_KEY, NAME_KEY, PROFILE_COLOR_KEY, SNAP_KEY, TRASH_KEY, AUTO_SYNC_KEY, PALETTE_KEY, CUSTOM_THEME_KEY].map(get),
+  const [sticky, daily, theme, name, color, snap, minimap, keymap, trash, auto, palette, custom] = await Promise.all(
+    [STICKY_KEY, DAILY_KEY, THEME_KEY, NAME_KEY, PROFILE_COLOR_KEY, SNAP_KEY, MINIMAP_KEY, KEYMAP_KEY, TRASH_KEY, AUTO_SYNC_KEY, PALETTE_KEY, CUSTOM_THEME_KEY].map(get),
   );
   usePrefs.setState({
     stickyColor: cleanColor(sticky),
@@ -80,6 +89,8 @@ export async function loadPrefs(storage: SettingsStore) {
     profileName: cleanName(name),
     profileColor: cleanProfileColor(color),
     snap: snap !== 'off',
+    minimap: minimap !== 'off',
+    keymap: cleanKeymap(keymap),
     trashDays: cleanTrashDays(trash),
     autoSync: auto !== 'off',
   });
@@ -135,6 +146,15 @@ export function setProfileColor(color: ProfileColor, storage?: SettingsStore | n
 
 export function setSnap(on: boolean, storage?: SettingsStore | null) {
   change({ snap: on }, SNAP_KEY, on ? null : 'off', storage);
+}
+
+/** Remembers the one-letter keys; the defaults are stored as nothing, so a reset leaves no trace. */
+export function setKeymap(map: Keymap, storage?: SettingsStore | null) {
+  change({ keymap: map }, KEYMAP_KEY, isDefaultKeymap(map) ? null : JSON.stringify(map), storage);
+}
+
+export function setMinimap(on: boolean, storage?: SettingsStore | null) {
+  change({ minimap: on }, MINIMAP_KEY, on ? null : 'off', storage);
 }
 
 export function setTrashDays(days: number, storage?: SettingsStore | null) {

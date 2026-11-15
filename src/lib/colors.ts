@@ -59,10 +59,6 @@ export const DEFAULT_STICKY_COLOR: NoteColor = 'yellow';
 
 export const STICKY_SIZE = 200;
 
-/** Plain "S" (no Ctrl, Alt or Shift) drops a sticky; the canvas only asks when no text field has focus. */
-export const isStickyKey = (e: { key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey: boolean; repeat?: boolean }) =>
-  e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !e.repeat;
-
 /** Top-left corner for a sticky centred on a point, kept on the 8px grid. */
 export const stickyCorner = (p: { x: number; y: number }, size = STICKY_SIZE) => ({
   x: Math.round((p.x - size / 2) / 8) * 8,

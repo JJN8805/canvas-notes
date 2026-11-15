@@ -12,7 +12,7 @@ export function useEmptyBoxCleanup(pageId: string, selected: string[]) {
     for (const id of gone) {
       if (!freshText.delete(id)) continue;
       const b = useNotes.getState().pages[pageId]?.blocks.find((x) => x.id === id);
-      if (b?.type === 'text' && !b.fill && !/<img/i.test(b.html) && !b.html.replace(/<[^>]*>|&nbsp;/g, '').trim()) deleteBlocks(pageId, [id]);
+      if (b?.type === 'note' && b.style === 'text' && !b.fill && !/<img/i.test(b.html) && !b.html.replace(/<[^>]*>|&nbsp;/g, '').trim()) deleteBlocks(pageId, [id]);
     }
   }, [selected, pageId]);
 }

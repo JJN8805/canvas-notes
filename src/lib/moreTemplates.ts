@@ -31,7 +31,7 @@ export function field(b: Kit, x: number, y: number, w: number, label: string, ki
   b.text(x, y, w, `<p><strong>${label}</strong></p>`, frameId);
   const iy = y + 40;
   // An input is a text box with its background filled in, so it reads as a white box to type into.
-  const box = (h: number, html = '<p></p>') => b.add({ type: 'text', x, y: iy, w, h, html, fill: true, frameId });
+  const box = (h: number, html = '<p></p>') => b.add({ type: 'note', style: 'text', x, y: iy, w, h, html, fill: true, frameId });
   switch (kind) {
     case 'short':
       box(44);

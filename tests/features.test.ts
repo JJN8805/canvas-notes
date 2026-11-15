@@ -47,8 +47,8 @@ const page: Page = {
   id: 'p', title: 'Groundwater model', groupId: null, tags: ['research', 'ml'], created: 1, updated: 1, rev: 1,
   arrows: [],
   blocks: [
-    { id: 'c', type: 'code', x: 400, y: 300, w: 300, h: 50, z: 1, code: 'print("hi")' },
-    { id: 't', type: 'text', x: 0, y: 0, w: 300, h: 40, z: 1, html: '<h2>Goals</h2><p>Predict <strong>levels</strong> with <s>LSTM</s> GBMs.</p><ul><li><p>One</p></li></ul>' },
+    { id: 'c', type: 'note', style: 'code', x: 400, y: 300, w: 300, h: 50, z: 1, code: 'print("hi")' },
+    { id: 't', type: 'note', style: 'text', x: 0, y: 0, w: 300, h: 40, z: 1, html: '<h2>Goals</h2><p>Predict <strong>levels</strong> with <s>LSTM</s> GBMs.</p><ul><li><p>One</p></li></ul>' },
     { id: 'l', type: 'checklist', x: 0, y: 300, w: 300, h: 50, z: 1, items: [{ id: '1', text: 'Clean data', done: true }, { id: '2', text: 'Train', done: false }] },
     { id: 'tb', type: 'table', x: 0, y: 600, w: 300, h: 50, z: 1, rows: [['Model', 'RMSE'], ['GBM', '0.41'], ['a|b', '']] },
     { id: 'i', type: 'image', x: 400, y: 10, w: 100, h: 100, z: 1, imageId: 'img1', aspect: 1, alt: 'Well map' },
@@ -93,10 +93,10 @@ describe('Markdown export', () => {
       arrows: [],
       blocks: [
         { id: 'f1', type: 'frame', x: 0, y: 0, w: 400, h: 300, z: 1, title: 'Research', color: 'slate', collapsed: false, frameId: null },
-        { id: 't1', type: 'text', x: 10, y: 40, w: 200, h: 40, z: 1, html: '<p>Inside the frame</p>', frameId: 'f1' },
+        { id: 't1', type: 'note', style: 'text', x: 10, y: 40, w: 200, h: 40, z: 1, html: '<p>Inside the frame</p>', frameId: 'f1' },
         { id: 'f2', type: 'frame', x: 20, y: 100, w: 200, h: 150, z: 1, title: 'Sub frame', color: 'teal', collapsed: false, frameId: 'f1' },
-        { id: 't2', type: 'text', x: 25, y: 140, w: 150, h: 30, z: 1, html: '<p>Nested</p>', frameId: 'f2' },
-        { id: 't3', type: 'text', x: 500, y: 0, w: 150, h: 30, z: 1, html: '<p>Outside</p>', frameId: null },
+        { id: 't2', type: 'note', style: 'text', x: 25, y: 140, w: 150, h: 30, z: 1, html: '<p>Nested</p>', frameId: 'f2' },
+        { id: 't3', type: 'note', style: 'text', x: 500, y: 0, w: 150, h: 30, z: 1, html: '<p>Outside</p>', frameId: null },
       ],
     };
     const md = pageToMarkdown(framed, () => '');
@@ -109,7 +109,7 @@ describe('Markdown export', () => {
       arrows: [],
       blocks: [
         { id: 'f1', type: 'frame', x: 0, y: 0, w: 400, h: 300, z: 1, title: 'Research', color: 'slate', collapsed: true, frameId: null },
-        { id: 't1', type: 'text', x: 10, y: 40, w: 200, h: 40, z: 1, html: '<p>Hidden</p>', frameId: 'f1' },
+        { id: 't1', type: 'note', style: 'text', x: 10, y: 40, w: 200, h: 40, z: 1, html: '<p>Hidden</p>', frameId: 'f1' },
       ],
     };
     const md = pageToMarkdown(framed, () => '');

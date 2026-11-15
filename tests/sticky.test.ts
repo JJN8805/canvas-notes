@@ -1,21 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { memoryGraph } from './graphdb';
 
 vi.mock('../src/components/library/Thumbnail', () => ({ StaticBody: () => null }));
 vi.mock('../src/store/ui', () => ({ toast: () => {}, openMenu: () => {}, useUi: { getState: () => ({}) } }));
 
-import { GraphMirror, type LegacyPage } from '../src/graph/mirror';
-import { blockPlainText } from '../src/graph/text';
+import { blockPlainText } from '../src/lib/pageText';
 import { pageToMarkdown } from '../src/export/export';
 import { blockHeight, blockText, BLOCK_LABEL, isFixedHeight } from '../src/lib/util';
 import { readFileSync } from 'node:fs';
-import { DEFAULT_STICKY_COLOR, dragsStickyBody, isStickyKey, STICKY_SIZE, stickyCorner, tintVars } from '../src/lib/colors';
+import { DEFAULT_STICKY_COLOR, dragsStickyBody, STICKY_SIZE, stickyCorner, tintVars } from '../src/lib/colors';
 import { history } from '../src/store/history';
 import { loadPrefs, rememberStickyColor, usePrefs } from '../src/store/prefs';
 import { addBlock, BLOCK_DEFAULTS, setColor, undo, useNotes } from '../src/store/notes';
-import type { Block, Page, StickyBlock } from '../src/types';
+import type { Block, Page, NoteBlock } from '../src/types';
 
-const sticky = (extra: Partial<StickyBlock> = {}): StickyBlock => ({ id: 's1', type: 'sticky', x: 0, y: 0, w: 200, h: 200, z: 1, html: '<p>Buy milk</p>', tint: 'yellow', ...extra });
+const sticky = (extra: Partial<NoteBlock> = {}): NoteBlock => ({ id: 's1', type: 'note', style: 'sticky', x: 0, y: 0, w: 200, h: 200, z: 1, html: '<p>Buy milk</p>', tint: 'yellow', ...extra });
 const page = (blocks: Block[]): Page => ({ id: 'p', title: 'T', groupId: null, tags: [], blocks, arrows: [], created: 1, updated: 1, rev: 1 });
 
 /** A settings store that remembers in memory. */
@@ -41,7 +39,7 @@ describe('sticky block', () => {
   it('keeps its height like a picture, not a minimum height', () => {
     expect(isFixedHeight(sticky())).toBe(true);
     expect(blockHeight(sticky({ h: 200, ah: 400 }))).toBe(200);
-    expect(BLOCK_LABEL.sticky).toBe('Sticky');
+    expect(BLOCK_LABEL.note).toBe('Note');
   });
 
   it('exposes its colour to CSS, and nothing when it has none', () => {
@@ -53,16 +51,6 @@ describe('sticky block', () => {
   it('has searchable text', () => {
     expect(blockText(sticky()).trim()).toBe('Buy milk');
     expect(blockPlainText(sticky())).toBe('Buy milk');
-  });
-
-  it('is mirrored into the graph as a sticky block', async () => {
-    const { repo } = await memoryGraph();
-    const legacy: LegacyPage = { id: 'p', title: 'T', groupId: null, tags: [], blocks: [sticky()], arrows: [], created: 1 };
-    await new GraphMirror(repo).page(legacy);
-    const rows = await repo.listBlocks('p');
-    expect(rows.map((r) => r.type)).toEqual(['sticky']);
-    expect(rows[0].plain_text).toBe('Buy milk');
-    expect(JSON.parse(rows[0].content).tint).toBe('yellow');
   });
 });
 
@@ -84,19 +72,7 @@ describe('sticky Markdown export', () => {
   });
 });
 
-describe('the S shortcut', () => {
-  const key = (k: string, extra: object = {}) => ({ key: k, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...extra });
-  it('is a plain S only', () => {
-    expect(isStickyKey(key('s'))).toBe(true);
-    expect(isStickyKey(key('S'))).toBe(true);
-    expect(isStickyKey(key('s', { ctrlKey: true }))).toBe(false);
-    expect(isStickyKey(key('s', { metaKey: true }))).toBe(false);
-    expect(isStickyKey(key('s', { altKey: true }))).toBe(false);
-    expect(isStickyKey(key('s', { shiftKey: true }))).toBe(false);
-    expect(isStickyKey(key('s', { repeat: true }))).toBe(false);
-    expect(isStickyKey(key('a'))).toBe(false);
-  });
-
+describe('placing a sticky', () => {
   it('centres the sticky on the pointer and on the grid, including left of or above the start', () => {
     expect(stickyCorner({ x: 500, y: 300 })).toEqual({ x: 400, y: 200 });
     expect(stickyCorner({ x: 503, y: 297 })).toEqual({ x: 400, y: 200 });
@@ -110,7 +86,7 @@ describe('remembering the last sticky colour', () => {
     vi.stubGlobal('document', { hidden: false, addEventListener() {}, removeEventListener() {} });
     usePrefs.setState({ stickyColor: null });
     history.clear('p');
-    useNotes.setState({ pages: { p: page([sticky({ tint: 'yellow' }), { id: 't', type: 'text', x: 0, y: 0, w: 100, h: 40, z: 1, html: '' } as Block]) } });
+    useNotes.setState({ pages: { p: page([sticky({ tint: 'yellow' }), { id: 't', type: 'note', style: 'text', x: 0, y: 0, w: 100, h: 40, z: 1, html: '' } as Block]) } });
   });
 
   it('is saved and read back through settings', async () => {
@@ -141,8 +117,8 @@ describe('remembering the last sticky colour', () => {
   it('gives the next sticky that colour, and creating one is a single undo step', () => {
     setColor('p', ['s1'], 'orange');
     const id = addBlock('p', 'sticky', { x: 40, y: 40 });
-    const made = useNotes.getState().pages.p.blocks.find((b) => b.id === id) as StickyBlock;
-    expect(made).toMatchObject({ type: 'sticky', w: 200, h: 200, tint: 'orange', x: 40, y: 40 });
+    const made = useNotes.getState().pages.p.blocks.find((b) => b.id === id) as NoteBlock;
+    expect(made).toMatchObject({ type: 'note', style: 'sticky', w: 200, h: 200, tint: 'orange', x: 40, y: 40 });
     expect(undo('p')).toBe(true);
     expect(useNotes.getState().pages.p.blocks.some((b) => b.id === id)).toBe(false);
   });

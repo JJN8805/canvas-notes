@@ -16,18 +16,32 @@
  */
 import type { Block } from '../types';
 import { newId } from '../lib/util';
-import { fileIdsOf } from '../lib/files';
+import { pageFileIds } from '../lib/files';
 import type { GroupRecord, ImagePayload, PageRecord, SyncKind, SyncMeta, SyncRecord, SyncStore } from '../storage/types';
 
 export const PROTOCOL_VERSION = 1;
+/**
+ * How pages are written. 2 = text, sticky and code boxes are saved as notes. A device on an older version cannot show those, so a
+ * device that saves format 2 must not sync with one that only knows format 1 (in either direction). 1 is assumed when a peer says nothing.
+ */
+export const DATA_FORMAT = 2;
+export const PEER_TOO_OLD = 'The other device has an older version of Canvas Notes. Update it first, then sync again, so your pages are not shown broken there.';
+export const CLIENT_TOO_OLD = 'The phone has an older version of Canvas Notes. Update it, then sync again.';
+export interface Hello {
+  app: string;
+  protocol: number;
+  format?: number;
+}
+export const peerTooOld = (hello: { format?: number }) => (hello.format ?? 1) < DATA_FORMAT;
 
-export type SyncRequest =
+export type SyncRequest = { format?: number } & (
   | { op: 'hello' }
   | { op: 'manifest' }
   | { op: 'get'; kind: SyncKind; ids: string[] }
   | { op: 'put'; kind: SyncKind; items: { record: SyncRecord; base: string | null }[] }
   | { op: 'getImages'; ids: string[] }
-  | { op: 'putImages'; images: ImagePayload[] };
+  | { op: 'putImages'; images: ImagePayload[] }
+);
 
 export interface Manifest {
   pages: SyncMeta[];
@@ -53,7 +67,7 @@ const chunks = <T,>(arr: T[], n: number): T[][] => {
   return out;
 };
 
-const imageIdsOf = (blocks: Block[]) => fileIdsOf(blocks);
+const imageIdsOf = (page: { blocks: Block[]; cover?: string | null }) => pageFileIds(page);
 
 /* ------------------------------------------------------------------ */
 /* Laptop side                                                         */
@@ -64,12 +78,15 @@ export interface ServerHooks {
   beforeRead?: () => Promise<void>;
   /** Called after the phone changed something, so the laptop UI can reload. */
   afterWrite?: () => void;
+  /** Refuse every request except `hello` from a client that does not say it writes at least this format (an old app says nothing). */
+  minFormat?: number;
 }
 
 export async function handleRequest(store: SyncStore, req: SyncRequest, hooks: ServerHooks = {}): Promise<unknown> {
+  if (hooks.minFormat !== undefined && req.op !== 'hello' && (req.format ?? 1) < hooks.minFormat) throw new Error(CLIENT_TOO_OLD);
   switch (req.op) {
     case 'hello':
-      return { app: 'canvas-notes', protocol: PROTOCOL_VERSION };
+      return { app: 'canvas-notes', protocol: PROTOCOL_VERSION, format: DATA_FORMAT } satisfies Hello;
     case 'manifest': {
       await hooks.beforeRead?.();
       const [pages, groups, images] = await Promise.all([store.listMeta('page'), store.listMeta('group'), store.listImageIds()]);
@@ -162,6 +179,8 @@ function plan(kind: SyncKind, local: SyncMeta[], remote: SyncMeta[]): Plan {
  */
 export async function syncWithLaptop(store: SyncStore, send: Send): Promise<SyncReport> {
   const report: SyncReport = { sent: 0, received: 0, conflicts: 0, images: 0 };
+  const hello = await send<Hello>({ op: 'hello' });
+  if (peerTooOld(hello)) throw new Error(PEER_TOO_OLD);
   for (let round = 0; round < 3; round++) {
     const again = await syncRound(store, send, report);
     if (!again) break;
@@ -192,6 +211,7 @@ async function syncRound(store: SyncStore, send: Send, report: SyncReport): Prom
           drawing: r.drawing ?? null,
           color: r.color ?? null,
           sheet: r.sheet ?? null,
+          cover: r.cover ?? null,
           // A conflicted copy of a template stays a template; it never keeps a daily page's date.
           kind: r.kind ?? 'page',
           dailyDate: null,
@@ -207,7 +227,7 @@ async function syncRound(store: SyncStore, send: Send, report: SyncReport): Prom
       const outgoing = (await store.getRecords('page', p.push.map((x) => x.id))) as PageRecord[];
       const have = new Set(manifest.images);
       const local = new Set(await store.listImageIds());
-      const needed = [...new Set(outgoing.flatMap((r) => imageIdsOf(r.blocks)))].filter((id) => !have.has(id) && local.has(id));
+      const needed = [...new Set(outgoing.flatMap((r) => imageIdsOf(r)))].filter((id) => !have.has(id) && local.has(id));
       report.images += await sendImages(store, send, needed);
       needed.forEach((id) => have.add(id));
     }
@@ -241,7 +261,7 @@ async function syncRound(store: SyncStore, send: Send, report: SyncReport): Prom
   const pages = (await store.getRecords('page', (await store.listMeta('page')).filter((m) => !m.deleted).map((m) => m.id))) as PageRecord[];
   const local = new Set(await store.listImageIds());
   const onLaptop = new Set(manifest.images);
-  const missing = [...new Set(pages.flatMap((r) => imageIdsOf(r.blocks)))].filter((id) => !local.has(id) && onLaptop.has(id));
+  const missing = [...new Set(pages.flatMap((r) => imageIdsOf(r)))].filter((id) => !local.has(id) && onLaptop.has(id));
   for (const ids of chunks(missing, 4)) {
     const { images } = await send<{ images: ImagePayload[] }>({ op: 'getImages', ids });
     for (const img of images) await store.writeImage(img);

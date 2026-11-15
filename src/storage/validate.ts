@@ -33,12 +33,10 @@ export const FILE_EXT: Readonly<Record<string, string>> = { ...IMAGE_EXT, ...MED
 /** Ids the app makes are letters and digits (base 36); allow `-` and `_` too, but never a path separator or dot. */
 export const isSafeId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(id);
 
-export const isKnownImageType = (mime: unknown): mime is string => typeof mime === 'string' && Object.prototype.hasOwnProperty.call(IMAGE_EXT, mime);
-
 export const isKnownFileType = (mime: unknown): mime is string => typeof mime === 'string' && Object.prototype.hasOwnProperty.call(FILE_EXT, mime);
 
-/** Throws unless an incoming stored file (picture, audio or PDF) has a safe id and a known type. */
-export function assertSafeImage(img: { id: unknown; mime: unknown }): void {
+/** Throws unless an incoming stored file (picture, audio or PDF) has a safe id and a known type. (Named for pictures once; it has covered every stored file for a while.) */
+export function assertSafeFile(img: { id: unknown; mime: unknown }): void {
   if (!isSafeId(img.id)) throw new Error('Rejected a file with an unsafe id.');
   if (!isKnownFileType(img.mime)) throw new Error('Rejected a file of an unsupported type.');
 }

@@ -14,14 +14,14 @@ export interface NotesState {
   /** Deleted pages that can still be restored (`updated` is when they were deleted). */
   trash: Page[];
   groups: Group[];
+  /** The folders and sections of the Cards screen (a tree of its own, kept apart from `groups`). */
+  cardFolders: Group[];
   save: { state: SaveState; message: string };
   filter: Filter;
   query: string;
   sort: SortKey;
   /** Bumped whenever undo/redo availability may have changed. */
   historyVersion: number;
-  /** Groups whose subgroups are folded away in the sidebar. */
-  collapsed: string[];
 }
 
 export const useNotes = create<NotesState>()(
@@ -33,12 +33,12 @@ export const useNotes = create<NotesState>()(
     pages: {},
     trash: [],
     groups: [],
+    cardFolders: [],
     save: { state: 'idle' as SaveState, message: '' },
     filter: { kind: 'all' } as Filter,
     query: '',
     sort: 'updated' as SortKey,
     historyVersion: 0,
-    collapsed: [],
   })),
 );
 

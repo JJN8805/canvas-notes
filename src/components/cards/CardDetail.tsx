@@ -2,15 +2,19 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { cardLabel, cardParts } from '../../lib/cards';
 import { useImageUrl } from '../../lib/useImageUrl';
 import { useNotes, deletePage } from '../../store/notes';
-import { ensureCardBody, removeCardCover, setCardCover, setCardLabel, setCardSet } from '../../store/cards';
+import { ensureCardBody, removeCardCover, setCardCover, setCardLabel } from '../../store/cards';
 import { confirmDanger, toast } from '../../store/ui';
 import { Icon } from '../ui/Icon';
 import { BlockBody } from '../blocks/BlockBody';
 import { CanvasCtx } from '../editor/context';
 import { soloCtx } from '../editor/soloCtx';
 import { cardPictureSources, useAddons } from '../../addons/store';
+import { CardLinks } from './CardLinks';
+import { confirmsOnEnter, enterKey } from '../../lib/enterConfirm';
 import { CardTags } from './CardTags';
-import { GroupOptions } from './SetSelect';
+import { FolderOptions } from './FolderSelect';
+import { fileCard } from '../../store/cardFolders';
+import { folderOfCard } from '../../lib/cardFolders';
 
 /** What opens when a card is clicked: the big picture, the label and the details, all editable here. */
 export function CardDetail({ cardId, onClose: onCloseProp }: { cardId: string; onClose: () => void }) {
@@ -19,6 +23,7 @@ export function CardDetail({ cardId, onClose: onCloseProp }: { cardId: string; o
   closeRef.current = onCloseProp;
   const onClose = useCallback(() => closeRef.current(), []);
   const card = useNotes((s) => s.pages[cardId]);
+  const folders = useNotes((s) => s.cardFolders);
   const fileRef = useRef<HTMLInputElement>(null);
   const labelRef = useRef<HTMLInputElement>(null);
   const prevFocus = useRef<Element | null>(document.activeElement);
@@ -37,6 +42,11 @@ export function CardDetail({ cardId, onClose: onCloseProp }: { cardId: string; o
     (first ? labelRef.current : null)?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !sourceOpen.current) {
+        e.stopPropagation();
+        onClose();
+      } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.isComposing && !sourceOpen.current) {
+        // Ctrl+Enter is Done even from the details box, ahead of the text editor (which would make a line break of it).
+        e.preventDefault();
         e.stopPropagation();
         onClose();
       }
@@ -72,7 +82,20 @@ export function CardDetail({ cardId, onClose: onCloseProp }: { cardId: string; o
 
   return (
     <div className="scrim" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog card-detail" role="dialog" aria-modal="true" aria-label={`Card: ${cardLabel(card)}`}>
+      <div
+        className="dialog card-detail"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Card: ${cardLabel(card)}`}
+        onKeyDown={(e) => {
+          // Enter does what Done does: from the label, or Ctrl+Enter from the details. The tag field keeps Enter for adding a tag.
+          if (!sourceOpen.current && confirmsOnEnter(enterKey(e))) {
+            e.preventDefault();
+            e.stopPropagation();
+            onClose();
+          }
+        }}
+      >
         <div className="cd-cover">
           {cover && url ? <img src={url} alt="" draggable={false} /> : <span className="cd-nocover">No picture yet</span>}
           <div className="cd-cover-actions">
@@ -104,13 +127,14 @@ export function CardDetail({ cardId, onClose: onCloseProp }: { cardId: string; o
         <div className="cd-meta">
           <CardTags cardId={cardId} />
           <label className="cd-set">
-            <span>Set</span>
-            <select className="field" aria-label="Set (group) this card belongs to" value={card.groupId ?? ''} onChange={(e) => setCardSet(cardId, e.target.value || null)}>
-              <option value="">No set</option>
-              <GroupOptions />
+            <span>Folder</span>
+            <select className="field" aria-label="Folder or section this card is in" value={folderOfCard(card, folders) ?? ''} onChange={(e) => fileCard(cardId, e.target.value || null)}>
+              <option value="">Not in a folder</option>
+              <FolderOptions />
             </select>
           </label>
         </div>
+        {body && <CardLinks cardId={cardId} bodyId={body.id} />}
         <div className="cd-body">
           {body ? (
             <CanvasCtx.Provider value={soloCtx(cardId)}>

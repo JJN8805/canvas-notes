@@ -13,7 +13,7 @@ import { history } from '../src/store/history';
 import { duplicatePage, useNotes } from '../src/store/notes';
 import type { Block, Page } from '../src/types';
 
-const text = (id: string, extra: Partial<Block> = {}) => ({ id, type: 'text', x: 0, y: 0, w: 200, h: 40, z: 1, html: '<p>zebra</p>', ...extra }) as Block;
+const text = (id: string, extra: Partial<Block> = {}) => ({ id, type: 'note', style: 'text', x: 0, y: 0, w: 200, h: 40, z: 1, html: '<p>zebra</p>', ...extra }) as Block;
 const page = (extra: Partial<Page> = {}): Page => ({ id: 'p', title: 'Page', groupId: null, tags: [], blocks: [], arrows: [], created: 1, updated: 1, rev: 0, ...extra });
 const rich = (): Page =>
   page({
@@ -28,7 +28,7 @@ const rich = (): Page =>
       { id: 'f', type: 'frame', x: 0, y: 0, w: 400, h: 300, z: 0, title: 'Goals', color: 'teal', collapsed: false } as Block,
       text('a', { frameId: 'f' }),
       { id: 'c', type: 'checklist', x: 0, y: 0, w: 100, h: 40, z: 2, items: [{ id: 'i1', text: 'one', done: false }, { id: 'i2', text: 'two', done: true }], frameId: 'f' } as Block,
-      { id: 's', type: 'sticky', x: 0, y: 0, w: 200, h: 200, z: 3, html: '', tint: 'yellow' } as Block,
+      { id: 's', type: 'note', style: 'sticky', x: 0, y: 0, w: 200, h: 200, z: 3, html: '', tint: 'yellow' } as Block,
     ],
     arrows: [
       { id: 'ar1', from: 'a', to: 's', heads: 'one', style: 'solid', z: 1 },
@@ -165,17 +165,6 @@ describe('template storage', () => {
     await laptop.deletePage('t');
     await laptop.deletePage('p');
     expect((await laptop.listTrash()).map((p) => p.id)).toEqual(['p']);
-  });
-
-  it('keeps templates out of search and links, but not real pages', async () => {
-    const graph = laptop.graph;
-    expect(graph, 'the graph layer should be available in this test').not.toBeNull();
-    await save(laptop, page({ id: 'p', title: 'Real', blocks: [text('b')] }));
-    await save(laptop, page({ id: 't', kind: 'template', title: 'Tpl', blocks: [text('a')] }));
-    await new Promise((r) => setTimeout(r, 50));
-    const hits = (await graph.search('zebra')).map((h) => h.pageId);
-    expect(hits).toContain('p');
-    expect(hits).not.toContain('t');
   });
 
   it('syncs a template as a template, with its contents', async () => {

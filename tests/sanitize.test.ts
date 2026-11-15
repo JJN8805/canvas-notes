@@ -3,10 +3,10 @@ import { cleanArrows, cleanBlock, cleanBlocks, cleanTags } from '../src/lib/sani
 import { normalizePage } from '../src/storage/types';
 
 const good = [
-  { id: 't', type: 'text', x: 1, y: 2, w: 100, h: 40, z: 1, html: '<p>hi</p>' },
+  { id: 't', type: 'note', style: 'text', x: 1, y: 2, w: 100, h: 40, z: 1, html: '<p>hi</p>' },
   { id: 'c', type: 'checklist', x: 0, y: 0, w: 100, h: 40, z: 2, items: [{ id: 'i', text: 'a', done: true }] },
   { id: 'k', type: 'table', x: 0, y: 0, w: 100, h: 40, z: 3, rows: [['a', 'b'], ['c', 'd']] },
-  { id: 'p', type: 'code', x: 0, y: 0, w: 100, h: 40, z: 4, code: 'x' },
+  { id: 'p', type: 'note', style: 'code', x: 0, y: 0, w: 100, h: 40, z: 4, html: '', code: 'x' },
 ];
 
 describe('pages read from storage are repaired so the screens cannot crash on them', () => {
@@ -20,18 +20,18 @@ describe('pages read from storage are repaired so the screens cannot crash on th
     expect(cleanBlocks('nope')).toEqual([]);
   });
   it('gives each type the fields it needs', () => {
-    expect(cleanBlock({ type: 'text' })).toMatchObject({ html: '', x: 0, y: 0 });
+    expect(cleanBlock({ type: 'note', style: 'text' })).toMatchObject({ html: '', x: 0, y: 0 });
     expect(cleanBlock({ type: 'checklist', items: [null, { text: 5 }, { id: 'z', text: 'ok', done: 'yes' }] })).toMatchObject({ items: [{ text: '', done: false }, { id: 'z', text: 'ok', done: false }] });
     expect(cleanBlock({ type: 'checklist' })).toMatchObject({ items: [] });
     expect(cleanBlock({ type: 'table', rows: ['a', null, [1, null]] })).toMatchObject({ rows: [['1', '']] });
     expect(cleanBlock({ type: 'table' })).toMatchObject({ rows: [['']] });
     expect(cleanBlock({ type: 'table', rows: [['a'], ['b', 'c']] })).toMatchObject({ rows: [['a', ''], ['b', 'c']] });
-    expect(cleanBlock({ type: 'code' })).toMatchObject({ code: '' });
+    expect(cleanBlock({ type: 'note', style: 'code' })).toMatchObject({ code: '' });
     expect(cleanBlock({ type: 'image', aspect: 0 })).toMatchObject({ imageId: '', aspect: 1 });
   });
   it('replaces bad geometry and duplicate ids', () => {
-    expect(cleanBlock({ type: 'text', x: NaN, y: Infinity, w: 'wide', h: -4 })).toMatchObject({ x: 0, y: 0, w: 240, h: 1 });
-    const [a, b] = cleanBlocks([{ id: 's', type: 'text' }, { id: 's', type: 'text' }]);
+    expect(cleanBlock({ type: 'note', style: 'text', x: NaN, y: Infinity, w: 'wide', h: -4 })).toMatchObject({ x: 0, y: 0, w: 240, h: 1 });
+    const [a, b] = cleanBlocks([{ id: 's', type: 'note', style: 'text' }, { id: 's', type: 'note', style: 'text' }]);
     expect(a.id).not.toBe(b.id);
   });
   it('keeps a box of a type it does not know (it may come from a newer version)', () => {

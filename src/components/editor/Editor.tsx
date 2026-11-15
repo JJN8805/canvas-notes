@@ -4,12 +4,14 @@ import { addCardBox, createCard } from '../../store/cards';
 import { openCard } from '../../store/cardView';
 import { cardLabel } from '../../lib/cards';
 import type { MenuItem } from '../../store/ui';
-import { openAddonPanel, useAddons } from '../../addons/store';
+import { openAddonPanel, pageAppView, useAddons } from '../../addons/store';
+import { pageApp } from '../../lib/office/app';
 import type { AddOnId } from '../../addons/types';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { backlinksOf } from '../../lib/links';
 import { flushSync } from 'react-dom';
 import { useEditorState, type Editor as TipTapEditor } from '@tiptap/react';
-import type { BlockType } from '../../types';
+import type { AddKind } from '../../types';
 import { navigate } from '../../lib/route';
 import { attendanceLink } from '../../lib/attendance';
 import { cardsOf, isCard, isTemplate, libraryPages } from '../../lib/pages';
@@ -29,6 +31,7 @@ import {
   saveAsTemplate,
   setFilter,
   setPageGroup,
+  setDrawingBehind,
   setPageSize,
   undo,
   useNotes,
@@ -37,8 +40,9 @@ import { addImages } from '../../store/images';
 import { addAudio, addMediaFiles } from '../../store/media';
 import { canRecord, startRecording, type Recording } from '../../lib/recorder';
 import { formatDuration } from '../../lib/media';
-import { canvasApi, freshText, resetCanvas, setSelectMode, setSelected, useCanvas } from '../../store/canvas';
-import { ask, openMenu, toast } from '../../store/ui';
+import { canvasApi, freshText, resetCanvas, setHand, setSelectMode, setSelected, useCanvas } from '../../store/canvas';
+import { ask, dismissToastsOwnedBy, openMenu, toast } from '../../store/ui';
+import { setMinimap, usePrefs } from '../../store/prefs';
 import { EXPORT_ITEMS } from '../../export/export';
 import { groupTree } from '../../lib/groups';
 import { Icon } from '../ui/Icon';
@@ -47,6 +51,9 @@ import { HistoryPanel } from './HistoryPanel';
 import { openNav } from '../../store/nav';
 import { DrawOverlay } from './DrawOverlay';
 import { closeDraw, toggleDraw, useDraw } from '../../store/draw';
+import { openTidy } from '../../store/tidy';
+import { liveDrawing } from '../../lib/drawing';
+import { TidyDialog } from './TidyDialog';
 
 /**
  * A page. `variant: 'journal'` is the page of a day inside the Journal's book: the book supplies the date and the way back, so the
@@ -69,6 +76,7 @@ export function Editor({ pageId, variant = 'page' }: { pageId: string; variant?:
       void flushPage(pageId);
       closeDraw();
       resetCanvas();
+      dismissToastsOwnedBy(pageId); // an Undo for this page must not stay on screen after leaving it
     };
   }, [pageId]);
 
@@ -95,19 +103,30 @@ export function Editor({ pageId, variant = 'page' }: { pageId: string; variant?:
     };
   }, [pageId]);
 
+  const app = useNotes((s) => pageApp(s.pages[pageId]));
+  useAddons((s) => s.loaded); // a Workspace page changes how it looks when the add-on starts or stops
+  const view = pageAppView(app);
   if (!exists || asCard || redirect) return null;
   return (
     <div className="editor">
       <EditorHeader pageId={pageId} compact={variant === 'journal'} />
       {template && variant === 'page' && <TemplateBanner />}
       <div className="ed-body">
-        <Canvas pageId={pageId} />
-        <DrawOverlay pageId={pageId} />
-        <AddToolbar pageId={pageId} />
-        <FormatBar />
-        <ZoomControls />
+        {view?.Screen ? (
+          <view.Screen pageId={pageId} />
+        ) : (
+          <>
+            <Canvas pageId={pageId} />
+            <DrawOverlay pageId={pageId} />
+            <AddToolbar pageId={pageId} />
+            <FormatBar />
+            <ZoomControls />
+          </>
+        )}
+        {view?.Extras && <view.Extras pageId={pageId} />}
         <AddonPanel key={pageId} pageId={pageId} />
       </div>
+      <TidyDialog />
     </div>
   );
 }
@@ -141,26 +160,10 @@ function TemplateBanner() {
 
 /* ---------------- Header ---------------- */
 
-/** Pages that mention this one as [[its title]]. Hidden when there are none (or the graph is unavailable). */
+/** Pages that mention this one as [[its title]]. Hidden when there are none. Worked out from the pages themselves, so it is always current. */
 function Backlinks({ pageId }: { pageId: string }) {
-  const title = useNotes((s) => s.pages[pageId]?.title);
-  const updated = useNotes((s) => s.pages[pageId]?.updated);
-  const titles = useNotes((s) => s.pages);
-  const [links, setLinks] = useState<{ pageId: string; title: string }[]>([]);
-  useEffect(() => {
-    const graph = getStorage().graph;
-    if (!graph) return;
-    let live = true;
-    // Saves reach the graph a moment after the store changes.
-    const t = setTimeout(() => {
-      void graph.idle().then(() => graph.backlinks(pageId)).then((l) => live && setLinks(l.filter((b) => titles[b.pageId])));
-    }, 800);
-    return () => {
-      live = false;
-      clearTimeout(t);
-    };
-    // titles changes on every edit of any page, which is when backlinks may change
-  }, [pageId, title, updated, titles]);
+  const pages = useNotes((s) => s.pages);
+  const links = useMemo(() => backlinksOf(pageId, pages), [pageId, pages]);
   if (!links.length) return null;
   return (
     <button
@@ -168,7 +171,7 @@ function Backlinks({ pageId }: { pageId: string }) {
       onClick={(e) =>
         openMenu(e.currentTarget, [
           { heading: 'Linked from' },
-          ...links.map((l) => ({ label: titles[l.pageId]?.title || 'Untitled', action: () => navigate({ name: 'page', id: l.pageId }) })),
+          ...links.map((l) => ({ label: l.title, action: () => navigate({ name: 'page', id: l.pageId }) })),
         ])
       }
     >
@@ -285,8 +288,8 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
       </button>
       <button
         className="btn ed-size"
-        aria-label="Page size"
-        title={sheet ? 'Page size: this page has edges. Change its size, or make it infinite.' : 'Page size: this page has no edges. Give it a size.'}
+        aria-label="Page size and layout"
+        title={sheet ? "Page size and layout: this page has edges. Change its size, make it infinite, tidy it." : "Page size and layout: this page has no edges. Give it a size, or tidy it."}
         onClick={(e) => {
           const landscape = !!sheet && sheet.w > sheet.h;
           openMenu(e.currentTarget, [
@@ -301,10 +304,21 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
                   { label: 'Add room to the right', action: () => growPage(pageId, 'right') },
                 ]
               : []),
+            { separator: true as const },
+            { label: 'Tidy layout…', action: () => openTidy(pageId) },
+            ...(liveDrawing(useNotes.getState().pages[pageId]?.drawing)
+              ? [
+                  { separator: true as const },
+                  { heading: 'Drawing' },
+                  { label: 'In front of the boxes', check: !useNotes.getState().pages[pageId]?.drawing?.behind, action: () => setDrawingBehind(pageId, false) },
+                  { label: 'Behind all the boxes', check: !!useNotes.getState().pages[pageId]?.drawing?.behind, action: () => setDrawingBehind(pageId, true) },
+                ]
+              : []),
           ]);
         }}
       >
         <Icon name="pages" size={16} />
+        Page
       </button>
       <button className="btn ed-history" onClick={() => setShowHistory(true)}>
         <Icon name="history" size={16} />
@@ -411,15 +425,13 @@ function TagEditor({ pageId }: { pageId: string }) {
 
 /* ---------------- Toolbars ---------------- */
 
-const TOOLS: { type: BlockType; label: string }[] = [
-  { type: 'text', label: 'Text' },
-  { type: 'sticky', label: 'Sticky' },
+const TOOLS: { type: AddKind; label: string }[] = [
+  { type: 'text', label: 'Note' },
   { type: 'image', label: 'Image' },
   { type: 'audio', label: 'Audio' },
   { type: 'pdf', label: 'PDF' },
   { type: 'card', label: 'Card' },
   { type: 'checklist', label: 'List' },
-  { type: 'code', label: 'Code' },
   { type: 'table', label: 'Table' },
   { type: 'frame', label: 'Frame' },
 ];
@@ -484,7 +496,7 @@ function AddToolbar({ pageId }: { pageId: string }) {
     openMenu(anchor, items);
   };
 
-  const add = (type: BlockType, anchor?: HTMLElement) => {
+  const add = (type: AddKind, anchor?: HTMLElement) => {
     const api = canvasApi.current;
     if (!api) return;
     if (type === 'card') {
@@ -526,7 +538,7 @@ function AddToolbar({ pageId }: { pageId: string }) {
         Select
       </button>
       {TOOLS.map((t) => (
-        <button key={t.type} className="tool" title={`Add ${t.label.toLowerCase()}${t.type === 'sticky' ? ' (S)' : ''}`} onClick={(e) => add(t.type, e.currentTarget)}>
+        <button key={t.type} className="tool" title={t.type === 'text' ? 'Add a note: its bar switches it between Text, Sticky and Code (S adds a sticky, C a code note)' : `Add ${t.label.toLowerCase()}`} onClick={(e) => add(t.type, e.currentTarget)}>
           <Icon name={t.type} />
           {t.label}
         </button>
@@ -605,7 +617,25 @@ function ZoomControls() {
       <button className="icon-btn" aria-label="Zoom out" onClick={() => canvasApi.current?.zoomTo(zoom / 1.2)}>
         <Icon name="minus" size={16} />
       </button>
-      <button className="val" title="Reset to 100%" onClick={() => canvasApi.current?.zoomTo(1)}>
+      <button
+        className="val"
+        title="Zoom options"
+        aria-haspopup="menu"
+        onClick={(e) =>
+          openMenu(e.currentTarget, [
+            { heading: 'Zoom' },
+            { label: `Zoom to fit  (${MOD_LABEL}+1)`, action: () => canvasApi.current?.fit() },
+            { label: 'Zoom to selection  (Shift+2)', action: () => canvasApi.current?.fitSelection() },
+            { separator: true },
+            { label: '50%', check: Math.abs(zoom - 0.5) < 0.005, action: () => canvasApi.current?.zoomTo(0.5) },
+            { label: `100%  (${MOD_LABEL}+0)`, check: Math.abs(zoom - 1) < 0.005, action: () => canvasApi.current?.zoomTo(1) },
+            { label: '200%', check: Math.abs(zoom - 2) < 0.005, action: () => canvasApi.current?.zoomTo(2) },
+            { separator: true },
+            { label: `Hand tool  (${usePrefs.getState().keymap.hand})`, check: useCanvas.getState().hand, action: () => setHand(!useCanvas.getState().hand) },
+            { label: `Show the map  (${usePrefs.getState().keymap.minimap})`, check: usePrefs.getState().minimap, action: () => setMinimap(!usePrefs.getState().minimap, getStorage()) },
+          ])
+        }
+      >
         {Math.round(zoom * 100)}%
       </button>
       <button className="icon-btn" aria-label="Zoom in" onClick={() => canvasApi.current?.zoomTo(zoom * 1.2)}>
@@ -615,7 +645,7 @@ function ZoomControls() {
   );
 }
 
-function FormatBar() {
+export function FormatBar() {
   const editor = useCanvas((s) => s.activeEditor);
   if (!editor || editor.isDestroyed) return null;
   return <FormatButtons editor={editor} />;
