@@ -16,6 +16,13 @@ export function createOfficePage(app: OfficeApp, starterId?: string): Page | nul
   return createPage({ title: built.title, blocks: built.blocks as Block[], arrows: built.arrows ?? [], sheet: null });
 }
 
+/** A Word, Excel or CSV file opened as a new page. Throws a message fit to show when the file can't be read. */
+export async function importOfficeFile(file: File): Promise<Page> {
+  const { openOfficeFile } = await import('../export/officeImport');
+  const opened = await openOfficeFile(file);
+  return createPage({ title: opened.title, blocks: opened.blocks, arrows: [], sheet: null });
+}
+
 /* ---------------- spreadsheets ---------------- */
 
 const stateOf = (b: TableBlock): GridState => ({ rows: b.rows, fmt: b.calc?.fmt ?? {}, colW: b.calc?.colW ?? {} });

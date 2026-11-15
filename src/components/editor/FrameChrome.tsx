@@ -6,6 +6,7 @@ import { duplicateBlocks, setColor, updateBlock } from '../../store/notes';
 import { setSelected } from '../../store/canvas';
 import { openMenu } from '../../store/ui';
 import { blockHeight, colorVar } from '../../lib/util';
+import { useFeature } from '../../store/features';
 import { LinkBadge } from './LinkBadge';
 import { openLinkDialog } from '../../store/boxLinks';
 import { Icon } from '../ui/Icon';
@@ -25,6 +26,7 @@ export function FrameChrome({
 }) {
   const ctx = useCanvasCtx();
   const { pageId, startMove, startResize } = ctx;
+  const linksOn = useFeature('links');
 
   const style: CSSProperties = {
     left: block.x,
@@ -111,9 +113,11 @@ export function FrameChrome({
         >
           <Icon name="layer" size={13} />
         </button>
-        <button aria-label="Links" title="Links" onPointerDown={stop} onClick={(e) => { stop(e); openLinkDialog(pageId, block.id); }}>
-          <Icon name="link" size={13} />
-        </button>
+        {linksOn && (
+          <button aria-label="Links" title="Links" onPointerDown={stop} onClick={(e) => { stop(e); openLinkDialog(pageId, block.id); }}>
+            <Icon name="link" size={13} />
+          </button>
+        )}
         <button
           aria-label="Duplicate frame"
           title="Duplicate"

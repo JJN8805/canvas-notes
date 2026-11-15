@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { ADDONS, isAddOnId } from './registry';
+import { buildProfile } from '../lib/features';
 import type { AddOnId, AddOnModule, BlockAction, CardPictureSource, PageAppView } from './types';
 import type { OfficeApp } from '../lib/office/app';
 import type { Block } from '../types';
@@ -53,7 +54,9 @@ async function load(id: AddOnId) {
 
 /** At start-up: remembers which add-ons are on and loads them. */
 export async function loadAddons(storage: SettingsStore) {
-  const enabled = parseEnabled(await storage.getSetting(KEY).catch(() => null));
+  // Nothing saved yet (a first start): Workspace runs unless the build's profile leaves it out. A saved choice, even "none", always wins.
+  const raw = await storage.getSetting(KEY).catch(() => null);
+  const enabled: AddOnId[] = raw === null ? (buildProfile().workspace ? ['office'] : []) : parseEnabled(raw);
   useAddons.setState({ enabled });
   await Promise.all(enabled.map(load));
 }
@@ -72,7 +75,9 @@ export async function setAddonEnabled(id: AddOnId, on: boolean, storage: Setting
 
 export const openAddonPanel = (id: AddOnId | null) => useAddons.setState({ panel: id });
 
-const modules = () => Object.entries(useAddons.getState().loaded) as [AddOnId, AddOnModule][];
+/** The running add-ons, in the order of the registry (not the order they happened to finish loading), so the screens always list the same way. */
+const modules = () =>
+  (Object.entries(useAddons.getState().loaded) as [AddOnId, AddOnModule][]).sort((a, b) => ADDONS.findIndex((x) => x.id === a[0]) - ADDONS.findIndex((x) => x.id === b[0]));
 
 /** Buttons the running add-ons put on a box's hover bar. */
 export function blockActionsFor(block: Block, pageId: string): BlockAction[] {
@@ -87,7 +92,7 @@ export function pageAppView(app: OfficeApp | null): PageAppView | undefined {
 
 /** The screens the running add-ons offer in the library sidebar. */
 export function addonScreens(): { id: AddOnId; label: string; icon: import('../components/ui/Icon').IconName }[] {
-  return modules().flatMap(([id, m]) => (m.navItem && m.View ? [{ id, label: m.navItem.label, icon: m.navItem.icon }] : []));
+  return modules().flatMap(([id, m]) => (m.navItem && m.View && (m.navVisible?.() ?? true) ? [{ id, label: m.navItem.label, icon: m.navItem.icon }] : []));
 }
 
 /** Where a question typed into "Search or ask" goes, if a running add-on can answer it. */

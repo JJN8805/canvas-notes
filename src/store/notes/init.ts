@@ -2,6 +2,7 @@ import { Arrow, Block, Page } from '../../types';
 import { seedBuiltinTemplates } from '../../lib/builtinTemplates';
 import { loadPrefs, usePrefs } from '../prefs';
 import { loadAddons } from '../../addons/store';
+import { loadFeatures } from '../features';
 import { deepClone } from '../../lib/util';
 import { pageFileIds } from '../../lib/files';
 import { isTauri, openStorage } from '../../storage';
@@ -33,6 +34,7 @@ export async function doInit() {
     const { pages, groups } = await storage.loadAll();
     const location = await storage.location().catch(() => '');
     await loadPrefs(storage);
+    await loadFeatures(storage); // before the first screen, so nothing switched off flashes up
     void loadAddons(storage); // add-ons that are switched on start in the background; the app does not wait for them
     set((s) => {
       s.pages = Object.fromEntries(pages.map((p) => [p.id, p]));

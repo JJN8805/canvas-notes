@@ -69,7 +69,7 @@ check('with add-ons off there is no Assistant button', (await page.locator('butt
 check('with add-ons off no add-on code is downloaded', !requested.some((u) => /\/addons\/(ai|ocr)\//.test(u)), requested.filter((u) => /addons/.test(u)).join(', '));
 await page.click('.ed-back');
 await settingsTab(page, 'Add-ons');
-check('Settings has an Add-ons section listing both add-ons, off', (await page.locator('button[role=switch]').count()) >= 2 && (await page.locator('button[role=switch][aria-checked=true]').count()) === 0);
+check('Settings has an Add-ons section listing the add-ons; only Workspace starts on', (await page.locator('button[role=switch]').count()) >= 3 && (await page.locator('button[role=switch][aria-checked=true]').count()) === 1);
 await page.screenshot({ path: join(OUT, 'addons-off.png') });
 
 /* ---------- 1. turn on the assistant; real Ollama ---------- */

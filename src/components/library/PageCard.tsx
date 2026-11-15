@@ -1,3 +1,4 @@
+import { featureOn } from '../../store/features';
 import { memo, useRef, useState } from 'react';
 import { Group, NoteColor, Page } from '../../types';
 import { cleanColor, noteVar } from '../../lib/colors';
@@ -50,7 +51,7 @@ export const PageCard = memo(function PageCard({ page, group }: { page: Page; gr
         },
       },
       { label: 'Duplicate', action: () => duplicatePage(page.id) },
-      ...(widgetsAvailableNow() ? [{ label: 'Pin to desktop', action: () => void pinPage(page) }] : []),
+      ...(widgetsAvailableNow() && featureOn('widgets') ? [{ label: 'Pin to desktop', action: () => void pinPage(page) }] : []),
       {
         label: 'Save as template…',
         action: async () => {

@@ -15,6 +15,7 @@ import { journalEntries } from '../../lib/journal';
 import { openNav } from '../../store/nav';
 import { MOD_LABEL } from '../../lib/util';
 import { toggleSidebar } from '../../store/layout';
+import { useFeature, useFeatures } from '../../store/features';
 
 /* ---------------- Sidebar ---------------- */
 
@@ -31,6 +32,12 @@ export function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Grou
   useAddons((s) => s.loaded); // re-render when an add-on starts or stops, so its screens and the "ask" wording follow
   const screens = addonScreens();
   const canAsk = !!askHandler();
+  useFeatures((s) => s.disabled); // the Workspace entry depends on which features are on
+  const journalOn = useFeature('journal');
+  const groupsOn = useFeature('groups');
+  const tagsOn = useFeature('tags');
+  const cardsOn = useFeature('cards');
+  const templatesOn = useFeature('templates');
 
   return (
     <nav className="sidebar" aria-label="Pages, groups and tags">
@@ -53,32 +60,38 @@ export function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Grou
         {screens.map((s) => (
           <NavItem key={s.id} icon={s.icon} label={s.label} active={filter.kind === 'addon' && filter.id === s.id} onClick={() => setFilter({ kind: 'addon', id: s.id })} />
         ))}
-        <NavItem icon="book" label="Journal" count={journalCount} active={filter.kind === 'journal'} onClick={() => setFilter({ kind: 'journal' })} />
+        {journalOn && <NavItem icon="book" label="Journal" count={journalCount} active={filter.kind === 'journal'} onClick={() => setFilter({ kind: 'journal' })} />}
         <NavItem icon="pages" label="All pages" count={pages.length} active={filter.kind === 'all'} onClick={() => setFilter({ kind: 'all' })} />
-        <NavItem
-          icon="folder"
-          label="Groups"
-          count={groups.length}
-          active={filter.kind === 'groups' || filter.kind === 'group'}
-          onClick={() => setFilter({ kind: 'groups' })}
-        />
-        <NavItem icon="tag" label="Tags" count={tagCount} active={filter.kind === 'tags' || filter.kind === 'tag'} onClick={() => setFilter({ kind: 'tags' })} />
-        <NavItem icon="card" label="Cards" count={cardCount} active={filter.kind === 'cards'} onClick={() => setFilter({ kind: 'cards' })} />
-        <NavItem
-          icon="pages"
-          label="Ungrouped"
-          count={ungrouped}
-          active={filter.kind === 'ungrouped'}
-          onClick={() => setFilter({ kind: 'ungrouped' })}
-          dropGroup={null}
-        />
-        <NavItem
-          icon="template"
-          label="Templates"
-          count={templateCount}
-          active={filter.kind === 'templates'}
-          onClick={() => setFilter({ kind: 'templates' })}
-        />
+        {groupsOn && (
+          <NavItem
+            icon="folder"
+            label="Groups"
+            count={groups.length}
+            active={filter.kind === 'groups' || filter.kind === 'group'}
+            onClick={() => setFilter({ kind: 'groups' })}
+          />
+        )}
+        {tagsOn && <NavItem icon="tag" label="Tags" count={tagCount} active={filter.kind === 'tags' || filter.kind === 'tag'} onClick={() => setFilter({ kind: 'tags' })} />}
+        {cardsOn && <NavItem icon="card" label="Cards" count={cardCount} active={filter.kind === 'cards'} onClick={() => setFilter({ kind: 'cards' })} />}
+        {groupsOn && (
+          <NavItem
+            icon="pages"
+            label="Ungrouped"
+            count={ungrouped}
+            active={filter.kind === 'ungrouped'}
+            onClick={() => setFilter({ kind: 'ungrouped' })}
+            dropGroup={null}
+          />
+        )}
+        {templatesOn && (
+          <NavItem
+            icon="template"
+            label="Templates"
+            count={templateCount}
+            active={filter.kind === 'templates'}
+            onClick={() => setFilter({ kind: 'templates' })}
+          />
+        )}
         <NavItem
           icon="trash"
           label="Trash"

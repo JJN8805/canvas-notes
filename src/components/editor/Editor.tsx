@@ -6,6 +6,8 @@ import { cardLabel } from '../../lib/cards';
 import type { MenuItem } from '../../store/ui';
 import { openAddonPanel, pageAppView, useAddons } from '../../addons/store';
 import { pageApp } from '../../lib/office/app';
+import { useFeature, useFeatures } from '../../store/features';
+import { isFeatureOn, type FeatureId } from '../../lib/features';
 import type { AddOnId } from '../../addons/types';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { backlinksOf } from '../../lib/links';
@@ -69,6 +71,7 @@ export function Editor({ pageId, variant = 'page' }: { pageId: string; variant?:
     const p = s.pages[pageId];
     return p && isJournalPage(p) ? (p.dailyDate as string) : null;
   });
+  const journalOn = useFeature('journal');
 
   useEffect(() => {
     resetCanvas();
@@ -80,7 +83,8 @@ export function Editor({ pageId, variant = 'page' }: { pageId: string; variant?:
     };
   }, [pageId]);
 
-  const redirect = variant === 'page' && !!journalDay;
+  // A day's page opens in the Journal, unless the Journal is switched off: then it is an ordinary page.
+  const redirect = variant === 'page' && !!journalDay && journalOn;
   useEffect(() => {
     if (asCard) setFilter({ kind: 'cards' });
     if (redirect && journalDay) openJournal(journalDay);
@@ -194,6 +198,11 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
   const titleRef = useRef<HTMLInputElement>(null);
   const [showHistory, setShowHistory] = useState(false);
   const sheet = useNotes((s) => s.pages[pageId]?.sheet ?? null);
+  const app = useNotes((s) => pageApp(s.pages[pageId]));
+  const groupsOn = useFeature('groups');
+  const tagsOn = useFeature('tags');
+  const linksOn = useFeature('links');
+  const templatesOn = useFeature('templates');
   const addons = useAddons((s) => s.loaded);
   const openAddon = useAddons((s) => s.panel);
 
@@ -246,6 +255,7 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
       </div>
       {!template && !compact && (
         <>
+      {groupsOn && (
       <select
         className="field ed-group"
         aria-label="Group"
@@ -267,8 +277,10 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
         ))}
         <option value="__new">New group…</option>
       </select>
-      <TagEditor pageId={pageId} />
-      <Backlinks pageId={pageId} />
+      )}
+      {tagsOn && <TagEditor pageId={pageId} />}
+      {linksOn && <Backlinks pageId={pageId} />}
+      {templatesOn && (
       <button
         className="btn ed-template"
         title="Keep this page's layout and boxes as a template for new pages"
@@ -280,12 +292,16 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
         <Icon name="template" size={16} />
         Save as template
       </button>
+      )}
         </>
       )}
+      {app !== 'sheet' && (
       <button className="btn ed-outline" title="Headings, frames and links of this page" onClick={() => openNav('outline')}>
         <Icon name="outline" size={16} />
         Outline
       </button>
+      )}
+      {app !== 'doc' && app !== 'sheet' && (
       <button
         className="btn ed-size"
         aria-label="Page size and layout"
@@ -320,6 +336,7 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
         <Icon name="pages" size={16} />
         Page
       </button>
+      )}
       <button className="btn ed-history" onClick={() => setShowHistory(true)}>
         <Icon name="history" size={16} />
         History
@@ -425,12 +442,12 @@ function TagEditor({ pageId }: { pageId: string }) {
 
 /* ---------------- Toolbars ---------------- */
 
-const TOOLS: { type: AddKind; label: string }[] = [
+const TOOLS: { type: AddKind; label: string; feature?: FeatureId }[] = [
   { type: 'text', label: 'Note' },
-  { type: 'image', label: 'Image' },
-  { type: 'audio', label: 'Audio' },
-  { type: 'pdf', label: 'PDF' },
-  { type: 'card', label: 'Card' },
+  { type: 'image', feature: 'media', label: 'Image' },
+  { type: 'audio', feature: 'media', label: 'Audio' },
+  { type: 'pdf', feature: 'media', label: 'PDF' },
+  { type: 'card', feature: 'cards', label: 'Card' },
   { type: 'checklist', label: 'List' },
   { type: 'table', label: 'Table' },
   { type: 'frame', label: 'Frame' },
@@ -526,6 +543,7 @@ function AddToolbar({ pageId }: { pageId: string }) {
   };
   const selectMode = useCanvas((s) => s.selectMode);
   const drawing = useDraw((s) => s.open);
+  const disabledFeatures = useFeatures((s) => s.disabled);
   return (
     <div className="tools" role="toolbar" aria-label="Add to page">
       <button
@@ -537,13 +555,13 @@ function AddToolbar({ pageId }: { pageId: string }) {
         <Icon name="select" />
         Select
       </button>
-      {TOOLS.map((t) => (
+      {TOOLS.filter((t) => !t.feature || isFeatureOn(disabledFeatures, t.feature)).map((t) => (
         <button key={t.type} className="tool" title={t.type === 'text' ? 'Add a note: its bar switches it between Text, Sticky and Code (S adds a sticky, C a code note)' : `Add ${t.label.toLowerCase()}`} onClick={(e) => add(t.type, e.currentTarget)}>
           <Icon name={t.type} />
           {t.label}
         </button>
       ))}
-      {canRecord() && (
+      {canRecord() && isFeatureOn(disabledFeatures, 'media') && (
         <button
           className={'tool' + (recSeconds !== null ? ' on' : '')}
           aria-pressed={recSeconds !== null}
@@ -554,15 +572,17 @@ function AddToolbar({ pageId }: { pageId: string }) {
           {recSeconds !== null ? `Stop ${formatDuration(recSeconds)}` : 'Record'}
         </button>
       )}
-      <button
-        className={'tool' + (drawing ? ' on' : '')}
-        aria-pressed={drawing}
-        title="Draw on the page, among the boxes"
-        onClick={toggleDraw}
-      >
-        <Icon name="draw" />
-        Draw
-      </button>
+      {isFeatureOn(disabledFeatures, 'drawing') && (
+        <button
+          className={'tool' + (drawing ? ' on' : '')}
+          aria-pressed={drawing}
+          title="Draw on the page, among the boxes"
+          onClick={toggleDraw}
+        >
+          <Icon name="draw" />
+          Draw
+        </button>
+      )}
       <input
         ref={fileRef}
         type="file"

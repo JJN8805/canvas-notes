@@ -14,6 +14,7 @@ import { CardViewHost } from './components/cards/CardViewHost';
 import { AddonOverlays } from './addons/AddonOverlays';
 import { SyncPanel } from './components/sync/SyncPanel';
 import { openJournal } from './store/journal';
+import { featureOn, useFeature } from './store/features';
 import { dateKey, isTodayShortcut } from './lib/daily';
 import { useDraw } from './store/draw';
 import { useUi } from './store/ui';
@@ -33,7 +34,7 @@ export function App() {
   useEffect(() => {
     if (status !== 'ready') return;
     const onKey = (e: KeyboardEvent) => {
-      if (!isTodayShortcut(e)) return;
+      if (!isTodayShortcut(e) || !featureOn('journal')) return;
       if (useUi.getState().dialog || useDraw.getState().open) return;
       e.preventDefault();
       openJournal(dateKey());
@@ -42,9 +43,10 @@ export function App() {
     return () => document.removeEventListener('keydown', onKey);
   }, [status]);
 
+  const syncOn = useFeature('sync');
   useEffect(() => {
-    if (status === 'ready') void initSync().catch((e) => console.error('Sync setup failed', e));
-  }, [status]);
+    if (status === 'ready' && syncOn) void initSync().catch((e) => console.error('Sync setup failed', e));
+  }, [status, syncOn]);
 
   // Bring back the desktop widgets (laptop app only).
   useEffect(() => {

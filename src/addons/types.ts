@@ -42,6 +42,8 @@ export interface AddOnModule {
   blockActions?: (block: Block, pageId: string) => BlockAction[];
   /** A sidebar entry in the library that opens this add-on's `View` as a full page. */
   navItem?: { label: string; icon: IconName };
+  /** Whether the sidebar entry shows right now (it can depend on which features are on). Absent = always. */
+  navVisible?: () => boolean;
   /** The full-page screen opened by `navItem`. */
   View?: ComponentType;
   /** "Search or ask": called with the words typed in the quick switcher when the user chooses to ask rather than search. */

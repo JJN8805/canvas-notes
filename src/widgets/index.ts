@@ -5,6 +5,7 @@ import { getStorage } from '../store/notes';
 import { toast } from '../store/ui';
 import { navigate } from '../lib/route';
 import { listWidgets, removeWidget, saveWidget } from './registry';
+import { featureOn } from '../store/features';
 import { autostartEnabled, closeWidgetWindow, onOpenPageRequest, openWidgetWindow, setKeepRunning, showMainWindow, startedInBackground, widgetsAvailable } from './host';
 
 export { widgetsAvailable } from './host';
@@ -49,6 +50,11 @@ export const pinnedWidgets = () => listWidgets(getStorage());
  */
 export async function setupDesktopWidgets(): Promise<void> {
   if (!(await widgetsAvailable())) return;
+  if (!featureOn('widgets')) {
+    // Desktop widgets are switched off: none are brought back, and a start at login just shows the window.
+    if (await startedInBackground().catch(() => false)) await showMainWindow().catch(() => {});
+    return;
+  }
   try {
     await setKeepRunning(await autostartEnabled());
     const specs = await pinnedWidgets();

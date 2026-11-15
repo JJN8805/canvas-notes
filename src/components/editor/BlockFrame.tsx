@@ -1,4 +1,5 @@
 import { openCard } from '../../store/cardView';
+import { useFeature } from '../../store/features';
 import { LinkBadge } from './LinkBadge';
 import { openLinkDialog } from '../../store/boxLinks';
 import { blockActionsFor, useAddons } from '../../addons/store';
@@ -92,6 +93,7 @@ export const BlockFrame = memo(function BlockFrame({
 function BlockBar({ block }: { block: NonFrameBlock }) {
   const { pageId, startMove } = useCanvasCtx();
   const canPin = useWidgetsAvailable();
+  const linksOn = useFeature('links');
   const btn = (label: string, content: ReactNode, run: () => void) => (
     <button
       key={label}
@@ -224,7 +226,7 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
       >
         {icon('layer')}
       </button>
-      {btn('Links', icon('link'), () => openLinkDialog(pageId, block.id))}
+      {linksOn && btn('Links', icon('link'), () => openLinkDialog(pageId, block.id))}
       {btn('Duplicate', icon('copy'), () => setSelected(duplicateBlocks(pageId, [block.id])))}
       {btn('Delete', icon('trash'), () => {
         deleteWithUndo(pageId, [block.id]);

@@ -482,8 +482,7 @@ await page.goto(URL + '#/');
 await page.waitForSelector('.sidebar');
 await page.click('.side-settings');
 await page.click('[role=tab]:has-text("Add-ons")');
-await page.click('button[role=switch]:has-text("Turn on Workspace")');
-await page.waitForSelector('.ai-settings:has-text("Open Workspace")');
+await page.waitForSelector('.ai-settings:has-text("Open Workspace")'); // Workspace runs from the start
 await shot('settings-addons-workspace');
 await page.keyboard.press('Escape');
 await page.click('.sidebar >> text=Workspace');
@@ -506,6 +505,24 @@ await page.click('.slides-head button:has-text("Present")');
 await page.waitForSelector('.present');
 await shot('workspace-present');
 await page.keyboard.press('Escape');
+// Features: a Word and Excel only copy
+await page.goto(URL + '#/');
+await page.waitForSelector('.sidebar');
+await page.click('.side-settings');
+await page.click('[role=tab]:has-text("Features")');
+await shot('settings-features');
+await page.click('[role=radio]:has-text("Word and Excel only")');
+await page.keyboard.press('Escape');
+await page.waitForTimeout(300);
+await shot('features-word-excel-only-sidebar');
+await page.click('.sidebar >> text=Workspace');
+await page.waitForSelector('.office-hub');
+await shot('features-word-excel-only-hub');
+await page.click('.side-settings');
+await page.click('[role=tab]:has-text("Features")');
+await page.click('[role=radio]:has-text("Everything")');
+await page.keyboard.press('Escape');
+
 await page.goto(URL + '#/');
 await page.click('.sidebar >> text=Cards');
 await page.click('button:has-text("New card")');

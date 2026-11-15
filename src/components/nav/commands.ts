@@ -11,17 +11,21 @@ import { openNav } from '../../store/nav';
 import { openTidy } from '../../store/tidy';
 import { openShortcuts } from '../../store/shortcutsUi';
 import { addonCommands } from '../../addons/store';
-import { openTemplatePicker } from '../../store/picker';
 import { openSettings } from '../../store/settingsUi';
 import { setPalette, setTheme, usePrefs } from '../../store/prefs';
 import { ask } from '../../store/ui';
 import { activeTheme } from '../../lib/themes';
 import { MOD_LABEL } from '../../lib/util';
 import type { IconName } from '../ui/Icon';
+import type { FeatureId } from '../../lib/features';
+import { featureOn } from '../../store/features';
+import { openNewPage } from '../library/shared';
 
 export interface Command {
   id: string;
   title: string;
+  /** The feature this belongs to: with it switched off the command is not offered. */
+  feature?: FeatureId;
   /** Shortcut shown on the right. */
   keys?: string;
   icon?: IconName;
@@ -33,13 +37,13 @@ export function buildCommands(): Command[] {
   const route = currentRoute();
   const onPage = route.name === 'page' ? route.id : null;
   const list: Command[] = [
-    { id: 'new-page', icon: 'plus', title: 'New page', run: openTemplatePicker },
-    { id: 'today', icon: 'today', title: 'Open today in the journal', keys: 'Ctrl+Alt+D', run: () => openJournal(dateKey()) },
-    { id: 'journal', icon: 'book', title: 'Open the journal', run: () => openJournal() },
-    { id: 'weekly', icon: 'calendar', title: 'Review my week…', run: () => openWeekly(route.name === 'library' ? useJournal.getState().date : dateKey()) },
+    { id: 'new-page', icon: 'plus', title: 'New page', run: openNewPage },
+    { id: 'today', feature: 'journal', icon: 'today', title: 'Open today in the journal', keys: 'Ctrl+Alt+D', run: () => openJournal(dateKey()) },
+    { id: 'journal', feature: 'journal', icon: 'book', title: 'Open the journal', run: () => openJournal() },
+    { id: 'weekly', feature: 'journal', icon: 'calendar', title: 'Review my week…', run: () => openWeekly(route.name === 'library' ? useJournal.getState().date : dateKey()) },
     { id: 'shortcuts', icon: 'keyboard', title: 'Keyboard shortcuts', keys: '?', run: openShortcuts },
     { id: 'switcher', icon: 'search', title: 'Open quick switcher', keys: `${MOD_LABEL}+O`, run: () => openNav('switcher') },
-    { id: 'graph', icon: 'graph', title: 'Open graph view', run: () => openNav('graph') },
+    { id: 'graph', feature: 'graph', icon: 'graph', title: 'Open graph view', run: () => openNav('graph') },
     {
       id: 'library',
       icon: 'pages',
@@ -51,6 +55,7 @@ export function buildCommands(): Command[] {
     },
     {
       id: 'groups',
+      feature: 'groups',
       icon: 'folder',
       title: 'Browse groups',
       run: () => {
@@ -60,6 +65,7 @@ export function buildCommands(): Command[] {
     },
     {
       id: 'tags',
+      feature: 'tags',
       icon: 'tag',
       title: 'Browse tags',
       run: () => {
@@ -69,6 +75,7 @@ export function buildCommands(): Command[] {
     },
     {
       id: 'cards',
+      feature: 'cards',
       icon: 'card',
       title: 'Browse cards',
       run: () => {
@@ -78,6 +85,7 @@ export function buildCommands(): Command[] {
     },
     {
       id: 'new-card',
+      feature: 'cards',
       icon: 'card',
       title: 'New card',
       run: () => {
@@ -88,6 +96,7 @@ export function buildCommands(): Command[] {
     },
     {
       id: 'new-group',
+      feature: 'groups',
       icon: 'folder',
       title: 'New group',
       run: async () => {
@@ -112,12 +121,12 @@ export function buildCommands(): Command[] {
   ];
   if (onPage && useNotes.getState().pages[onPage]) {
     list.push(
-      ...(widgetsAvailableNow() ? [{ id: 'pin-page', icon: 'pin' as const, title: 'Pin this page to the desktop', run: () => void pinPage(useNotes.getState().pages[onPage]) }] : []),
+      ...(widgetsAvailableNow() ? [{ id: 'pin-page', feature: 'widgets' as const, icon: 'pin' as const, title: 'Pin this page to the desktop', run: () => void pinPage(useNotes.getState().pages[onPage]) }] : []),
       { id: 'outline', icon: 'outline', title: 'Show outline and links of this page', run: () => openNav('outline') },
       { id: 'tidy', icon: 'pages', title: 'Tidy this page…', run: () => openTidy(onPage) },
       { id: 'undo', icon: 'undo', title: 'Undo', keys: `${MOD_LABEL}+Z`, run: () => void undo(onPage) },
       { id: 'redo', icon: 'redo', title: 'Redo', keys: `${MOD_LABEL}+Shift+Z`, run: () => void redo(onPage) },
     );
   }
-  return [...list, ...addonCommands(onPage)];
+  return [...list, ...addonCommands(onPage)].filter((c) => !c.feature || featureOn(c.feature));
 }

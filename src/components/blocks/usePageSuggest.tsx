@@ -5,6 +5,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import type { Page } from '../../types';
 import { linkText, suggestPages, wikiTrigger } from '../../lib/pageSuggest';
 import { useNotes } from '../../store/notes';
+import { featureOn } from '../../store/features';
 
 interface Open {
   from: number;
@@ -30,6 +31,7 @@ export function usePageSuggest(pageId: string): { popup: ReactNode; track: (ed: 
 
   const track = (ed: Editor) => {
     edRef.current = ed;
+    if (!featureOn('links')) return set(null);
     const { from, empty } = ed.state.selection;
     if (!empty || !ed.isFocused) return set(null);
     const before = ed.state.doc.textBetween(Math.max(0, from - 80), from, '\n', '\0');

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Filter, Group } from '../../types';
 import { searchPages } from '../../lib/search';
 import { listedPages } from '../../lib/pages';
@@ -17,6 +17,7 @@ import { Crumbs, GroupCard, GroupsView, TagsView } from './Browse';
 import { PageCard } from './PageCard';
 import { useAddons } from '../../addons/store';
 import type { AddOnId } from '../../addons/types';
+import { useFeature } from '../../store/features';
 import { toggleCardTree, toggleSidebar, useLayout } from '../../store/layout';
 import { isEditableTarget, MOD_LABEL } from '../../lib/util';
 import { openShortcuts } from '../../store/shortcutsUi';
@@ -49,6 +50,22 @@ function AddonScreen({ id }: { id: string }) {
   return <p className="ai-note" role={failed ? 'alert' : 'status'}>{failed ? 'This add-on couldn’t start. See Settings → Add-ons.' : 'Loading…'}</p>;
 }
 
+/** Whether the open library screen belongs to a feature that is switched off. */
+function useOffScreen(kind: Filter['kind']): boolean {
+  const journal = useFeature('journal');
+  const cards = useFeature('cards');
+  const groups = useFeature('groups');
+  const tags = useFeature('tags');
+  const templates = useFeature('templates');
+  return (
+    (kind === 'journal' && !journal) ||
+    (kind === 'cards' && !cards) ||
+    ((kind === 'groups' || kind === 'group' || kind === 'ungrouped') && !groups) ||
+    ((kind === 'tags' || kind === 'tag') && !tags) ||
+    (kind === 'templates' && !templates)
+  );
+}
+
 export function Library() {
   const pages = useNotes((s) => s.pages);
   const groups = useNotes((s) => s.groups);
@@ -56,6 +73,21 @@ export function Library() {
   const query = useNotes((s) => s.query);
   const sort = useNotes((s) => s.sort);
   const sidebarOpen = useLayout((st) => st.sidebar);
+  const syncOn = useFeature('sync');
+  const canvasOn = useFeature('canvas');
+  // A screen for a feature that is switched off is never shown: if it was open (or is remembered), go to All pages.
+  const offScreen = useOffScreen(filter.kind);
+  useEffect(() => {
+    if (offScreen) setFilter({ kind: 'all' });
+  }, [offScreen]);
+  // With the free canvas switched off the Workspace screen is the home screen: open it once when the library first shows.
+  const officeReady = useAddons((s) => !!s.loaded.office);
+  const home = useRef(false);
+  useEffect(() => {
+    if (home.current || !officeReady || canvasOn) return;
+    home.current = true;
+    if (useNotes.getState().filter.kind === 'all') setFilter({ kind: 'addon', id: 'office' });
+  }, [officeReady, canvasOn]);
   // Ctrl+\ shows or hides the sidebar; Ctrl+Shift+\ the card folders; ? lists every shortcut. Any open dialog or menu keeps the keyboard.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -158,10 +190,10 @@ export function Library() {
               <option value="created">Newest</option>
               <option value="title">Title A–Z</option>
             </select>
-            <SyncButton />
+            {syncOn && <SyncButton />}
             <button className="btn primary" onClick={openNewPage}>
               <Icon name="plus" size={16} />
-              New page
+              {canvasOn ? 'New page' : 'New…'}
             </button>
           </div>
         </div>

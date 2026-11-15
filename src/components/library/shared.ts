@@ -1,6 +1,10 @@
 import { Group } from '../../types';
 import { openTemplatePicker } from '../../store/picker';
-import { type MenuItem } from '../../store/ui';
+import { featureOn } from '../../store/features';
+import { useAddons } from '../../addons/store';
+import { navigate } from '../../lib/route';
+import { createPageFromTemplate, setFilter } from '../../store/notes';
+import { toast, type MenuItem } from '../../store/ui';
 import { groupTree } from '../../lib/groups';
 
 export const PAGE_MIME = 'application/x-canvas-page';
@@ -9,8 +13,19 @@ export const GROUP_MIME = 'application/x-canvas-group';
 export const COARSE = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
 
 
+/**
+ * "New page". With the free canvas and templates on: the template picker. Templates off: a blank page right away. The free canvas off
+ * (a Word and Excel only setup): the Workspace screen, where documents and spreadsheets are started.
+ */
 export function openNewPage() {
-  openTemplatePicker();
+  if (featureOn('canvas')) {
+    if (featureOn('templates')) return openTemplatePicker();
+    const page = createPageFromTemplate(null);
+    if (page) navigate({ name: 'page', id: page.id });
+    return;
+  }
+  if (useAddons.getState().enabled.includes('office')) setFilter({ kind: 'addon', id: 'office' });
+  else toast('Switch a feature on in Settings → Features to make pages.');
 }
 
 

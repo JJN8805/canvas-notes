@@ -26,11 +26,13 @@ import { Section, Switch } from './SettingsParts';
 import { GeneralTab } from './GeneralTab';
 import { DesktopTab } from './SettingsDesktop';
 import { AddonsTab } from './SettingsAddons';
+import { FeaturesTab } from './FeaturesTab';
+import { useFeature } from '../../store/features';
 import { CUSTOM_PALETTE, DEFAULT_CUSTOM, DEFAULT_PALETTE, isReadable, PRESETS, type ThemeColors } from '../../lib/themes';
 
-const TABS = ['General', 'Profile', 'Appearance', 'Editor', 'Sync', 'Desktop', 'Add-ons', 'Data', 'About'] as const;
+const TABS = ['General', 'Profile', 'Appearance', 'Editor', 'Features', 'Sync', 'Desktop', 'Add-ons', 'Data', 'About'] as const;
 type Tab = (typeof TABS)[number];
-const TAB_ICONS: Record<Tab, IconName> = { General: 'settings', Profile: 'user', Appearance: 'palette', Editor: 'edit', Sync: 'sync', Desktop: 'monitor', 'Add-ons': 'puzzle', Data: 'database', About: 'info' };
+const TAB_ICONS: Record<Tab, IconName> = { General: 'settings', Profile: 'user', Appearance: 'palette', Editor: 'edit', Features: 'check', Sync: 'sync', Desktop: 'monitor', 'Add-ons': 'puzzle', Data: 'database', About: 'info' };
 
 export function SettingsDialog() {
   const open = useSettingsUi((s) => s.open);
@@ -39,6 +41,8 @@ export function SettingsDialog() {
 
 function Dialog() {
   const [tab, setTab] = useState<Tab>('General');
+  const syncOn = useFeature('sync');
+  const widgetsOn = useFeature('widgets');
   const closeRef = useRef<HTMLButtonElement>(null);
   const prevFocus = useRef<Element | null>(document.activeElement);
 
@@ -64,7 +68,7 @@ function Dialog() {
       <div className="dialog settings" role="dialog" aria-modal="true" aria-label="Settings">
         <h2>Settings</h2>
         <div className="set-tabs" role="tablist" aria-label="Settings sections">
-          {TABS.map((t) => (
+          {TABS.filter((t) => (t !== 'Sync' || syncOn) && (t !== 'Desktop' || widgetsOn)).map((t) => (
             <button key={t} role="tab" aria-selected={tab === t} className={'set-tab' + (tab === t ? ' on' : '')} onClick={() => setTab(t)}>
               <Icon name={TAB_ICONS[t]} size={15} />
               {t}
@@ -76,6 +80,7 @@ function Dialog() {
           {tab === 'Profile' && <ProfileTab />}
           {tab === 'Appearance' && <AppearanceTab />}
           {tab === 'Editor' && <EditorTab />}
+          {tab === 'Features' && <FeaturesTab />}
           {tab === 'Sync' && <SyncTab />}
           {tab === 'Desktop' && <DesktopTab />}
           {tab === 'Add-ons' && <AddonsTab />}

@@ -4,6 +4,7 @@ import { chromium } from 'playwright-core';
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { strToU8, zipSync } from 'fflate';
 
 const URL = process.env.APP_URL ?? 'http://localhost:1420';
 const OUT = join(tmpdir(), 'canvas-office-check');
@@ -30,12 +31,8 @@ page.on('pageerror', (e) => errors.push(`exception: ${e.message}`));
 
 await page.goto(URL);
 await page.waitForSelector('.sidebar');
-check('Workspace is off until switched on: no Workspace entry', (await page.locator('.sidebar >> text=Workspace').count()) === 0);
-await page.click('.side-settings');
-await page.click('[role=tab]:has-text("Add-ons")');
-await page.click('button[role=switch]:has-text("Turn on Workspace")');
-await page.waitForSelector('.ai-settings:has-text("Open Workspace")');
-await page.keyboard.press('Escape');
+await page.waitForSelector('.sidebar >> text=Workspace', { timeout: 30000 }).catch(() => {});
+check('Workspace is on from the start', (await page.locator('.sidebar >> text=Workspace').count()) === 1);
 await page.click('.sidebar >> text=Workspace');
 await page.waitForSelector('.office-hub');
 check('the hub offers documents, spreadsheets and presentations', (await page.locator('.office-col').count()) === 3);
@@ -137,6 +134,37 @@ await page.screenshot({ path: join(OUT, 'present.png') });
 await page.keyboard.press('Escape');
 await page.waitForFunction(() => !document.querySelector('.present'));
 check('Esc ends the show', true);
+
+
+/* ---------- opening Word, Excel and CSV files ---------- */
+const mkZip = (files) => Buffer.from(zipSync(Object.fromEntries(Object.entries(files).map(([k, v]) => [k, strToU8(v)]))));
+const docx = mkZip({ 'word/document.xml': '<w:document xmlns:w="w"><w:body><w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Imported heading</w:t></w:r></w:p><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Bold words</w:t></w:r><w:r><w:t> and &lt;b&gt;plain&lt;/b&gt;</w:t></w:r></w:p></w:body></w:document>' });
+const xlsx = mkZip({
+  'xl/workbook.xml': '<workbook xmlns:r="r"><sheets><sheet name="S" sheetId="1" r:id="rId1"/></sheets></workbook>',
+  'xl/_rels/workbook.xml.rels': '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+  'xl/worksheets/sheet1.xml': '<worksheet><sheetData><row r="1"><c r="A1"><v>5</v></c><c r="B1"><v>7</v></c><c r="C1"><f>A1+B1</f><v>12</v></c></row></sheetData></worksheet>',
+});
+await page.goto(URL + '#/');
+await page.waitForSelector('.sidebar');
+await page.click('.sidebar >> text=Workspace');
+let [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('button:has-text("Open a Word file")')]);
+await chooser.setFiles({ name: 'Letter to Sam.docx', mimeType: 'application/octet-stream', buffer: docx });
+await page.waitForSelector('.doc-paper');
+check('a Word file opens as a document named after the file', (await page.locator('.ed-title, input[aria-label="Page title"]').first().inputValue()) === 'Letter to Sam');
+check('its heading and bold text come through', (await page.locator('.doc-paper h1').innerText()) === 'Imported heading' && (await page.locator('.doc-paper strong').innerText()) === 'Bold words');
+check('markup inside the text stays text', (await page.locator('.doc-paper').innerText()).includes('<b>plain</b>') && (await page.locator('.doc-paper b').count()) === 0);
+await page.goto(URL + '#/');
+await page.click('.sidebar >> text=Workspace');
+[chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('button:has-text("Open an Excel or CSV file")')]);
+await chooser.setFiles({ name: 'numbers.xlsx', mimeType: 'application/octet-stream', buffer: xlsx });
+await page.waitForSelector('.sheet-table');
+check('an Excel file opens as a spreadsheet with its formula working', (await page.locator('td[data-r="0"][data-c="2"]').innerText()) === '12');
+await page.goto(URL + '#/');
+await page.click('.sidebar >> text=Workspace');
+[chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('button:has-text("Open an Excel or CSV file")')]);
+await chooser.setFiles({ name: 'bad.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from('this is not a zip') });
+await page.waitForSelector('.toast:has-text("Couldn’t open that file"), [role=status]:has-text("Couldn’t open that file")');
+check('a file that is not what it says is refused with a message, and nothing is made', (await page.locator('.office-hub').count()) === 1);
 
 /* ---------- switching it off ---------- */
 await page.click('.side-settings').catch(async () => { await page.goto(URL + '#/'); await page.click('.side-settings'); });

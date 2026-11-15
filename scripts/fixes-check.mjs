@@ -34,7 +34,7 @@ await page.waitForSelector('.sidebar');
 await page.click('.side-settings');
 await page.waitForSelector('.set-tabs');
 const tops = await page.$$eval('.set-tab', (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-check('all nine Settings tabs sit on one row', tops.length === 9 && new Set(tops).size === 1, tops.join(','));
+check('all ten Settings tabs sit on one row', tops.length === 10 && new Set(tops).size === 1, tops.join(','));
 const cut = await page.evaluate(() => { const bar = document.querySelector('.set-tabs').getBoundingClientRect(); return [...document.querySelectorAll('.set-tab')].filter((t) => t.getBoundingClientRect().right > bar.right + 0.5).map((t) => t.textContent.trim()); });
 check('and every one is fully visible (none cut off at the edge)', cut.length === 0, cut.join(','));
 await page.screenshot({ path: join(OUT, '1-settings-tabs.png') });

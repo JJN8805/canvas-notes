@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { widgetsAvailable, widgetsAvailableNow } from './host';
+import { useFeature } from '../store/features';
 
 /** True in the laptop app, where widgets can be pinned. Buttons for pinning are left out everywhere else. */
 export function useWidgetsAvailable(): boolean {
@@ -11,5 +12,6 @@ export function useWidgetsAvailable(): boolean {
       live = false;
     };
   }, []);
-  return on;
+  const switchedOn = useFeature('widgets');
+  return on && switchedOn;
 }

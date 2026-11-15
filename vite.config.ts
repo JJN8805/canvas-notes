@@ -19,6 +19,7 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(({ command }) => ({
   plugins: [react()],
   define: {
+    __FEATURE_PROFILE__: JSON.stringify(process.env.FEATURE_PROFILE ?? ''),
     __BUILD_INFO__: JSON.stringify({ version: pkg.version, commit, builtAt: new Date().toISOString(), mode: command === 'build' ? 'production' : 'development' }),
   },
   clearScreen: false,

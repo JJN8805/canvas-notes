@@ -10,6 +10,7 @@ import { allLocked } from '../../lib/lock';
 import { hiddenBlockIds } from '../../lib/frames';
 import { MOD_LABEL } from '../../lib/util';
 import { noteStyleMenu } from './noteStyleMenu';
+import { featureOn } from '../../store/features';
 import { openLinkDialog } from '../../store/boxLinks';
 import { arrangeMenu, layerMenu } from './layerMenu';
 
@@ -72,7 +73,7 @@ export function boxMenu(pageId: string, ids: string[]): MenuItem[] {
   const items: MenuItem[] = [
     { label: `Duplicate  (${MOD_LABEL}+D)`, action: () => setSelected(duplicateBlocks(pageId, ids)) },
     { label: locked ? `Unlock  (${MOD_LABEL}+Shift+L)` : `Lock in place  (${MOD_LABEL}+Shift+L)`, action: () => setLocked(pageId, ids, !locked) },
-    ...(ids.length === 1 ? [{ label: 'Links…', action: () => openLinkDialog(pageId, ids[0]) } as MenuItem] : []),
+    ...(ids.length === 1 && featureOn('links') ? [{ label: 'Links…', action: () => openLinkDialog(pageId, ids[0]) } as MenuItem] : []),
     ...noteStyleMenu(pageId, blocks, ids),
     { separator: true },
     ...layerMenu(pageId, ids),
