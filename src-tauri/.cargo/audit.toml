@@ -1,0 +1,16 @@
+# Advisories we have looked at and accept for now. `scripts/audit-check.mjs` fails once the review date below has passed, so this
+# list cannot be forgotten. Remove an entry as soon as the dependency can be upgraded.
+#
+# review-by: 2027-02-14
+
+[advisories]
+ignore = [
+  # rsa 0.9.10, Marvin attack (no patched release below 0.10). It is only in Cargo.lock: SQLx's macros list the MySQL driver, which
+  # this app never compiles (`cargo tree -i rsa` finds nothing) and never calls. Nothing here does RSA.
+  "RUSTSEC-2023-0071",
+  # libsqlite3-sys 0.30.1 bundles SQLite before 3.54: opening a database file together with a crafted -wal file written by someone else
+  # can return stale memory. The app opens only its own database in its own private folder (the safety copies in backups/ are never
+  # opened), so no outside party's file reaches it. The fix needs SQLx 0.9 (only an alpha in tauri-plugin-sql 3.0 so far).
+  # Upgrade tauri-plugin-sql when 3.x is stable.
+  "RUSTSEC-2026-0459",
+]
