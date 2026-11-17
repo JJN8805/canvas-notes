@@ -4,6 +4,7 @@ import { createExamplePage, setFilter, setQuery } from '../../store/notes';
 import { Icon } from '../ui/Icon';
 import { openNewPage } from './shared';
 import { useFeature } from '../../store/features';
+import { MOD_LABEL } from '../../lib/util';
 
 export function EmptyState({ total, filter, query }: { total: number; filter: Filter; query: string }) {
   const canvas = useFeature('canvas');
@@ -26,6 +27,12 @@ export function EmptyState({ total, filter, query }: { total: number; filter: Fi
             </button>
           )}
         </div>
+        <ul className="empty-tips" aria-label="Good to know">
+          <li><kbd>{MOD_LABEL}+K</kbd> finds any page, or jumps straight to it</li>
+          {canvas && <li><kbd>/</kbd> on a page adds a box where the pointer is: text, list, table, code…</li>}
+          {canvas && <li><kbd>Double-click</kbd> empty space to start typing</li>}
+          <li><kbd>?</kbd> lists every keyboard shortcut</li>
+        </ul>
       </div>
     );
   }

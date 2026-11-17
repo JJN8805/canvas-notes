@@ -83,6 +83,52 @@ await page.keyboard.press('Enter');
 await page.waitForTimeout(300);
 check('arrow keys move through the list and Enter picks (two down = the list box)', (await count()) === before + 2);
 
+/* "/" typed into an empty text box: the choice replaces that box */
+await page.keyboard.press('Escape');
+await page.mouse.click(900, 620);
+const beforeInline = await count();
+await page.mouse.dblclick(900, 330);
+await page.waitForTimeout(400);
+check('double-click makes a text box with the cursor in it', (await count()) === beforeInline + 1 && (await page.evaluate(() => document.activeElement?.isContentEditable === true)));
+await page.keyboard.press('/');
+await page.waitForSelector('.slash');
+check('"/" in an empty text box opens the menu (and types nothing)', (await page.evaluate(() => document.querySelector('.slash-input') === document.activeElement)));
+await page.keyboard.type('table');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(400);
+check('choosing Table replaces the empty box (the count is unchanged, there is a table)', (await count()) === beforeInline + 1 && (await page.locator('.world .block.b-table').count()) >= 1);
+
+/* focus mode */
+await page.keyboard.press('Escape');
+await page.mouse.click(900, 660);
+await page.keyboard.press('Control+Shift+f');
+await page.waitForTimeout(200);
+check('Ctrl+Shift+F hides the header, tools and zoom', (await page.locator('.ed-head:visible').count()) === 0 && (await page.locator('.tools:visible').count()) === 0 && (await page.locator('.focus-exit').count()) === 1);
+await page.click('.focus-exit');
+check('the button brings them back', (await page.locator('.ed-head:visible').count()) === 1);
+
+/* menu rows show their key at the right edge */
+await page.mouse.click(1100, 200, { button: 'right' });
+await page.waitForSelector('.menu');
+check('the right-click menu shows keys apart from the names', (await page.locator('.menu .menu-key').count()) >= 4);
+await page.keyboard.press('Escape');
+
+/* favorites and recent */
+await page.click('.ed-star');
+check('the star is pressed', (await page.getAttribute('.ed-star', 'aria-pressed')) === 'true');
+await page.evaluate(() => (location.hash = '#/'));
+await page.waitForSelector('.sidebar');
+check('a starred page is listed under Favorites in the sidebar', (await page.locator('.side-section[aria-label="Favorites"] .nav-item:has-text("Plan")').count()) === 1);
+await page.click('.side-section[aria-label="Favorites"] .nav-item:has-text("Plan")');
+await page.waitForSelector('.world');
+await page.click('.ed-star');
+await page.evaluate(() => (location.hash = '#/'));
+await page.waitForSelector('.sidebar');
+check('un-starring takes it out, and it shows under Recent', (await page.locator('.side-section[aria-label="Favorites"]').count()) === 0 && (await page.locator('.side-section[aria-label="Recent"] .nav-item:has-text("Plan")').count()) === 1);
+await page.screenshot({ path: join(OUT, 'sidebar.png') });
+await page.click('.card:has-text("Plan")');
+await page.waitForSelector('.world');
+
 /* the header keeps the title readable */
 await page.keyboard.press('Escape');
 const title = await page.locator('.ed-title').evaluate((el) => ({ w: el.clientWidth, sw: el.scrollWidth }));

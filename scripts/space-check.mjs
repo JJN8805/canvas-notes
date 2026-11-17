@@ -177,6 +177,16 @@ check('key 3 is the Side view', Math.abs(Math.abs(cm.yaw) - Math.PI / 2) < 0.01)
 await page.keyboard.press('2');
 await page.waitForTimeout(900);
 cm = (await screen()).camera;
+await page.keyboard.press('1');
+await page.waitForTimeout(900);
+const faces = (await screen()).cube;
+check('the orientation cube shows three faces from the angled view', faces.length === 3 && faces.some((f) => f.name === 'top'), JSON.stringify(faces.map((f) => f.name)));
+const topFace = faces.find((f) => f.name === 'top');
+await page.mouse.click(topFace.x, topFace.y);
+await page.waitForTimeout(900);
+check('clicking a face of the cube looks from that side (Top)', (await screen()).camera.pitch < -1.3);
+await page.keyboard.press('2');
+await page.waitForTimeout(900);
 const pin = await box('n2');
 await page.mouse.move(pin.x, pin.y);
 await page.mouse.wheel(0, -500);

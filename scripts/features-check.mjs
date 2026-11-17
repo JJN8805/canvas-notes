@@ -26,7 +26,7 @@ const errors = [];
 page.on('console', (m) => (m.type() === 'error' && !/esm\.sh|font/i.test(m.text()) ? errors.push(m.text().slice(0, 200)) : 0));
 page.on('pageerror', (e) => errors.push(`exception: ${e.message}`));
 
-const nav = async () => (await page.locator('.sidebar .side-section .nav-item').allInnerTexts()).map((t) => t.replace(/\s*\d+$/, '').trim());
+const nav = async () => (await page.locator('.sidebar .side-section:not([aria-label]) .nav-item').allInnerTexts()).map((t) => t.replace(/\s*\d+$/, '').trim());
 const openFeatures = async () => {
   await page.click('.side-settings');
   await page.click('[role=tab]:has-text("Features")');

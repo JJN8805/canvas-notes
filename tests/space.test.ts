@@ -257,3 +257,23 @@ describe('camera movement', () => {
     expect(n).toBeLessThan(120);
   });
 });
+
+describe('the orientation cube', () => {
+  it('shows only the front face when looking at the page head-on, and a face is flat to you when you look from it', async () => {
+    const { cubeFaces, FACE_VIEW } = await import('../src/lib/spaceCamera');
+    expect(cubeFaces({ yaw: 0, pitch: 0 }, 20).map((f) => f.name)).toEqual(['front']);
+    for (const name of Object.keys(FACE_VIEW) as (keyof typeof FACE_VIEW)[]) {
+      const faces = cubeFaces({ ...FACE_VIEW[name], pitch: FACE_VIEW[name].pitch * 0.9999 }, 20);
+      expect(faces[0].name === name || faces.some((f) => f.name === name)).toBe(true);
+      expect(faces.find((f) => f.name === name)!.poly.length).toBe(4);
+    }
+  });
+  it('shows three faces from an angle (the default view) and turns with the camera', async () => {
+    const { cubeFaces } = await import('../src/lib/spaceCamera');
+    const names = cubeFaces({ yaw: 0.45, pitch: -0.25 }, 20).map((f) => f.name).sort();
+    expect(names).toHaveLength(3);
+    expect(names).toContain('front');
+    const turned = cubeFaces({ yaw: 0.45 + Math.PI, pitch: -0.25 }, 20).map((f) => f.name);
+    expect(turned).toContain('back');
+  });
+});

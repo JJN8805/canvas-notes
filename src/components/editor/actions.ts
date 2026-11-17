@@ -86,7 +86,8 @@ export function boxMenu(pageId: string, ids: string[]): MenuItem[] {
 /** The menu for empty canvas: add something right here, select all, find your way around. */
 export function canvasMenu(pageId: string, at: Point, focus: (id: string) => void): MenuItem[] {
   const api = canvasApi.current;
-  const add = (type: AddKind): MenuItem => ({ label: ADD_LABEL[type] ?? type, action: () => void quickAdd(pageId, type, at, focus) });
+  const keyOf = (type: AddKind) => (usePrefs.getState().keymap as Record<string, string>)[type]?.toUpperCase();
+  const add = (type: AddKind): MenuItem => ({ label: `${ADD_LABEL[type] ?? type}${keyOf(type) ? `  (${keyOf(type)})` : ''}`, action: () => void quickAdd(pageId, type, at, focus) });
   const blocks = useNotes.getState().pages[pageId]?.blocks ?? [];
   return [
     { heading: 'Add here' },

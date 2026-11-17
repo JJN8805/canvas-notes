@@ -16,6 +16,10 @@ import { openNav } from '../../store/nav';
 import { MOD_LABEL } from '../../lib/util';
 import { toggleSidebar } from '../../store/layout';
 import { useFeature, useFeatures } from '../../store/features';
+import { navigate } from '../../lib/route';
+import { listedPages } from '../../lib/pages';
+import { favoritePages, recentPages } from '../../lib/favorites';
+import { toggleStar, useFavorites } from '../../store/favorites';
 
 /* ---------------- Sidebar ---------------- */
 
@@ -55,6 +59,8 @@ export function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Grou
         <span className="side-search-label">{canAsk ? 'Search or ask' : 'Search'}</span>
         <kbd>{MOD_LABEL}+K</kbd>
       </button>
+
+      <PageShortcuts />
 
       <div className="side-section">
         {screens.map((s) => (
@@ -115,6 +121,45 @@ export function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Grou
         </div>
       </div>
     </nav>
+  );
+}
+
+/** Starred pages and the ones edited last, a click away (Notion's Favorites and Recent). Nothing shows until there is something to list. */
+function PageShortcuts() {
+  const pages = useNotes((s) => s.pages);
+  const ids = useFavorites((s) => s.ids);
+  const listed = useMemo(() => listedPages(pages), [pages]);
+  const starred = useMemo(() => favoritePages(ids, listed), [ids, listed]);
+  const recent = useMemo(() => recentPages(listed, ids), [ids, listed]);
+  if (!starred.length && !recent.length) return null;
+  const row = (p: Page, star: boolean) => (
+    <div key={p.id} className="side-page">
+      <button className="nav-item" onClick={() => navigate({ name: 'page', id: p.id })} title={p.title.trim() || 'Untitled'}>
+        <span className="nav-ico"><Icon name={star ? 'star' : 'pages'} size={16} /></span>
+        <span className="lbl">{p.title.trim() || 'Untitled'}</span>
+      </button>
+      {star && (
+        <button className="icon-btn side-unstar" aria-label={`Remove ${p.title.trim() || 'Untitled'} from favorites`} title="Remove from favorites" onClick={() => toggleStar(p.id)}>
+          <Icon name="close" size={14} />
+        </button>
+      )}
+    </div>
+  );
+  return (
+    <>
+      {starred.length > 0 && (
+        <div className="side-section" aria-label="Favorites">
+          <div className="side-head">Favorites</div>
+          {starred.map((p) => row(p, true))}
+        </div>
+      )}
+      {recent.length > 0 && (
+        <div className="side-section" aria-label="Recent">
+          <div className="side-head">Recent</div>
+          {recent.map((p) => row(p, false))}
+        </div>
+      )}
+    </>
   );
 }
 

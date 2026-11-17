@@ -9,7 +9,7 @@ import { clampDist, clampPitch, frame, unproject, type Camera, type P3 } from '.
 
 /** The named views. `front` looks at the page head-on (as when editing), the others show how far apart the layers are. */
 export const VIEWS = {
-  angled: { yaw: 0.45, pitch: 0.22, label: 'Angled', key: '1' },
+  angled: { yaw: 0.45, pitch: -0.25, label: 'Angled', key: '1' },
   front: { yaw: 0, pitch: 0, label: 'Front', key: '2' },
   side: { yaw: -Math.PI / 2, pitch: 0, label: 'Side', key: '3' },
   top: { yaw: 0, pitch: -1.4, label: 'Top', key: '4' },
@@ -83,3 +83,41 @@ export const spinStep = (v: { x: number; y: number }): { x: number; y: number } 
   const next = { x: v.x * SPIN_DECAY, y: v.y * SPIN_DECAY };
   return Math.hypot(next.x, next.y) < 0.15 ? null : next;
 };
+
+/** The way to look so that a face of the corner cube faces you (Autodesk's ViewCube: click a face to look from there). */
+export const FACE_VIEW: Record<'front' | 'back' | 'left' | 'right' | 'top' | 'bottom', { yaw: number; pitch: number }> = {
+  front: { yaw: 0, pitch: 0 },
+  back: { yaw: Math.PI, pitch: 0 },
+  left: { yaw: Math.PI / 2, pitch: 0 },
+  right: { yaw: -Math.PI / 2, pitch: 0 },
+  top: { yaw: 0, pitch: -1.4 },
+  bottom: { yaw: 0, pitch: 1.4 },
+};
+
+const CUBE: [number, number, number][] = [[-1, 1, -1], [1, 1, -1], [1, -1, -1], [-1, -1, -1], [-1, 1, 1], [1, 1, 1], [1, -1, 1], [-1, -1, 1]];
+const CUBE_FACES: { name: keyof typeof FACE_VIEW; corners: number[]; normal: [number, number, number] }[] = [
+  { name: 'front', corners: [0, 1, 2, 3], normal: [0, 0, -1] },
+  { name: 'back', corners: [4, 5, 6, 7], normal: [0, 0, 1] },
+  { name: 'top', corners: [0, 1, 5, 4], normal: [0, 1, 0] },
+  { name: 'bottom', corners: [3, 2, 6, 7], normal: [0, -1, 0] },
+  { name: 'left', corners: [0, 3, 7, 4], normal: [-1, 0, 0] },
+  { name: 'right', corners: [1, 2, 6, 5], normal: [1, 0, 0] },
+];
+
+/**
+ * The small orientation cube for a camera: the faces turned toward the viewer as polygons around (0, 0), `size` pixels from the centre
+ * to a face (orthographic, same turn as the picture). Each is a button that looks from that side.
+ */
+export function cubeFaces(c: Pick<Camera, 'yaw' | 'pitch'>, size: number): { name: keyof typeof FACE_VIEW; poly: { x: number; y: number }[]; centre: { x: number; y: number } }[] {
+  const cy = Math.cos(c.yaw), sy = Math.sin(c.yaw), cp = Math.cos(c.pitch), sp = Math.sin(c.pitch);
+  const turn = ([x, y, z]: [number, number, number]) => {
+    const x1 = x * cy - z * sy;
+    const z1 = x * sy + z * cy;
+    return { x: x1, y: y * cp - z1 * sp, z: y * sp + z1 * cp }; // larger z = further from the viewer
+  };
+  const pts = CUBE.map((p) => turn(p));
+  return CUBE_FACES.filter((f) => turn(f.normal).z < -1e-6).map((f) => {
+    const poly = f.corners.map((i) => ({ x: pts[i].x * size, y: -pts[i].y * size }));
+    return { name: f.name, poly, centre: { x: poly.reduce((s, p) => s + p.x, 0) / 4, y: poly.reduce((s, p) => s + p.y, 0) / 4 } };
+  });
+}

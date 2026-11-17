@@ -29,6 +29,7 @@ export function shortcutGroups(k: Keymap = DEFAULT_KEYMAP): ShortcutGroup[] {
   {
     title: 'Select and edit',
     rows: [
+      [`${M} + Shift + F`, 'Focus mode: hide the header, tools and map'],
       [`${M} + A`, 'Select all boxes'],
       ['Shift + click', 'Add a box to the selection'],
       ['Drag on empty space', 'Select boxes with a rectangle'],

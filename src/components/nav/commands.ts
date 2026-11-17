@@ -7,6 +7,7 @@ import { createCard } from '../../store/cards';
 import { pinPage } from '../../widgets';
 import { widgetsAvailableNow } from '../../widgets/host';
 import { createGroup, getStorage, redo, setFilter, undo, useNotes } from '../../store/notes';
+import { toggleFocusMode } from '../../store/focusMode';
 import { openNav } from '../../store/nav';
 import { openTidy } from '../../store/tidy';
 import { openShortcuts } from '../../store/shortcutsUi';
@@ -125,6 +126,7 @@ export function buildCommands(): Command[] {
       ...(widgetsAvailableNow() ? [{ id: 'pin-page', feature: 'widgets' as const, icon: 'pin' as const, title: 'Pin this page to the desktop', run: () => void pinPage(useNotes.getState().pages[onPage]) }] : []),
       { id: 'outline', icon: 'outline', title: 'Show outline and links of this page', run: () => openNav('outline') },
       ...(pageApp(useNotes.getState().pages[onPage]) ? [] : [{ id: 'space', feature: 'space' as const, icon: 'graph' as const, title: 'Open this page in 3D', run: () => openNav('space') }]),
+      { id: 'focus', feature: 'canvas' as const, icon: 'frame' as const, title: 'Focus mode: hide everything but the page', keys: `${MOD_LABEL}+Shift+F`, run: () => toggleFocusMode() },
       { id: 'tidy', icon: 'pages', title: 'Tidy this page…', run: () => openTidy(onPage) },
       { id: 'undo', icon: 'undo', title: 'Undo', keys: `${MOD_LABEL}+Z`, run: () => void undo(onPage) },
       { id: 'redo', icon: 'redo', title: 'Redo', keys: `${MOD_LABEL}+Shift+Z`, run: () => void redo(onPage) },

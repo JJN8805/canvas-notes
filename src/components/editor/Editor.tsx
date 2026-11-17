@@ -56,6 +56,8 @@ import { closeDraw, toggleDraw, useDraw } from '../../store/draw';
 import { openTidy } from '../../store/tidy';
 import { liveDrawing } from '../../lib/drawing';
 import { SlashMenu } from './SlashMenu';
+import { toggleStar, useFavorites } from '../../store/favorites';
+import { setFocusMode, toggleFocusMode, useFocusMode } from '../../store/focusMode';
 import { TidyDialog } from './TidyDialog';
 
 /**
@@ -112,8 +114,15 @@ export function Editor({ pageId, variant = 'page' }: { pageId: string; variant?:
   useAddons((s) => s.loaded); // a Workspace page changes how it looks when the add-on starts or stops
   const view = pageAppView(app);
   if (!exists || asCard || redirect) return null;
+  const focusOn = useFocusMode((s) => s.on) && variant === 'page';
+  useEffect(() => () => setFocusMode(false), [pageId]); // leaving a page leaves focus mode
   return (
-    <div className="editor">
+    <div className={'editor' + (focusOn ? ' focus-mode' : '')}>
+      {focusOn && (
+        <button className="focus-exit" onClick={toggleFocusMode} title={`Leave focus mode (${MOD_LABEL}+Shift+F)`}>
+          Leave focus mode
+        </button>
+      )}
       <EditorHeader pageId={pageId} compact={variant === 'journal'} />
       {template && variant === 'page' && <TemplateBanner />}
       <div className="ed-body">
@@ -248,6 +257,7 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
         }}
       />
       )}
+      {!compact && !template && <StarButton pageId={pageId} />}
       <div className="ed-actions">
         <button className="icon-btn" aria-label="Undo" title={`Undo (${MOD_LABEL}+Z)`} disabled={!canUndo} onClick={() => undo(pageId)}>
           <Icon name="undo" />
@@ -371,6 +381,16 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
       )}
       <SaveStatus />
     </header>
+  );
+}
+
+/** Star or un-star this page: starred pages are listed under Favorites in the library's sidebar. */
+function StarButton({ pageId }: { pageId: string }) {
+  const starred = useFavorites((s) => s.ids.includes(pageId));
+  return (
+    <button className={'icon-btn ed-star' + (starred ? ' on' : '')} aria-pressed={starred} aria-label={starred ? 'Remove from favorites' : 'Add to favorites'} title={starred ? 'Remove from favorites' : 'Add to favorites (shown in the sidebar)'} onClick={() => toggleStar(pageId)}>
+      <Icon name="star" size={18} />
+    </button>
   );
 }
 

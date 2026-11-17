@@ -15,6 +15,12 @@ export function Overlays() {
   );
 }
 
+/** "Duplicate  (Ctrl+D)": the label and, apart, the key it is shown with (drawn at the right edge, as in Notion and Linear). */
+export function splitKeyHint(label: string): { text: string; key: string } {
+  const m = /^(.*?)\s{2}\((.+)\)$/.exec(label);
+  return m ? { text: m[1], key: m[2] } : { text: label, key: '' };
+}
+
 function MenuHost() {
   const menu = useUi((s) => s.menu);
   const ref = useRef<HTMLDivElement>(null);
@@ -129,10 +135,12 @@ function MenuHost() {
             </div>
           );
         }
+        const split = splitKeyHint(it.label);
         return (
           <button key={i} role="menuitem" className={'menu-item' + (it.danger ? ' danger' : '')} onClick={() => run(it.action)}>
             {it.dot && <span className="dot" style={{ background: colorVar(it.dot) }} />}
-            {it.label}
+            <span className="menu-label">{split.text}</span>
+            {split.key && <kbd className="menu-key">{split.key}</kbd>}
             {it.check && <span className="check">✓</span>}
           </button>
         );
