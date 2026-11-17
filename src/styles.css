@@ -1485,3 +1485,39 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .space-btns { display: flex; flex-wrap: wrap; gap: 6px; }
 .space-hint { margin: 0; font-size: 12.5px; color: var(--graphite); line-height: 1.45; }
 @media (max-width: 760px) { .space-body { grid-template-columns: minmax(0, 1fr); } .space-body .graph-panel { display: none; } }
+
+/* ---- The "/" insert menu (Notion's slash menu) ---- */
+.slash { position: fixed; z-index: 90; width: 280px; max-height: min(420px, 70vh); display: flex; flex-direction: column; background: var(--sheet); border: 1px solid var(--rule); border-radius: 10px; box-shadow: var(--lift); overflow: hidden; }
+.slash-input { border: 0; border-bottom: 1px solid var(--rule); background: transparent; padding: 10px 12px; font: inherit; font-size: 14px; color: var(--ink); outline: none; }
+.slash-list { overflow-y: auto; padding: 5px; }
+.slash-none { margin: 0; padding: 10px; color: var(--graphite); font-size: 13px; }
+.slash-item { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; background: transparent; padding: 6px 8px; border-radius: 6px; cursor: pointer; text-align: left; color: var(--ink); }
+.slash-item.on { background: var(--hover); }
+.slash-icon { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--rule); border-radius: 6px; background: var(--sheet); color: var(--graphite); }
+.slash-text { display: flex; flex-direction: column; min-width: 0; }
+.slash-text strong { font-weight: 500; font-size: 14px; }
+.slash-text small { color: var(--graphite); font-size: 12px; }
+
+/* ------------------------------------------------------------------
+   Calmer chrome (what Notion, Linear and Obsidian share): the content is white and the sidebar is a quiet tint beside it; controls
+   that are not the main action have no box until you reach for them; everything eases instead of jumping; the title gets the room.
+   ------------------------------------------------------------------ */
+.sidebar { background: var(--desk); }
+.main:not(.main-journal) { background: var(--sheet); }
+.btn, .icon-btn, .nav-item, .menu-item, .side-search, .ed-title, .card, .chip { transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.15s ease, color 0.12s ease; }
+.nav-item[aria-current='true'] { box-shadow: none; background: var(--sheet); }
+
+/* The page header: quiet buttons, a roomy title. */
+.ed-head .btn:not(.primary):not(.on):not(.danger), .ed-head .ed-back { border-color: transparent; background: transparent; color: var(--graphite); }
+.ed-head .btn:not(.primary):not(.on):not(.danger):hover, .ed-head .ed-back:hover { background: var(--hover); color: var(--ink); }
+.ed-head .btn:not(.primary):not(.on):not(.danger):focus-visible { border-color: var(--accent); }
+.ed-head .ed-title { flex: 1 1 260px; min-width: 200px; }
+@media (max-width: 1640px) {
+  /* Labels give way to icons (each has a tooltip and a name for screen readers) before the title gets cut. */
+  .ed-head .ed-lbl { display: none; }
+  .ed-head .btn.ed-template, .ed-head .btn.ed-outline, .ed-head .btn.ed-space, .ed-head .btn.ed-size, .ed-head .btn.ed-history, .ed-head .btn.ed-export { padding: 7px 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn, .icon-btn, .nav-item, .menu-item, .side-search, .ed-title, .card, .chip { transition: none; }
+}

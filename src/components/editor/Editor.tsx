@@ -55,6 +55,7 @@ import { DrawOverlay } from './DrawOverlay';
 import { closeDraw, toggleDraw, useDraw } from '../../store/draw';
 import { openTidy } from '../../store/tidy';
 import { liveDrawing } from '../../lib/drawing';
+import { SlashMenu } from './SlashMenu';
 import { TidyDialog } from './TidyDialog';
 
 /**
@@ -125,6 +126,7 @@ export function Editor({ pageId, variant = 'page' }: { pageId: string; variant?:
             <AddToolbar pageId={pageId} />
             <FormatBar />
             <ZoomControls />
+            <SlashMenu pageId={pageId} />
           </>
         )}
         {view?.Extras && <view.Extras pageId={pageId} />}
@@ -284,6 +286,7 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
       {templatesOn && (
       <button
         className="btn ed-template"
+        aria-label="Save as template"
         title="Keep this page's layout and boxes as a template for new pages"
         onClick={async () => {
           const name = await ask({ title: 'Save as template', initial: title, okLabel: 'Save template', placeholder: 'Template name', text: 'New pages made from it are independent copies.' });
@@ -291,21 +294,21 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
         }}
       >
         <Icon name="template" size={16} />
-        Save as template
+        <span className="ed-lbl">Save as template</span>
       </button>
       )}
         </>
       )}
       {app !== 'sheet' && (
-      <button className="btn ed-outline" title="Headings, frames and links of this page" onClick={() => openNav('outline')}>
+      <button className="btn ed-outline" aria-label="Outline" title="Headings, frames and links of this page" onClick={() => openNav('outline')}>
         <Icon name="outline" size={16} />
-        Outline
+        <span className="ed-lbl">Outline</span>
       </button>
       )}
       {app !== 'doc' && app !== 'sheet' && spaceOn && (
-      <button className="btn ed-space" title="See this page's boxes in 3D: place them nearer or further away" onClick={() => openNav('space')}>
+      <button className="btn ed-space" aria-label="3D view" title="See this page's boxes in 3D: place them nearer or further away" onClick={() => openNav('space')}>
         <Icon name="graph" size={16} />
-        3D
+        <span className="ed-lbl">3D</span>
       </button>
       )}
       {app !== 'doc' && app !== 'sheet' && (
@@ -341,12 +344,12 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
         }}
       >
         <Icon name="pages" size={16} />
-        Page
+        <span className="ed-lbl">Page</span>
       </button>
       )}
-      <button className="btn ed-history" onClick={() => setShowHistory(true)}>
+      <button className="btn ed-history" aria-label="History" title="Earlier versions of this page" onClick={() => setShowHistory(true)}>
         <Icon name="history" size={16} />
-        History
+        <span className="ed-lbl">History</span>
       </button>
       {showHistory && <HistoryPanel pageId={pageId} onClose={() => setShowHistory(false)} />}
       {Object.entries(addons).filter(([, m]) => m.Panel).map(([id, m]) => (
@@ -358,10 +361,12 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
       {!template && (
       <button
         className="btn ed-export"
+        aria-label="Export"
+        title="Export this page"
         onClick={(e) => openMenu(e.currentTarget, [{ heading: 'Export this page as' }, ...EXPORT_ITEMS(pageId)])}
       >
         <Icon name="export" size={16} />
-        Export
+        <span className="ed-lbl">Export</span>
       </button>
       )}
       <SaveStatus />

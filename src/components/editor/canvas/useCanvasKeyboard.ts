@@ -14,6 +14,8 @@ import { frameDescendants } from '../../../lib/frames';
 import { allLocked, freeIds } from '../../../lib/lock';
 import { branchFrom, quickAdd, selectableIds } from '../actions';
 import { openShortcuts } from '../../../store/shortcutsUi';
+import { openSlash } from '../../../store/slash';
+import { featureOn } from '../../../store/features';
 import { setMinimap, usePrefs } from '../../../store/prefs';
 import type { AlignMode } from '../../../lib/arrange';
 
@@ -120,6 +122,16 @@ export function useCanvasKeyboard(deps: KeyboardDeps) {
         return;
       }
 
+      // "/" opens the insert menu at the pointer (Notion's slash menu): type to filter, Enter adds.
+      if (e.key === '/' && !mod && !e.altKey && !e.repeat && featureOn('canvas')) {
+        e.preventDefault();
+        const r = viewportRef.current?.getBoundingClientRect();
+        const m = pointer.current;
+        const over = !!(r && m && m.x >= r.left && m.x <= r.right && m.y >= r.top && m.y <= r.bottom);
+        const screen = over ? m! : { x: (r?.left ?? 0) + (r?.width ?? 600) / 2 - 140, y: (r?.top ?? 0) + (r?.height ?? 400) / 3 };
+        openSlash({ pageId, screen, world: over ? worldPoint(m!.x, m!.y) : visibleSpot(280, 40), focus: focusBlock });
+        return;
+      }
       if (e.key === '?' && !mod) {
         e.preventDefault();
         openShortcuts();

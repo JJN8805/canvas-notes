@@ -21,6 +21,7 @@ export function shortcutGroups(k: Keymap = DEFAULT_KEYMAP): ShortcutGroup[] {
       [k.code, 'Code box'],
       [k.table, 'Table'],
       [k.frame, 'Frame'],
+      ['/', 'Insert menu at the pointer: type to filter, Enter adds'],
       ['Double-click', 'Text box where you click'],
       ['Tab', 'New sticky joined by an arrow to the selected box'],
     ],
