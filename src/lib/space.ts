@@ -30,7 +30,11 @@ export const thicknessOf = (b: Pick<Block, 'type' | 'w' | 'h'>): number =>
   b.type === 'frame' ? FRAME_THICKNESS : Math.max(MIN_THICKNESS, Math.min(MAX_THICKNESS, Math.round(Math.min(b.w, b.h) * 0.5)));
 
 /** Past this many boxes the stacking is not worked out (every box without a chosen depth stays on the page), so a huge page never stalls. */
-const AUTO_LIMIT = 1500;
+const AUTO_LIMIT = 8000;
+/** Boxes are filed in a grid of this many page pixels, so a box is only compared with the ones near it (not with every box below it). */
+const CELL = 256;
+/** A box that would cover more cells than this is kept in a short list that is always checked (a huge frame, a far-away box). */
+const MAX_CELLS = 400;
 
 const overlaps = (a: Block, b: Block): boolean => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + blockHeight(b) && b.y < a.y + blockHeight(a);
 
@@ -43,13 +47,29 @@ const overlaps = (a: Block, b: Block): boolean => a.x < b.x + b.w && b.x < a.x +
 export function effectiveDepths(blocks: readonly Block[]): Map<string, number> {
   const out = new Map<string, number>();
   const ordered = blocks.length <= AUTO_LIMIT ? paintOrder(blocks as Block[]) : [];
-  const done: { b: Block; depth: number }[] = [];
+  type Placed = { b: Block; depth: number; at: number };
+  const grid = new Map<string, Placed[]>();
+  const wide: Placed[] = [];
+  const range = (b: Block) => ({ x0: Math.floor(b.x / CELL), x1: Math.floor((b.x + b.w) / CELL), y0: Math.floor(b.y / CELL), y1: Math.floor((b.y + blockHeight(b)) / CELL) });
+  let n = 0;
   for (const b of ordered) {
+    const r = range(b);
+    const cells = (r.x1 - r.x0 + 1) * (r.y1 - r.y0 + 1);
     let d = 0;
-    for (const o of done) if (overlaps(b, o.b)) d = Math.max(d, o.depth + thicknessOf(o.b) + LAYER_GAP);
+    const seen = new Set<Placed>();
+    const look = (o: Placed) => {
+      if (seen.has(o)) return;
+      seen.add(o);
+      if (overlaps(b, o.b)) d = Math.max(d, o.depth + thicknessOf(o.b) + LAYER_GAP);
+    };
+    wide.forEach(look);
+    if (cells <= MAX_CELLS) for (let x = r.x0; x <= r.x1; x++) for (let y = r.y0; y <= r.y1; y++) grid.get(`${x},${y}`)?.forEach(look);
+    else for (const list of grid.values()) list.forEach(look); // a huge box: look at everything placed so far
     const depth = chosenDepth(b) ?? clampDepth(d);
     out.set(b.id, depth);
-    done.push({ b, depth });
+    const placed: Placed = { b, depth, at: n++ };
+    if (cells > MAX_CELLS) wide.push(placed);
+    else for (let x = r.x0; x <= r.x1; x++) for (let y = r.y0; y <= r.y1; y++) (grid.get(`${x},${y}`) ?? grid.set(`${x},${y}`, []).get(`${x},${y}`)!).push(placed);
   }
   for (const b of blocks) if (!out.has(b.id)) out.set(b.id, chosenDepth(b) ?? 0);
   return out;

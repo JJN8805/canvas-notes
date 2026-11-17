@@ -3,7 +3,9 @@ import { closeSlash, useSlash } from '../../store/slash';
 import { filterSlash } from '../../lib/slashItems';
 import { quickAdd } from './actions';
 import { deleteBlocks, useNotes } from '../../store/notes';
+import { turnNoteInto, type TurnKind } from '../../store/turnInto';
 import { Icon, type IconName } from '../ui/Icon';
+import { usePrefs } from '../../store/prefs';
 
 const ICONS: Record<string, IconName> = { text: 'text', sticky: 'sticky', checklist: 'checklist', code: 'code', table: 'table', frame: 'frame' };
 
@@ -15,8 +17,10 @@ export function SlashMenu({ pageId }: { pageId: string }) {
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
-  const items = useMemo(() => filterSlash(query), [query]);
+  const keymap = usePrefs((s) => s.keymap) as Record<string, string>;
   const mine = open?.pageId === pageId ? open : null;
+  const turning = !!mine?.turn;
+  const items = useMemo(() => filterSlash(query).filter((i) => !turning || ['text', 'sticky', 'code', 'checklist'].includes(i.type)), [query, turning]);
 
   useEffect(() => {
     if (!mine) return;
@@ -43,6 +47,11 @@ export function SlashMenu({ pageId }: { pageId: string }) {
     const item = items[i];
     if (!item) return;
     closeSlash();
+    if (mine.turn) {
+      // "/" typed at the start of a box with words: it changes into the chosen kind and keeps them.
+      turnNoteInto(pageId, mine.turn, item.type as TurnKind);
+      return mine.focus(mine.turn);
+    }
     if (mine.replace) {
       // "/" typed into an empty box: the choice takes its place (the same kind just goes back to typing in it).
       const old = useNotes.getState().pages[pageId]?.blocks.find((b) => b.id === mine.replace);
@@ -57,16 +66,28 @@ export function SlashMenu({ pageId }: { pageId: string }) {
       <input
         ref={input}
         className="slash-input"
-        placeholder="Add a box… type to filter"
+        placeholder={turning ? 'Turn into… type to filter' : 'Add a box… type to filter'}
         aria-label="Filter the boxes you can add"
         aria-controls="slash-list"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         onKeyDown={(e) => {
           e.stopPropagation();
+          const giveBack = () => {
+            // Cancelled in a box that has words: it was only a slash, so put it back and carry on typing there.
+            const id = mine.turn;
+            closeSlash();
+            if (id) {
+              mine.focus(id);
+              window.setTimeout(() => document.execCommand('insertText', false, '/'), 0);
+            }
+          };
           if (e.key === 'Escape') {
             e.preventDefault();
-            closeSlash();
+            giveBack();
+          } else if (e.key === 'Backspace' && !query && mine.turn) {
+            e.preventDefault();
+            giveBack();
           } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault();
             if (items.length) setIndex((i) => (i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length);
@@ -85,6 +106,7 @@ export function SlashMenu({ pageId }: { pageId: string }) {
               <strong>{item.label}</strong>
               <small>{item.hint}</small>
             </span>
+            {keymap[item.type] && <kbd className="slash-key" title="The key that adds it without this menu">{keymap[item.type].toUpperCase()}</kbd>}
           </button>
         ))}
       </div>

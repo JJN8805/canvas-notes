@@ -135,7 +135,7 @@ function PageShortcuts() {
   const row = (p: Page, star: boolean) => (
     <div key={p.id} className="side-page">
       <button className="nav-item" onClick={() => navigate({ name: 'page', id: p.id })} title={p.title.trim() || 'Untitled'}>
-        <span className="nav-ico"><Icon name={star ? 'star' : 'pages'} size={16} /></span>
+        <span className="nav-ico">{p.icon ? <span className="page-icon" aria-hidden="true">{p.icon}</span> : <Icon name={star ? 'star' : 'pages'} size={16} />}</span>
         <span className="lbl">{p.title.trim() || 'Untitled'}</span>
       </button>
       {star && (

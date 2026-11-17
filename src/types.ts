@@ -240,6 +240,8 @@ export interface Page {
   sheet?: Sheet | null;
   /** The id of a stored picture shown as this page's cover in the library, instead of the automatic miniature. Absent or null = no cover. */
   cover?: string | null;
+  /** One emoji or short mark shown beside the page's name (library, sidebar, switcher). Absent or null = none. Older app versions ignore it. */
+  icon?: string | null;
   created: number;
   updated: number;
   /** Revision stored on disk. 0 means never saved. Used to detect edits from another window. */

@@ -62,7 +62,8 @@ const ink = () => page.evaluate(() => {
   for (let i = 3; i < d.length; i += 4) if (d[i] > 0) h = (h * 31 + d[i - 3] + d[i - 2] * 7 + d[i - 1] * 13) | 0;
   return h;
 });
-const openSpace = async () => {
+const openSpace = async (keepView = false) => {
+  if (!keepView) await page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('ui.space.camera.')).forEach((k) => localStorage.removeItem(k)));
   await page.keyboard.press('Control+p');
   await page.waitForSelector('.palette');
   await page.fill('.palette input', 'in 3D');
@@ -232,6 +233,42 @@ await page.keyboard.press('Enter');
 await page.waitForTimeout(500);
 check('Enter on the selected box takes you to it on the page', (await page.locator('.spaceview').count()) === 0 && (await page.locator('.world').count()) === 1);
 
+/* ---- the depth grip and Tab ---- */
+await openSpace();
+await page.click('.graph-panel button:has-text("Front")');
+await page.waitForTimeout(900);
+const gb = await box('n3');
+await page.mouse.click(gb.x, gb.y);
+const grip = (await screen()).handle;
+check('the selected box shows a depth grip', !!grip);
+const d0 = await depthOf('n3');
+await page.mouse.move(grip.x, grip.y);
+await page.mouse.down();
+await page.mouse.move(grip.x, grip.y - 50, { steps: 6 });
+await page.mouse.up();
+check('dragging the grip up brings the box nearer', (await depthOf('n3')) > d0);
+await page.mouse.click(cv.x + 300, cv.y + 400);
+await page.locator('.spaceview .tree3d-canvas').focus();
+await page.keyboard.press('Tab');
+const tab1 = (await screen()).selected;
+await page.keyboard.press('Tab');
+check('Tab steps through the boxes', !!tab1 && (await screen()).selected !== tab1);
+check('the selected box is announced for screen readers', /on the page|nearer|further/.test(await page.locator('.spaceview [aria-live="polite"]').innerText()));
+await page.keyboard.press('Escape');
+await page.waitForTimeout(300);
+
+/* ---- the view you left is the view you come back to ---- */
+await openSpace();
+await page.click('.graph-panel button:has-text("Side")');
+await page.waitForTimeout(900);
+await page.keyboard.press('Escape');
+await page.waitForTimeout(300);
+await openSpace(true);
+check('reopening the page in 3D shows the view you left (Side)', Math.abs(Math.abs((await screen()).camera.yaw) - Math.PI / 2) < 0.02);
+await page.keyboard.press('Escape');
+await page.waitForTimeout(300);
+await openSpace();
+
 /* ---- library: no 3D command there; and the view closes when the page is left ---- */
 await openSpace();
 await page.evaluate(() => (location.hash = '#/'));
@@ -248,3 +285,4 @@ check('no console errors', errors.length === 0, errors.join(' | '));
 await browser.close();
 console.log(`screenshots in ${OUT}`);
 process.exit(failed ? 1 : 0);
+

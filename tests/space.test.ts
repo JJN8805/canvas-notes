@@ -109,9 +109,9 @@ describe('depth that follows the page', () => {
   });
   it('copes with nothing, and with a very large page', () => {
     expect(effectiveDepths([]).size).toBe(0);
-    const many = Array.from({ length: 1600 }, (_, i) => at(`b${i}`, 0, 0, i));
+    const many = Array.from({ length: 8100 }, (_, i) => at(`b${i}`, 0, 0, i));
     const d = effectiveDepths(many);
-    expect(d.size).toBe(1600);
+    expect(d.size).toBe(8100);
     expect([...d.values()].every((v) => v === 0)).toBe(true); // too many to work out: all stay on the page
   });
 });
@@ -275,5 +275,52 @@ describe('the orientation cube', () => {
     expect(names).toContain('front');
     const turned = cubeFaces({ yaw: 0.45 + Math.PI, pitch: -0.25 }, 20).map((f) => f.name);
     expect(turned).toContain('back');
+  });
+});
+
+describe('stacking on big pages', () => {
+  const brute = (blocks: Block[]) => {
+    const out = new Map<string, number>();
+    const done: { b: Block; depth: number }[] = [];
+    const ov = (a: Block, b: Block) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + (b.h ?? 40) && b.y < a.y + (a.h ?? 40);
+    for (const b of paintOrderOf(blocks)) {
+      let d = 0;
+      for (const o of done) if (ov(b, o.b)) d = Math.max(d, o.depth + thicknessOf(o.b) + LAYER_GAP);
+      out.set(b.id, clampDepth(d));
+      done.push({ b, depth: clampDepth(d) });
+    }
+    return out;
+  };
+  let paintOrderOf: (b: Block[]) => Block[];
+  it('gives the same depths as comparing every pair, also for huge and far-away boxes', async () => {
+    paintOrderOf = (await import('../src/lib/frames')).paintOrder as never;
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const blocks: Block[] = Array.from({ length: 300 }, (_, i) => note(`b${i}`, { x: Math.round(rnd() * 3000 - 500), y: Math.round(rnd() * 2000), w: 40 + Math.round(rnd() * 300), h: 40 + Math.round(rnd() * 200), z: i }));
+    blocks.push(note('huge', { x: -50000, y: -50000, w: 200000, h: 200000, z: 301 }), note('far', { x: 9e6, y: 9e6, w: 100, h: 100, z: 302 }));
+    const fast = effectiveDepths(blocks);
+    const slow = brute(blocks);
+    for (const b of blocks) expect(fast.get(b.id)).toBe(slow.get(b.id));
+  });
+  it('handles thousands of boxes quickly', () => {
+    const blocks: Block[] = Array.from({ length: 5000 }, (_, i) => note(`b${i}`, { x: (i % 100) * 150, y: Math.floor(i / 100) * 90, w: 200, h: 60, z: i }));
+    const t = Date.now();
+    const d = effectiveDepths(blocks);
+    expect(d.size).toBe(5000);
+    expect(Date.now() - t).toBeLessThan(2000);
+  });
+});
+
+describe('remembering the 3D camera', () => {
+  it('reads back a stored camera and limits every number', async () => {
+    const { parseCamera } = await import('../src/lib/spaceCamera');
+    const c = parseCamera(JSON.stringify({ yaw: 0.5, pitch: 9, dist: 1, target: { x: 1, y: 2, z: 3 } }))!;
+    expect(c.pitch).toBeLessThanOrEqual(1.45);
+    expect(c.dist).toBeGreaterThanOrEqual(120);
+    expect(c.target).toEqual({ x: 1, y: 2, z: 3 });
+  });
+  it('refuses anything else', async () => {
+    const { parseCamera } = await import('../src/lib/spaceCamera');
+    for (const bad of [null, undefined, 'x', '{}', '{"yaw":"a"}', '[]', JSON.stringify({ yaw: 1, pitch: 1, dist: 1, target: { x: 1, y: 1 } })]) expect(parseCamera(bad as never)).toBeNull();
   });
 });

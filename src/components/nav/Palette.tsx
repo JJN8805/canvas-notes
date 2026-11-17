@@ -3,6 +3,7 @@ import { closeNav, useNav } from '../../store/nav';
 import { useNotes } from '../../store/notes';
 import { fuzzyFilter } from '../../lib/fuzzy';
 import { libraryPages } from '../../lib/pages';
+import { useFavorites } from '../../store/favorites';
 import { navigate } from '../../lib/route';
 import { buildCommands } from './commands';
 import { askHandler, useAddons } from '../../addons/store';
@@ -24,6 +25,7 @@ export function Palette() {
 
 function PaletteBody({ mode }: { mode: 'commands' | 'switcher' }) {
   const pages = useNotes((s) => s.pages);
+  const stars = useFavorites((s) => s.ids);
   const [query, setQuery] = useState('');
   const [sel, setSel] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
@@ -37,16 +39,17 @@ function PaletteBody({ mode }: { mode: 'commands' | 'switcher' }) {
       const all = buildCommands().map((c) => ({ key: c.id, label: c.title, hint: c.keys, icon: c.icon, run: c.run }));
       return fuzzyFilter(all, query, (r) => r.label);
     }
+    // With nothing typed, starred pages come first and then the latest edited (Notion's and Linear's switchers do the same).
     const all = libraryPages(pages)
-      .sort((a, b) => b.updated - a.updated)
-      .map((p) => ({ key: p.id, label: p.title || 'Untitled', hint: p.dailyDate ? 'Journal' : p.tags.map((t) => '#' + t).join(' '), icon: 'pages' as IconName, run: () => navigate({ name: 'page', id: p.id }) }));
+      .sort((a, b) => (query.trim() ? 0 : Number(stars.includes(b.id)) - Number(stars.includes(a.id))) || b.updated - a.updated)
+      .map((p) => ({ key: p.id, label: `${p.icon ? p.icon + ' ' : ''}${p.title || 'Untitled'}`, hint: stars.includes(p.id) ? 'Favorite' : p.dailyDate ? 'Journal' : p.tags.map((t) => '#' + t).join(' '), icon: (stars.includes(p.id) ? 'star' : 'pages') as IconName, run: () => navigate({ name: 'page', id: p.id }) }));
     const found: Row[] = fuzzyFilter(all, query, (r) => r.label).slice(0, 50);
     // "Search or ask": the last row asks the question instead of opening a page, so Enter still opens the best page match.
     const ask = askHandler();
     const q = query.trim();
     if (ask && q) found.push({ key: 'ask-ai', label: `Ask AI: “${q}”`, icon: 'sparkle', run: () => ask(q) });
     return found;
-  }, [mode, pages, query, loaded]);
+  }, [mode, pages, query, loaded, stars]);
 
   useEffect(() => setSel(0), [query, mode]);
   useEffect(() => {

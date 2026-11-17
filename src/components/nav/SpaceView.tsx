@@ -9,7 +9,7 @@ import {
   visibleFaces, type FaceName,
 } from '../../lib/space';
 import { cameraPosition, clampPitch, project, unproject, type Camera, type P3 } from '../../lib/tree3d';
-import { FACE_VIEW, VIEWS, VIEW_NAMES, arrived, cubeFaces, focusOn, glide, orbitBy, panBy, spinStep, viewCamera, viewOf, wheelFactor, zoomAt, type ViewName } from '../../lib/spaceCamera';
+import { FACE_VIEW, parseCamera, VIEWS, VIEW_NAMES, arrived, cubeFaces, focusOn, glide, orbitBy, panBy, spinStep, viewCamera, viewOf, wheelFactor, zoomAt, type ViewName } from '../../lib/spaceCamera';
 import { blockHeight, textToHtml } from '../../lib/util';
 
 /** `var(--n-yellow)` as the colour the canvas needs (a canvas cannot read CSS variables itself). */
@@ -22,6 +22,7 @@ function resolve(el: Element, v: string): string {
 export interface SpaceScreenInfo {
   boxes: { id: string; x: number; y: number; w: number; depth: number; faces: string[] }[];
   cube: { name: string; x: number; y: number }[];
+  handle: { x: number; y: number } | null;
   selected: string | null;
   camera: { dist: number; yaw: number; pitch: number };
 }
@@ -30,6 +31,9 @@ export interface SpaceScreenInfo {
 const START_CAMERA: Camera = { yaw: 0.45, pitch: -0.25, dist: 1400, target: { x: 0, y: 0, z: 0 } };
 const TEXT_LEFT = 7;
 /** The orientation cube in the corner: its centre (from the top-right) and half-size in pixels. */
+/** The grip on the selected box that drags it nearer or further: just right of its top-right corner. */
+const handleOf = (q: { x: number; y: number }[]) => ({ x: q[1].x + 17, y: q[1].y + 2 });
+const HANDLE_R = 10;
 const CUBE_AT = { fromRight: 58, fromTop: 58, size: 22 };
 
 /**
@@ -244,6 +248,23 @@ export function SpaceView({ pageId }: { pageId: string }) {
       }
     }
     ctx.globalAlpha = 1;
+    // The depth grip on the selected box: drag it up to bring the box nearer, down to push it back (also Alt+drag, the slider, [ and ]).
+    const picked = items.find((i) => i.b.id === d.selected);
+    if (picked && isLayerable(picked.b) && picked.frontVisible) {
+      const hp = handleOf(picked.q);
+      ctx.beginPath();
+      ctx.arc(hp.x, hp.y, HANDLE_R, 0, Math.PI * 2);
+      ctx.fillStyle = accent;
+      ctx.fill();
+      ctx.strokeStyle = sheet;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = col('var(--accent-ink)');
+      ctx.beginPath();
+      ctx.moveTo(hp.x, hp.y - 6); ctx.lineTo(hp.x + 4, hp.y - 1.5); ctx.lineTo(hp.x - 4, hp.y - 1.5); ctx.closePath();
+      ctx.moveTo(hp.x, hp.y + 6); ctx.lineTo(hp.x + 4, hp.y + 1.5); ctx.lineTo(hp.x - 4, hp.y + 1.5); ctx.closePath();
+      ctx.fill();
+    }
     // The orientation cube: click a face to look from that side.
     const gx = w - CUBE_AT.fromRight;
     const gy = CUBE_AT.fromTop;
@@ -347,6 +368,28 @@ export function SpaceView({ pageId }: { pageId: string }) {
     canvas.current?.focus(); // so the number keys keep working after a click on a button
     goalFor(viewCamera(goal.current ?? cam.current, name));
   };
+  const camKey = `ui.space.camera.${pageId.replace(/[^A-Za-z0-9_-]/g, '')}`;
+  useEffect(() => {
+    // The way you were looking last time you opened this page in 3D (per device), until you press Fit.
+    try {
+      const saved = parseCamera(localStorage.getItem(camKey));
+      if (saved) {
+        cam.current = saved;
+        fitted.current = true;
+        setView(viewOf(saved));
+        schedule();
+      }
+    } catch {
+      /* remembering the view is a convenience */
+    }
+    return () => {
+      try {
+        localStorage.setItem(camKey, JSON.stringify(goal.current ?? cam.current));
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [camKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!fitted.current && blocks.length) {
       fitted.current = true;
@@ -414,6 +457,19 @@ export function SpaceView({ pageId }: { pageId: string }) {
         const [a, b2] = [...touches.current.values()];
         pinch.current = { dist: Math.hypot(a.x - b2.x, a.y - b2.y), x: (a.x + b2.x) / 2, y: (a.y + b2.y) / 2 };
         return;
+      }
+    }
+    if (e.button === 0 && dataRef.current.selected) {
+      const pp = pos(e);
+      const sel = quads(pp.w, pp.h).find((i) => i.b.id === dataRef.current.selected);
+      const sb = sel?.b;
+      if (sel && sb && isLayerable(sb) && sel.frontVisible) {
+        const hp = handleOf(sel.q);
+        if (Math.hypot(pp.x - hp.x, pp.y - hp.y) <= HANDLE_R + 3) {
+          const dep = dataRef.current.depths.get(sb.id) ?? 0;
+          grab.current = { id: sb.id, mode: 'depth', moved: 0, startX: e.clientX, startY: e.clientY, startDepth: dep, offX: 0, offY: 0, began: false };
+          return;
+        }
       }
     }
     const face = e.button === 0 ? faceAt(e) : null;
@@ -494,6 +550,14 @@ export function SpaceView({ pageId }: { pageId: string }) {
       return;
     }
     const face = faceAt(e);
+    if (!face && dataRef.current.selected) {
+      const pp = pos(e);
+      const sel = quads(pp.w, pp.h).find((i) => i.b.id === dataRef.current.selected);
+      if (sel && isLayerable(sel.b) && sel.frontVisible) {
+        const hp = handleOf(sel.q);
+        if (Math.hypot(pp.x - hp.x, pp.y - hp.y) <= HANDLE_R + 3) canvas.current!.style.cursor = 'ns-resize';
+      }
+    }
     if (face !== hoverFace.current) {
       hoverFace.current = face;
       schedule();
@@ -535,6 +599,12 @@ export function SpaceView({ pageId }: { pageId: string }) {
       const r = el.getBoundingClientRect();
       return {
         boxes: quads(r.width, r.height).map((i) => ({ id: i.b.id, x: r.left + (i.q[0].x + i.q[2].x) / 2, y: r.top + (i.q[0].y + i.q[2].y) / 2, w: Math.hypot(i.q[1].x - i.q[0].x, i.q[1].y - i.q[0].y), depth: dataRef.current.depths.get(i.b.id) ?? 0, faces: i.faces.map((f) => f.name) })),
+        handle: (() => {
+          const i = quads(r.width, r.height).find((x) => x.b.id === dataRef.current.selected);
+          if (!i || !isLayerable(i.b) || !i.frontVisible) return null;
+          const hp = handleOf(i.q);
+          return { x: r.left + hp.x, y: r.top + hp.y };
+        })(),
         cube: cubeFaces(cam.current, CUBE_AT.size).map((f) => ({ name: f.name, x: r.left + r.width - CUBE_AT.fromRight + f.centre.x, y: r.top + CUBE_AT.fromTop + f.centre.y })),
         selected: dataRef.current.selected,
         camera: { dist: cam.current.dist, yaw: cam.current.yaw, pitch: cam.current.pitch },
@@ -638,6 +708,17 @@ export function SpaceView({ pageId }: { pageId: string }) {
               onKeyDown={(e) => {
                 const c = cam.current;
                 const r = canvas.current!.getBoundingClientRect();
+                if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                  // Tab steps through the boxes (top to bottom, left to right); past the last one it moves on as usual.
+                  const order = [...blocks].sort((a, b) => a.y - b.y || a.x - b.x);
+                  const at = order.findIndex((b) => b.id === selected);
+                  const next = at < 0 ? (e.shiftKey ? -1 : 0) : at + (e.shiftKey ? -1 : 1);
+                  if (next >= 0 && next < order.length) {
+                    e.preventDefault();
+                    setSelected(order[next].id);
+                  }
+                  return;
+                }
                 const named = VIEW_NAMES.find((n) => VIEWS[n].key === e.key);
                 if (named) lookFrom(named);
                 else if (e.key === 'f' || e.key === 'F') flyTo(selected);
@@ -660,8 +741,9 @@ export function SpaceView({ pageId }: { pageId: string }) {
                 schedule();
               }}
             />
+            <p className="sr" aria-live="polite">{chosen ? `${boxLabel(chosen)}, ${depth > 0 ? `${depth} nearer` : depth < 0 ? `${-depth} further` : 'on the page'}.` : view ? `${VIEWS[view].label} view.` : ''}</p>
             {blocks.length === 0 && <p className="graph-empty">This page has no boxes yet. Write a note above and it will appear here.</p>}
-            <div className="tree3d-help" aria-hidden="true">Drag the space to turn, or click the cube · Scroll zooms toward the pointer · Right-drag or Shift+drag slides · Double-click a box to fly to it, empty space to fit · 1–4 views · F focus · Enter edits · Alt+drag or [ ] set depth</div>
+            <div className="tree3d-help" aria-hidden="true">Tab steps through boxes · Drag the space to turn, or click the cube · Scroll zooms toward the pointer · Right-drag or Shift+drag slides · Double-click a box to fly to it, empty space to fit · 1–4 views · F focus · Enter edits · Alt+drag or [ ] set depth</div>
           </div>
         </div>
       </div>

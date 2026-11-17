@@ -14,6 +14,7 @@ import { widgetsAvailableNow } from '../../widgets/host';
 import { Thumbnail } from './Thumbnail';
 import { chooseCover } from './chooseCover';
 import { removePageCover } from '../../store/pageCover';
+import { choosePageIcon } from '../../store/pageIcon';
 import { useImageUrl } from '../../lib/useImageUrl';
 import { COARSE, PAGE_MIME } from './shared';
 
@@ -39,6 +40,7 @@ export const PageCard = memo(function PageCard({ page, group }: { page: Page; gr
     if (!menuRef.current) return;
     openMenu(menuRef.current, [
       { label: 'Open', action: open },
+      { label: page.icon ? 'Change icon…' : 'Add icon…', action: () => void choosePageIcon(page.id, page.icon) },
       {
         label: 'Rename…',
         action: async () => {
@@ -145,7 +147,7 @@ export const PageCard = memo(function PageCard({ page, group }: { page: Page; gr
         <Icon name="more" />
       </button>
       <div className="card-body">
-        <div className={'card-title' + (page.title ? '' : ' untitled')}>{page.title || 'Untitled'}</div>
+        <div className={'card-title' + (page.title ? '' : ' untitled')}>{page.icon && <span className="page-icon" aria-hidden="true">{page.icon}</span>}{page.title || 'Untitled'}</div>
         <div className="card-meta">{timeAgo(page.updated)}</div>
       </div>
     </article>

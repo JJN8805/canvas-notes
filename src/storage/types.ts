@@ -1,4 +1,5 @@
 import { cleanArrows, cleanBlocks, cleanTags } from '../lib/sanitize';
+import { cleanIcon } from '../lib/pageIcon';
 import { cleanColor } from '../lib/colors';
 import { cleanDate, kindOf } from '../lib/pages';
 import { cleanSheet, sheetCovering } from '../lib/sheet';
@@ -44,6 +45,8 @@ export interface PageRecord {
   sheet?: Sheet | null;
   /** The id of the page's cover picture; absent in records from app versions before covers. */
   cover?: string | null;
+  /** The page's icon; absent in records from app versions before icons. */
+  icon?: string | null;
   /** Absent in records from app versions before page colours. */
   color?: NoteColor | null;
   created: number;
@@ -243,6 +246,7 @@ export function normalizePage(p: Partial<Page> & { id: string }): Page {
     dailyDate: cleanDate(p.dailyDate),
     sheet: sheet && sheetCovering(sheet, blocks),
     cover: typeof p.cover === 'string' && isSafeId(p.cover) ? p.cover : null,
+    icon: cleanIcon(p.icon),
     created: p.created ?? Date.now(),
     updated: p.updated ?? p.created ?? Date.now(),
     rev: p.rev ?? 0,

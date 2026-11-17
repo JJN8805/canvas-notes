@@ -121,3 +121,18 @@ export function cubeFaces(c: Pick<Camera, 'yaw' | 'pitch'>, size: number): { nam
     return { name: f.name, poly, centre: { x: poly.reduce((s, p) => s + p.x, 0) / 4, y: poly.reduce((s, p) => s + p.y, 0) / 4 } };
   });
 }
+
+/** A camera read back from storage (the last view of a page in 3D), or null when it is not usable. Every number is checked and limited. */
+export function parseCamera(raw: string | null | undefined): Camera | null {
+  try {
+    const v = JSON.parse(raw ?? 'null') as Record<string, unknown> | null;
+    const num = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+    const t = (v?.target ?? null) as Record<string, unknown> | null;
+    const yaw = num(v?.yaw), pitch = num(v?.pitch), dist = num(v?.dist), x = num(t?.x), y = num(t?.y), z = num(t?.z);
+    if ([yaw, pitch, dist, x, y, z].some((n) => n === null)) return null;
+    const lim = (n: number) => Math.max(-1e6, Math.min(1e6, n));
+    return { yaw: lim(yaw!) % (Math.PI * 2), pitch: clampPitch(pitch!), dist: clampDist(dist!), target: { x: lim(x!), y: lim(y!), z: lim(z!) } };
+  } catch {
+    return null;
+  }
+}

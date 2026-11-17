@@ -59,14 +59,26 @@ export function useCanvasKeyboard(deps: KeyboardDeps) {
           a.blur();
           const id = a.closest<HTMLElement>('[data-id]')?.dataset.id;
           if (id) setSelected([id]);
-        } else if (e.key === '/' && !modKey(e) && !e.altKey && a instanceof HTMLElement && a.isContentEditable && worldRef.current?.contains(a) && a.textContent?.trim() === '' && featureOn('canvas')) {
-          // "/" in an empty text or sticky box (Notion): the same menu, and the choice replaces this empty box.
+        } else if (e.key === '/' && !modKey(e) && !e.altKey && a instanceof HTMLElement && a.isContentEditable && worldRef.current?.contains(a) && featureOn('canvas')) {
+          // "/" in an EMPTY text or sticky box (Notion): the same menu, and the choice replaces this empty box. At the very start of a box with
+          // words in it, the choice turns the box into another kind and keeps the words.
           const id = a.closest<HTMLElement>('[data-id]')?.dataset.id;
           const b = blocksRef.current.find((x) => x.id === id);
           if (id && b && b.type === 'note' && b.style !== 'code') {
-            e.preventDefault();
-            const r = a.getBoundingClientRect();
-            openSlash({ pageId, screen: { x: r.left, y: r.bottom + 6 }, world: { x: b.x, y: b.y }, focus: focusBlock, replace: id });
+            const empty = a.textContent?.trim() === '';
+            const sel = window.getSelection();
+            let atStart = false;
+            if (!empty && sel && sel.isCollapsed && sel.anchorNode && a.contains(sel.anchorNode)) {
+              const r = document.createRange();
+              r.selectNodeContents(a);
+              r.setEnd(sel.anchorNode, sel.anchorOffset);
+              atStart = r.toString().length === 0;
+            }
+            if (empty || (atStart && !b.locked)) {
+              e.preventDefault();
+              const r = a.getBoundingClientRect();
+              openSlash({ pageId, screen: { x: r.left, y: r.bottom + 6 }, world: { x: b.x, y: b.y }, focus: focusBlock, ...(empty ? { replace: id } : { turn: id }) });
+            }
           }
         } else if (e.key === 'Tab' && !modKey(e) && !e.altKey && !e.shiftKey && a instanceof HTMLElement && worldRef.current?.contains(a)) {
           // Tab while typing in a sticky starts the next one, joined by an arrow (FigJam). Elsewhere Tab keeps its normal job.

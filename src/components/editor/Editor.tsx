@@ -56,6 +56,7 @@ import { closeDraw, toggleDraw, useDraw } from '../../store/draw';
 import { openTidy } from '../../store/tidy';
 import { liveDrawing } from '../../lib/drawing';
 import { SlashMenu } from './SlashMenu';
+import { choosePageIcon } from '../../store/pageIcon';
 import { toggleStar, useFavorites } from '../../store/favorites';
 import { setFocusMode, toggleFocusMode, useFocusMode } from '../../store/focusMode';
 import { TidyDialog } from './TidyDialog';
@@ -239,6 +240,7 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
         {template ? 'Templates' : attendance ? 'Journal' : 'Library'}
       </button>
       )}
+      {!compact && !template && <IconButton pageId={pageId} />}
       {!compact && (
       <input
         ref={titleRef}
@@ -381,6 +383,16 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
       )}
       <SaveStatus />
     </header>
+  );
+}
+
+/** The page's icon beside its title: click to choose or change it (an emoji). */
+function IconButton({ pageId }: { pageId: string }) {
+  const icon = useNotes((s) => s.pages[pageId]?.icon ?? null);
+  return (
+    <button className={'icon-btn ed-icon' + (icon ? ' has' : '')} aria-label={icon ? `Page icon ${icon}: change` : 'Add a page icon'} title={icon ? 'Change the page icon' : 'Add a page icon'} onClick={() => void choosePageIcon(pageId, icon)}>
+      {icon ? <span aria-hidden="true">{icon}</span> : <Icon name="sticky" size={18} />}
+    </button>
   );
 }
 

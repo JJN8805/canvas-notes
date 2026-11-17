@@ -98,6 +98,28 @@ await page.keyboard.press('Enter');
 await page.waitForTimeout(400);
 check('choosing Table replaces the empty box (the count is unchanged, there is a table)', (await count()) === beforeInline + 1 && (await page.locator('.world .block.b-table').count()) >= 1);
 
+/* "/" at the start of a box with words: it turns into another kind and keeps them */
+await page.keyboard.press('Escape');
+await page.mouse.click(300, 600);
+const beforeTurn = await count();
+await page.mouse.dblclick(300, 640);
+await page.waitForTimeout(400);
+await page.keyboard.type('Milk');
+await page.keyboard.press('Enter');
+await page.keyboard.type('Bread');
+await page.keyboard.press('Control+Home');
+await page.keyboard.press('/');
+await page.waitForSelector('.slash');
+check('"/" at the start of a box with words opens "Turn into" (no table or frame offered)', (await page.locator('.slash-item').count()) === 4 && (await page.getAttribute('.slash-input', 'placeholder')).startsWith('Turn into'));
+await page.keyboard.type('todo');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(500);
+check('it became a list with the words as items, in the same place', (await count()) === beforeTurn + 1 && (await page.locator('.world .block.b-checklist').filter({ hasText: 'Milk' }).filter({ hasText: 'Bread' }).count()) === 1);
+await page.keyboard.press('Control+z');
+await page.waitForTimeout(300);
+check('one undo gives the note back', (await page.locator('.world .block.b-checklist').filter({ hasText: 'Milk' }).count()) === 0);
+await page.keyboard.press('Escape');
+
 /* focus mode */
 await page.keyboard.press('Escape');
 await page.mouse.click(900, 660);
@@ -119,6 +141,10 @@ check('the star is pressed', (await page.getAttribute('.ed-star', 'aria-pressed'
 await page.evaluate(() => (location.hash = '#/'));
 await page.waitForSelector('.sidebar');
 check('a starred page is listed under Favorites in the sidebar', (await page.locator('.side-section[aria-label="Favorites"] .nav-item:has-text("Plan")').count()) === 1);
+await page.keyboard.press('Control+k');
+await page.waitForSelector('.palette');
+check('the quick switcher lists the favorite first, marked as one', /Favorite/.test(await page.locator('.palette-row').first().innerText()));
+await page.keyboard.press('Escape');
 await page.click('.side-section[aria-label="Favorites"] .nav-item:has-text("Plan")');
 await page.waitForSelector('.world');
 await page.click('.ed-star');
@@ -128,6 +154,29 @@ check('un-starring takes it out, and it shows under Recent', (await page.locator
 await page.screenshot({ path: join(OUT, 'sidebar.png') });
 await page.click('.card:has-text("Plan")');
 await page.waitForSelector('.world');
+
+/* page icon */
+await page.click('.ed-icon');
+await page.waitForSelector('.dialog input');
+await page.fill('.dialog input', '📘');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(400);
+check('the icon shows in the header', (await page.locator('.ed-icon.has').innerText()).includes('📘'));
+await page.waitForFunction(() => /Saved/.test(document.querySelector('.status')?.textContent ?? ''));
+await page.reload();
+await page.waitForSelector('.world');
+check('and it is still there after a reload (browser storage)', (await page.locator('.ed-icon.has').count()) === 1);
+await page.evaluate(() => (location.hash = '#/'));
+await page.waitForSelector('.sidebar');
+check('the page card and the sidebar show it', (await page.locator('.card-title .page-icon').first().innerText()) === '📘' && (await page.locator('.side-section[aria-label="Recent"] .page-icon').count()) === 1);
+await page.click('.card:has-text("Plan")');
+await page.waitForSelector('.world');
+await page.click('.ed-icon');
+await page.waitForSelector('.dialog input');
+await page.fill('.dialog input', '<b>');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(300);
+check('an unsafe icon removes it instead of being stored', (await page.locator('.ed-icon.has').count()) === 0);
 
 /* the header keeps the title readable */
 await page.keyboard.press('Escape');

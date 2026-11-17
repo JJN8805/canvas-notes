@@ -38,7 +38,7 @@ export function TextBody({ block }: { block: NoteBlock }) {
             },
       ),
       ...(sticky ? [] : richExtensions),
-      Placeholder.configure({ placeholder: sticky ? 'Note…' : hasEmptyTextSpace() ? 'Type, or press space for AI' : 'Type something…' }),
+      Placeholder.configure({ placeholder: sticky ? 'Note… (/ for boxes)' : hasEmptyTextSpace() ? 'Type, / for boxes, or space for AI' : 'Type something, or / for boxes' }),
     ],
     content: block.html,
     immediatelyRender: true,
