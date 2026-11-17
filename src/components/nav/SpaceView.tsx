@@ -5,9 +5,10 @@ import { closeNav } from '../../store/nav';
 import { followLink } from '../../store/boxLinks';
 import { boxLabel } from '../../lib/boxLinks';
 import {
-  DEPTH_MAX, DEPTH_MIN, DEPTH_STEP, applyDepth, boxCentre, boxCorners, clampDepth, depthOf, fanOut, flattenDepth, isLayerable, pageCentre, pointInQuad, rayPlaneZ, snippet, toPage, toWorld,
+  DEPTH_MAX, DEPTH_MIN, DEPTH_STEP, applyDepth, boxCentre, boxSolid, chosenDepth, clampDepth, effectiveDepths, flattenDepth, followStacking, isLayerable, pageCentre, pointInQuad, rayPlaneZ, snippet, toPage, toWorld,
+  visibleFaces, type FaceName,
 } from '../../lib/space';
-import { clampDist, clampPitch, frame, project, unproject, type Camera, type P3 } from '../../lib/tree3d';
+import { cameraPosition, clampDist, clampPitch, frame, project, unproject, type Camera, type P3 } from '../../lib/tree3d';
 import { blockHeight, textToHtml } from '../../lib/util';
 
 /** `var(--n-yellow)` as the colour the canvas needs (a canvas cannot read CSS variables itself). */
@@ -18,7 +19,7 @@ function resolve(el: Element, v: string): string {
 
 /** What a browser check can ask the canvas: where each box is on screen (the picture has no elements to find). */
 export interface SpaceScreenInfo {
-  boxes: { id: string; x: number; y: number; w: number; depth: number }[];
+  boxes: { id: string; x: number; y: number; w: number; depth: number; faces: string[] }[];
   selected: string | null;
   camera: { dist: number; yaw: number; pitch: number };
 }
@@ -46,22 +47,35 @@ export function SpaceView({ pageId }: { pageId: string }) {
 
   const blocks = useMemo(() => page?.blocks ?? [], [page]);
   const origin = useMemo(() => pageCentre(blocks), [blocks]);
+  const depths = useMemo(() => effectiveDepths(blocks), [blocks]);
   const chosen = blocks.find((b) => b.id === selected) ?? null;
-  const dataRef = useRef({ blocks, origin, selected, hover, sheet: page?.sheet ?? null });
-  dataRef.current = { blocks, origin, selected, hover, sheet: page?.sheet ?? null };
+  const dataRef = useRef({ blocks, origin, depths, selected, hover, sheet: page?.sheet ?? null });
+  dataRef.current = { blocks, origin, depths, selected, hover, sheet: page?.sheet ?? null };
 
-  /** Where each box's four corners are on screen, nearest box first. */
+  /** Where each box is on screen: its front face, and every face of the block that turns toward the camera. Nearest box first. */
   const quads = useCallback((w: number, h: number) => {
     const d = dataRef.current;
-    const out: { b: Block; q: { x: number; y: number }[]; depth: number; scale: number }[] = [];
+    const eye = cameraPosition(cam.current);
+    const out: { b: Block; q: { x: number; y: number }[]; faces: { name: FaceName; poly: { x: number; y: number }[] }[]; frontVisible: boolean; depth: number; scale: number }[] = [];
     for (const b of d.blocks) {
-      const pts = boxCorners(b, d.origin).map((p) => project(p, cam.current, w, h));
+      const dep = d.depths.get(b.id) ?? 0;
+      const solid = boxSolid(b, d.origin, dep);
+      const pts = solid.map((p) => project(p, cam.current, w, h));
       if (pts.some((p) => !p)) continue;
-      const q = pts as NonNullable<(typeof pts)[number]>[];
-      const c = project(boxCentre(b, d.origin), cam.current, w, h);
+      const P = pts as NonNullable<(typeof pts)[number]>[];
+      const q = [P[0], P[1], P[2], P[3]];
+      const c = project(boxCentre(b, d.origin, dep), cam.current, w, h);
       // A frame is a backdrop: it sorts by its far edge, so it is always behind the boxes inside it (its centre can be nearer than a box at its side).
       const depth = b.type === 'frame' ? Math.max(...q.map((p) => p.depth)) : (c?.depth ?? q[0].depth);
-      out.push({ b, q, depth, scale: q.reduce((s, p) => s + p.scale, 0) / 4 });
+      const visible = visibleFaces(solid, eye);
+      out.push({
+        b,
+        q,
+        faces: visible.map((f) => ({ name: f.name, poly: f.corners.map((i) => P[i]) })),
+        frontVisible: visible.some((f) => f.name === 'front'),
+        depth,
+        scale: q.reduce((s, p) => s + p.scale, 0) / 4,
+      });
     }
     return out.sort((a, b) => a.depth - b.depth);
   }, []);
@@ -118,10 +132,10 @@ export function SpaceView({ pageId }: { pageId: string }) {
     // A thin line from each box down to the page layer shows how far from it the box floats.
     ctx.lineWidth = 1;
     for (const { b } of items) {
-      const dep = depthOf(b);
+      const dep = d.depths.get(b.id) ?? 0;
       if (!dep || b.type === 'frame') continue;
-      const top = project(boxCentre(b, d.origin), cam.current, w, h);
-      const c = boxCentre(b, d.origin);
+      const top = project(boxCentre(b, d.origin, dep), cam.current, w, h);
+      const c = boxCentre(b, d.origin, dep);
       const base = project({ x: c.x, y: c.y, z: 0 }, cam.current, w, h);
       if (!top || !base) continue;
       ctx.globalAlpha = 0.5;
@@ -138,8 +152,8 @@ export function SpaceView({ pageId }: { pageId: string }) {
       ctx.fill();
     }
 
-    for (const { b, q, scale } of items) {
-      const dep = depthOf(b);
+    for (const { b, q, faces, frontVisible, scale } of items) {
+      const dep = d.depths.get(b.id) ?? 0;
       const isFrame = b.type === 'frame';
       const tint = !isFrame && b.tint ? b.tint : b.type === 'note' && b.style === 'sticky' ? 'yellow' : null;
       const fill = isFrame ? null : tint ? col(`var(--n-${tint})`) : sheet;
@@ -147,23 +161,39 @@ export function SpaceView({ pageId }: { pageId: string }) {
       const on = b.id === d.selected;
       const near = b.id === d.hover;
       // Boxes further away fade a little, so what is in front stands out.
-      ctx.globalAlpha = isFrame ? 0.7 : Math.max(0.55, Math.min(1, 1 + dep / 2400));
+      ctx.globalAlpha = isFrame ? 0.7 : Math.max(0.6, Math.min(1, 1 + dep / 2400));
+      ctx.lineWidth = on ? 3 : near ? 2 : 1.2;
+      ctx.strokeStyle = on ? accent : near ? ink : isFrame ? grey : rule;
+      ctx.lineJoin = 'round';
+      // A box is a block: the faces turned toward you, the sides shaded so it reads as solid (a frame is only a thin backdrop).
+      for (const f of isFrame ? [] : faces) {
+        ctx.beginPath();
+        f.poly.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+        ctx.closePath();
+        ctx.fillStyle = fill!;
+        ctx.fill();
+        const shade = f.name === 'top' ? 'rgba(255,255,255,0.28)' : f.name === 'bottom' ? 'rgba(0,0,0,0.38)' : f.name === 'left' ? 'rgba(0,0,0,0.2)' : f.name === 'right' ? 'rgba(0,0,0,0.3)' : f.name === 'back' ? 'rgba(0,0,0,0.4)' : '';
+        if (shade) {
+          ctx.fillStyle = shade;
+          ctx.fill();
+        }
+        ctx.stroke();
+      }
+      if (isFrame) {
+        ctx.beginPath();
+        q.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+        ctx.closePath();
+        ctx.setLineDash([5, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
       ctx.beginPath();
       q.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
       ctx.closePath();
-      if (fill) {
-        ctx.fillStyle = fill;
-        ctx.fill();
-      }
-      ctx.lineWidth = on ? 3 : near ? 2 : 1.2;
-      ctx.strokeStyle = on ? accent : near ? ink : isFrame ? grey : rule;
-      ctx.setLineDash(isFrame ? [5, 4] : []);
-      ctx.stroke();
-      ctx.setLineDash([]);
       // The words, kept inside the box's outline.
       const wpx = Math.hypot(q[1].x - q[0].x, q[1].y - q[0].y);
       const hpx = Math.hypot(q[3].x - q[0].x, q[3].y - q[0].y);
-      if (wpx >= 38 && hpx >= 16) {
+      if ((frontVisible || isFrame) && wpx >= 38 && hpx >= 16) {
         const size = Math.max(8, Math.min(14, 13 * scale));
         ctx.save();
         ctx.clip();
@@ -194,7 +224,7 @@ export function SpaceView({ pageId }: { pageId: string }) {
         if (lines < maxLines && line) ctx.fillText(line, q[0].x + TEXT_LEFT, y);
         ctx.restore();
       }
-      if (dep && wpx >= 38) {
+      if (dep && frontVisible && wpx >= 38) {
         ctx.globalAlpha = 1;
         ctx.font = '600 11px system-ui, sans-serif';
         ctx.textAlign = 'right';
@@ -244,7 +274,7 @@ export function SpaceView({ pageId }: { pageId: string }) {
   const fit = useCallback(() => {
     const d = dataRef.current;
     const pts: P3[] = [];
-    for (const b of d.blocks) pts.push(...boxCorners(b, d.origin));
+    for (const b of d.blocks) pts.push(...boxSolid(b, d.origin, d.depths.get(b.id) ?? 0));
     pts.push({ x: 0, y: 0, z: 0 });
     cam.current = frame(pts, { ...cam.current, yaw: START_CAMERA.yaw, pitch: START_CAMERA.pitch }, 2.8);
     schedule();
@@ -257,9 +287,9 @@ export function SpaceView({ pageId }: { pageId: string }) {
   }, [blocks.length, fit]);
 
   /* ---- changing things (each one goes through the page store, so undo and sync work as usual) ---- */
-  const setDepthOf = (id: string, depth: number, merge = true) =>
+  const setDepthOf = (id: string, depth: number | null, merge = true) =>
     updateBlock(pageId, id, (b) => void applyDepth([b as never], [id], depth), { history: merge ? { key: `space-depth:${id}` } : 'none' });
-  const spread = () => mutatePage(pageId, (p) => void fanOut(p.blocks as never));
+  const restack = () => mutatePage(pageId, (p) => void followStacking(p.blocks as never));
   const flatten = () => mutatePage(pageId, (p) => void flattenDepth(p.blocks as never));
   const edit = (id: string) => {
     closeNav();
@@ -270,7 +300,7 @@ export function SpaceView({ pageId }: { pageId: string }) {
     if (!t) return;
     const o = dataRef.current.origin;
     const n = dataRef.current.blocks.length % 8;
-    const id = addBlock(pageId, 'sticky', { x: o.x - 100 + n * 28, y: o.y - 100 + n * 28 }, { html: textToHtml(t), depth: chosen ? depthOf(chosen) : 0 });
+    const id = addBlock(pageId, 'sticky', { x: o.x - 100 + n * 28, y: o.y - 100 + n * 28 }, { html: textToHtml(t), ...(chosen ? { depth: dataRef.current.depths.get(chosen.id) ?? 0 } : {}) });
     setText('');
     if (id) setSelected(id);
   };
@@ -282,7 +312,7 @@ export function SpaceView({ pageId }: { pageId: string }) {
   };
   const boxAt = (e: { clientX: number; clientY: number }) => {
     const p = pos(e);
-    return quads(p.w, p.h).find((i) => pointInQuad(p.x, p.y, i.q))?.b ?? null;
+    return quads(p.w, p.h).find((i) => pointInQuad(p.x, p.y, i.q) || i.faces.some((f) => pointInQuad(p.x, p.y, f.poly)))?.b ?? null;
   };
   /** Where the pointer is on the layer a box sits in (world coordinates). */
   const onLayer = (e: { clientX: number; clientY: number }, depth: number) => {
@@ -298,9 +328,10 @@ export function SpaceView({ pageId }: { pageId: string }) {
     if (b) {
       setSelected(b.id);
       if (isLayerable(b)) {
-        const hit = onLayer(e, depthOf(b));
-        const c = boxCentre(b, dataRef.current.origin);
-        grab.current = { id: b.id, mode: e.altKey ? 'depth' : 'plane', moved: 0, startX: e.clientX, startY: e.clientY, startDepth: depthOf(b), offX: hit ? c.x - hit.x : 0, offY: hit ? c.y - hit.y : 0, began: false };
+        const dep = dataRef.current.depths.get(b.id) ?? 0;
+        const hit = onLayer(e, dep);
+        const c = boxCentre(b, dataRef.current.origin, dep);
+        grab.current = { id: b.id, mode: e.altKey ? 'depth' : 'plane', moved: 0, startX: e.clientX, startY: e.clientY, startDepth: dep, offX: hit ? c.x - hit.x : 0, offY: hit ? c.y - hit.y : 0, began: false };
       }
       return;
     }
@@ -320,7 +351,7 @@ export function SpaceView({ pageId }: { pageId: string }) {
       if (g.mode === 'depth') {
         setDepthOf(g.id, clampDepth(Math.round((g.startDepth + (g.startY - e.clientY) * 1.5) / 5) * 5), false);
       } else {
-        const hit = onLayer(e, depthOf(b));
+        const hit = onLayer(e, dataRef.current.depths.get(b.id) ?? 0);
         if (!hit) return;
         const at = toPage(hit.x + g.offX, hit.y + g.offY, dataRef.current.origin);
         updateBlock(pageId, g.id, (x) => ((x.x = Math.round(at.x - x.w / 2)), (x.y = Math.round(at.y - blockHeight(x as Block) / 2))), { history: 'none' });
@@ -366,7 +397,7 @@ export function SpaceView({ pageId }: { pageId: string }) {
     el.__screen = () => {
       const r = el.getBoundingClientRect();
       return {
-        boxes: quads(r.width, r.height).map((i) => ({ id: i.b.id, x: r.left + (i.q[0].x + i.q[2].x) / 2, y: r.top + (i.q[0].y + i.q[2].y) / 2, w: Math.hypot(i.q[1].x - i.q[0].x, i.q[1].y - i.q[0].y), depth: depthOf(i.b) })),
+        boxes: quads(r.width, r.height).map((i) => ({ id: i.b.id, x: r.left + (i.q[0].x + i.q[2].x) / 2, y: r.top + (i.q[0].y + i.q[2].y) / 2, w: Math.hypot(i.q[1].x - i.q[0].x, i.q[1].y - i.q[0].y), depth: dataRef.current.depths.get(i.b.id) ?? 0, faces: i.faces.map((f) => f.name) })),
         selected: dataRef.current.selected,
         camera: { dist: cam.current.dist, yaw: cam.current.yaw, pitch: cam.current.pitch },
       };
@@ -374,9 +405,10 @@ export function SpaceView({ pageId }: { pageId: string }) {
   });
 
   if (!page) return null;
-  const depth = chosen ? depthOf(chosen) : 0;
+  const depth = chosen ? (depths.get(chosen.id) ?? 0) : 0;
+  const followed = !!chosen && chosenDepth(chosen) === null;
   const layerable = !!chosen && isLayerable(chosen);
-  const anyDepth = blocks.some((b) => b.depth);
+  const anyChosen = blocks.some((b) => b.depth !== undefined);
 
   return (
     <div className="scrim" onMouseDown={(e) => e.target === e.currentTarget && closeNav()}>
@@ -403,30 +435,31 @@ export function SpaceView({ pageId }: { pageId: string }) {
                 <>
                   <p className="space-name" title={boxLabel(chosen)}>{boxLabel(chosen)}</p>
                   <label className="gp-slider">
-                    <span>Depth: {depth > 0 ? `${depth} nearer` : depth < 0 ? `${-depth} further` : 'on the page'}</span>
+                    <span>Depth: {depth > 0 ? `${depth} nearer` : depth < 0 ? `${-depth} further` : 'on the page'}{followed ? ' (follows the page)' : ''}</span>
                     <input type="range" aria-label="Depth" min={DEPTH_MIN} max={DEPTH_MAX} step={10} value={depth} disabled={!layerable} onChange={(e) => setDepthOf(chosen.id, Number(e.target.value))} />
                   </label>
                   <div className="space-btns">
                     <button className="btn small" disabled={!layerable} onClick={() => setDepthOf(chosen.id, depth + DEPTH_STEP, false)}>Bring nearer</button>
                     <button className="btn small" disabled={!layerable} onClick={() => setDepthOf(chosen.id, depth - DEPTH_STEP, false)}>Push back</button>
-                    <button className="btn small" disabled={!layerable || !depth} onClick={() => setDepthOf(chosen.id, 0, false)}>On the page</button>
+                    <button className="btn small" disabled={!layerable || (!followed && depth === 0)} onClick={() => setDepthOf(chosen.id, 0, false)}>On the page</button>
+                    <button className="btn small" disabled={!layerable || followed} onClick={() => setDepthOf(chosen.id, null, false)} title="Go back to the page's own stacking: behind what is above it on the page">Follow the page</button>
                   </div>
                   <button className="btn small" onClick={() => edit(chosen.id)}>Edit on the page</button>
                   {!layerable && <p className="space-hint">{chosen.locked ? 'This box is locked.' : 'A frame stays on the page with what is inside it.'}</p>}
                 </>
               ) : (
-                <p className="space-hint">Click a box to select it. Drag it to move it on its layer, Alt+drag to bring it nearer or push it back.</p>
+                <p className="space-hint">Boxes are solid blocks. A box that is behind another on the page is behind it here too. Click one to select it, drag it to move it on its layer, Alt+drag to bring it nearer or push it back.</p>
               )}
             </section>
             <section>
               <h3>This page</h3>
-              <button className="btn small" onClick={spread} title="Spread the boxes through depth by how they are stacked, so boxes lying on top of each other come apart">Spread into layers</button>
-              <button className="btn small" disabled={!anyDepth} onClick={flatten}>Put everything on the page</button>
+              <button className="btn small" disabled={!anyChosen} onClick={restack} title="Every box follows the page's own stacking again: a box behind another on the page is behind it here">Layer like the page</button>
+              <button className="btn small" onClick={flatten} title="Put every box on the page layer, side by side">Put everything on the page</button>
               <button className="btn small" onClick={fit}>Fit</button>
             </section>
             <section>
               <h3>Why depth</h3>
-              <p className="space-hint">Where something sits helps you find and remember it. Write and edit on the page itself, where text is easiest to read: use depth to arrange, not to type.</p>
+              <p className="space-hint">Where something sits helps you find and remember it. Write and edit on the page itself, where text is easiest to read: use depth to arrange, not to type. A depth you choose is kept; the rest follows the page.</p>
             </section>
           </aside>
           <div className="tree3d-stage">
@@ -448,8 +481,8 @@ export function SpaceView({ pageId }: { pageId: string }) {
               }}
               onKeyDown={(e) => {
                 const c = cam.current;
-                if (e.key === ']' && chosen && isLayerable(chosen)) setDepthOf(chosen.id, depthOf(chosen) + DEPTH_STEP, false);
-                else if (e.key === '[' && chosen && isLayerable(chosen)) setDepthOf(chosen.id, depthOf(chosen) - DEPTH_STEP, false);
+                if (e.key === ']' && chosen && isLayerable(chosen)) setDepthOf(chosen.id, depth + DEPTH_STEP, false);
+                else if (e.key === '[' && chosen && isLayerable(chosen)) setDepthOf(chosen.id, depth - DEPTH_STEP, false);
                 else if (e.key === 'Enter' && chosen) return edit(chosen.id);
                 else if (e.key === 'ArrowLeft') cam.current = { ...c, yaw: c.yaw + 0.12 };
                 else if (e.key === 'ArrowRight') cam.current = { ...c, yaw: c.yaw - 0.12 };

@@ -1,11 +1,14 @@
 /**
- * The 3D page view's rules (pure). A box keeps its place on the page (x, y) and gains a depth: how far toward you (positive) or away
- * (negative) it sits. The page itself is the plane at depth 0. Notes are placed in 3D but written and edited flat, on the page: research on
+ * The 3D page view's rules (pure). A box keeps its place on the page (x, y) and has a depth: how far toward you (positive) or away
+ * (negative) it sits; the page itself is the plane at depth 0. **Unless a depth was chosen, it follows the page's own stacking**: a box
+ * that lies behind another on the page is behind it in 3D too (each box that overlaps one below it rests on top of it). A chosen
+ * depth, even 0, is kept as it is. Boxes are drawn as slabs with a thickness, so a square becomes a block. Notes are placed in 3D but written and edited flat, on the page: research on
  * 3D information displays (occlusion, awkward navigation, hard-to-read text in perspective) says to use depth for *where things are*, which
  * helps remembering, and not for typing. Nothing here touches the store: callers apply changes through `mutatePage`.
  */
 import type { Block } from '../types';
 import { blockHeight } from './util';
+import { paintOrder } from './frames';
 import type { P3 } from './tree3d';
 
 export const DEPTH_MIN = -1200;
@@ -14,7 +17,43 @@ export const DEPTH_STEP = 40;
 
 /** A depth as a whole number inside the limits (anything that is not a number is 0). */
 export const clampDepth = (d: unknown): number => (typeof d === 'number' && Number.isFinite(d) ? Math.max(DEPTH_MIN, Math.min(DEPTH_MAX, Math.round(d))) : 0);
-export const depthOf = (b: Pick<Block, 'depth'>): number => clampDepth(b.depth);
+/** The depth that was chosen for a box, or null when it follows the page's stacking. */
+export const chosenDepth = (b: Pick<Block, 'depth'>): number | null => (typeof b.depth === 'number' && Number.isFinite(b.depth) ? clampDepth(b.depth) : null);
+
+/** How thick a box is drawn: about half its smaller side (so a square comes out as a block, near a cube), within limits; a frame is only a thin backdrop. */
+export const MIN_THICKNESS = 24;
+export const MAX_THICKNESS = 90;
+export const FRAME_THICKNESS = 4;
+/** Air between a box and the one resting on it. */
+export const LAYER_GAP = 8;
+export const thicknessOf = (b: Pick<Block, 'type' | 'w' | 'h'>): number =>
+  b.type === 'frame' ? FRAME_THICKNESS : Math.max(MIN_THICKNESS, Math.min(MAX_THICKNESS, Math.round(Math.min(b.w, b.h) * 0.5)));
+
+/** Past this many boxes the stacking is not worked out (every box without a chosen depth stays on the page), so a huge page never stalls. */
+const AUTO_LIMIT = 1500;
+
+const overlaps = (a: Block, b: Block): boolean => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + blockHeight(b) && b.y < a.y + blockHeight(a);
+
+/**
+ * The depth of every box: the chosen one, or else from the page's stacking. Going through the boxes from the bottom of the page to the
+ * top, a box rests on the highest box beneath it that it overlaps (just above that box's front face, so blocks never run into each
+ * other); a box overlapping nothing below it sits on the page (depth 0). A frame is the backdrop of what it holds, so its contents come
+ * out in front of it. A chosen depth is used as it is, and boxes above it rest on it.
+ */
+export function effectiveDepths(blocks: readonly Block[]): Map<string, number> {
+  const out = new Map<string, number>();
+  const ordered = blocks.length <= AUTO_LIMIT ? paintOrder(blocks as Block[]) : [];
+  const done: { b: Block; depth: number }[] = [];
+  for (const b of ordered) {
+    let d = 0;
+    for (const o of done) if (overlaps(b, o.b)) d = Math.max(d, o.depth + thicknessOf(o.b) + LAYER_GAP);
+    const depth = chosenDepth(b) ?? clampDepth(d);
+    out.set(b.id, depth);
+    done.push({ b, depth });
+  }
+  for (const b of blocks) if (!out.has(b.id)) out.set(b.id, chosenDepth(b) ?? 0);
+  return out;
+}
 
 /** A frame holds other boxes and moves with them on the page, so the 3D view only shows it (it is not moved or layered on its own). */
 export const isLayerable = (b: Pick<Block, 'type' | 'locked'>): boolean => b.type !== 'frame' && !b.locked;
@@ -37,13 +76,38 @@ export const toWorld = (px: number, py: number, depth: number, o: { x: number; y
 export const toPage = (wx: number, wy: number, o: { x: number; y: number }) => ({ x: wx + o.x, y: o.y - wy });
 
 /** The four corners of a box in the picture (top-left, top-right, bottom-right, bottom-left). */
-export function boxCorners(b: Block, o: { x: number; y: number }): P3[] {
-  const d = depthOf(b);
+export function boxCorners(b: Block, o: { x: number; y: number }, d: number): P3[] {
   const h = blockHeight(b);
   return [toWorld(b.x, b.y, d, o), toWorld(b.x + b.w, b.y, d, o), toWorld(b.x + b.w, b.y + h, d, o), toWorld(b.x, b.y + h, d, o)];
 }
 
-export const boxCentre = (b: Block, o: { x: number; y: number }): P3 => toWorld(b.x + b.w / 2, b.y + blockHeight(b) / 2, depthOf(b), o);
+export const boxCentre = (b: Block, o: { x: number; y: number }, d: number): P3 => toWorld(b.x + b.w / 2, b.y + blockHeight(b) / 2, d, o);
+
+/** A box as a block: its eight corners (the four of the front face, then the same four pushed back by the thickness). */
+export const boxSolid = (b: Block, o: { x: number; y: number }, d: number): P3[] => {
+  const front = boxCorners(b, o, d);
+  const t = thicknessOf(b);
+  return [...front, ...front.map((p) => ({ ...p, z: p.z + t }))];
+};
+
+export type FaceName = 'front' | 'back' | 'top' | 'bottom' | 'left' | 'right';
+/** The six faces of `boxSolid`: which corners, and which way each faces (x right, y up, z away from the viewer). */
+export const FACES: readonly { name: FaceName; corners: [number, number, number, number]; normal: P3 }[] = [
+  { name: 'back', corners: [4, 5, 6, 7], normal: { x: 0, y: 0, z: 1 } },
+  { name: 'bottom', corners: [3, 2, 6, 7], normal: { x: 0, y: -1, z: 0 } },
+  { name: 'top', corners: [0, 1, 5, 4], normal: { x: 0, y: 1, z: 0 } },
+  { name: 'left', corners: [0, 3, 7, 4], normal: { x: -1, y: 0, z: 0 } },
+  { name: 'right', corners: [1, 2, 6, 5], normal: { x: 1, y: 0, z: 0 } },
+  { name: 'front', corners: [0, 1, 2, 3], normal: { x: 0, y: 0, z: -1 } },
+];
+
+/** The faces of a block the camera can see (the ones turned toward it), back faces left out. */
+export function visibleFaces(solid: readonly P3[], eye: P3): (typeof FACES)[number][] {
+  return FACES.filter((f) => {
+    const c = f.corners.reduce((a, i) => ({ x: a.x + solid[i].x / 4, y: a.y + solid[i].y / 4, z: a.z + solid[i].z / 4 }), { x: 0, y: 0, z: 0 });
+    return f.normal.x * (eye.x - c.x) + f.normal.y * (eye.y - c.y) + f.normal.z * (eye.z - c.z) > 0;
+  });
+}
 
 /** Whether a point is inside a polygon (the box's four projected corners). */
 export function pointInQuad(px: number, py: number, q: readonly { x: number; y: number }[]): boolean {
@@ -64,37 +128,30 @@ export function rayPlaneZ(p1: P3, p2: P3, z: number): P3 | null {
   return { x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t, z };
 }
 
-/** Sets the depth of the boxes with these ids (skipping frames and locked boxes). Works on plain boxes and on store drafts. Returns how many changed. */
-export function applyDepth(blocks: { id: string; type: string; locked?: boolean; depth?: number }[], ids: ReadonlySet<string> | readonly string[], depth: number): number {
+/** Chooses the depth of the boxes with these ids (skipping frames and locked boxes); `null` hands it back to the page's stacking. Works on plain boxes and on store drafts. Returns how many changed. */
+export function applyDepth(blocks: { id: string; type: string; locked?: boolean; depth?: number }[], ids: ReadonlySet<string> | readonly string[], depth: number | null): number {
   const want = new Set(ids);
-  const d = clampDepth(depth);
+  const d = depth === null ? null : clampDepth(depth);
   let n = 0;
   for (const b of blocks) {
     if (!want.has(b.id) || b.type === 'frame' || b.locked) continue;
-    if ((b.depth ?? 0) === d) continue;
-    if (d === 0) delete b.depth;
-    else b.depth = d;
+    if (d === null) {
+      if (b.depth === undefined) continue;
+      delete b.depth;
+    } else {
+      if (b.depth === d) continue;
+      b.depth = d;
+    }
     n++;
   }
   return n;
 }
 
-/** Spreads the boxes out in depth by their stacking order, so boxes lying on top of each other come apart: the one on top comes forward. Centred on the page. */
-export function fanOut(blocks: { id: string; type: string; locked?: boolean; z: number; depth?: number }[], gap = DEPTH_STEP): number {
-  const layers = blocks.filter((b) => b.type !== 'frame' && !b.locked).sort((a, b) => a.z - b.z);
-  let n = 0;
-  layers.forEach((b, i) => {
-    const d = clampDepth(Math.round((i - (layers.length - 1) / 2) * gap));
-    if ((b.depth ?? 0) === d) return;
-    if (d === 0) delete b.depth;
-    else b.depth = d;
-    n++;
-  });
-  return n;
-}
-
-/** Puts every box back on the page itself. */
+/** Puts every box on the page itself (a chosen depth of 0, so it stays flat). */
 export const flattenDepth = (blocks: { id: string; type: string; locked?: boolean; depth?: number }[]): number => applyDepth(blocks, blocks.map((b) => b.id), 0);
+
+/** Hands every box back to the page's stacking: what is behind another box on the page is behind it in 3D. */
+export const followStacking = (blocks: { id: string; type: string; locked?: boolean; depth?: number }[]): number => applyDepth(blocks, blocks.map((b) => b.id), null);
 
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'" };
 

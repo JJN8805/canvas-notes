@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { applyDepth, boxCentre, boxCorners, clampDepth, DEPTH_MAX, DEPTH_MIN, fanOut, flattenDepth, pageCentre, pointInQuad, rayPlaneZ, snippet, toPage, toWorld } from '../src/lib/space';
+import { applyDepth, boxCentre, boxCorners, boxSolid, chosenDepth, clampDepth, DEPTH_MAX, DEPTH_MIN, DEPTH_STEP, effectiveDepths, FRAME_THICKNESS, LAYER_GAP, MAX_THICKNESS, MIN_THICKNESS, FACES, flattenDepth, followStacking, pageCentre, pointInQuad, rayPlaneZ, snippet, thicknessOf, toPage, toWorld, visibleFaces } from '../src/lib/space';
 import { cleanBlock } from '../src/lib/sanitize';
-import { DEFAULT_CAMERA, project, unproject } from '../src/lib/tree3d';
+import { cameraPosition, DEFAULT_CAMERA, project, unproject } from '../src/lib/tree3d';
 import type { Block } from '../src/types';
 
 const note = (id: string, o: Partial<Block> = {}): Block => ({ id, type: 'note', style: 'text', x: 0, y: 0, w: 100, h: 40, z: 1, html: '', ...o }) as Block;
@@ -13,10 +13,17 @@ describe('depth', () => {
     expect(clampDepth(-1e9)).toBe(DEPTH_MIN);
     for (const bad of [NaN, Infinity, '5', null, undefined, {}]) expect(clampDepth(bad)).toBe(0);
   });
-  it('is kept on a box when stored, and repaired when it is odd (absent means 0)', () => {
+  it('is kept on a box when stored, even 0 (a chosen flat box), and repaired when it is odd (absent = follows the page)', () => {
     expect(cleanBlock(note('a', { depth: 80 }))).toMatchObject({ depth: 80 });
+    expect(cleanBlock(note('a', { depth: 0 }))).toMatchObject({ depth: 0 });
+    expect(cleanBlock(note('a', { depth: 0.2 }))).toMatchObject({ depth: 0 });
     expect(cleanBlock(note('a', { depth: 1e9 }))).toMatchObject({ depth: DEPTH_MAX });
-    for (const bad of [0, 0.2, NaN, 'deep', null, Infinity]) expect(cleanBlock(note('a', { depth: bad as never }))).not.toHaveProperty('depth');
+    for (const bad of [NaN, 'deep', null, Infinity]) expect(cleanBlock(note('a', { depth: bad as never }))).not.toHaveProperty('depth');
+  });
+  it('tells a chosen depth from one that follows the page', () => {
+    expect(chosenDepth({})).toBeNull();
+    expect(chosenDepth({ depth: 0 })).toBe(0);
+    expect(chosenDepth({ depth: 99999 })).toBe(DEPTH_MAX);
   });
   it('survives a round trip through JSON like any other box field', () => {
     const b = cleanBlock(note('a', { depth: -240 }))!;
@@ -33,10 +40,10 @@ describe('placing boxes in space', () => {
   });
   it('knows the corners and the centre of a box', () => {
     const b = note('a', { x: 100, y: 50, w: 100, h: 40, depth: 40 });
-    const [tl, tr, br, bl] = boxCorners(b, o);
+    const [tl, tr, br, bl] = boxCorners(b, o, 40);
     expect([tl.x, tl.y, tr.x, br.y, bl.x]).toEqual([0, -0, 100, -40, 0]);
     expect(tl.z).toBe(-40);
-    expect(boxCentre(b, o)).toEqual({ x: 50, y: -20, z: -40 });
+    expect(boxCentre(b, o, 40)).toEqual({ x: 50, y: -20, z: -40 });
   });
   it('centres on the boxes, and on nothing when there are none', () => {
     expect(pageCentre([])).toEqual({ x: 0, y: 0 });
@@ -62,32 +69,127 @@ describe('placing boxes in space', () => {
   });
 });
 
-describe('changing depth', () => {
+describe('depth that follows the page', () => {
+  const at = (id: string, x: number, y: number, z: number, o: Partial<Block> = {}) => note(id, { x, y, w: 100, h: 50, z, ...o });
+  const L = thicknessOf(note('x', { w: 100, h: 50 })) + LAYER_GAP; // one layer of these 100 x 50 boxes
+  const frame = (id: string, x: number, y: number, w: number, h: number, z = 0) => ({ id, type: 'frame', x, y, w, h, z, title: 'F', color: 'slate', collapsed: false }) as unknown as Block;
+
+  it('leaves boxes that overlap nothing on the page', () => {
+    const d = effectiveDepths([at('a', 0, 0, 1), at('b', 300, 0, 2)]);
+    expect([d.get('a'), d.get('b')]).toEqual([0, 0]);
+  });
+  it('puts a box that lies behind another on the page behind it in 3D', () => {
+    const d = effectiveDepths([at('top', 20, 10, 5), at('under', 0, 0, 1)]);
+    expect(d.get('under')).toBe(0);
+    expect(d.get('top')).toBe(L);
+  });
+  it('stacks a pile one layer per box, in the page order', () => {
+    const d = effectiveDepths([at('c', 10, 10, 3), at('a', 0, 0, 1), at('b', 5, 5, 2)]);
+    expect([d.get('a'), d.get('b'), d.get('c')]).toEqual([0, L, 2 * L]);
+  });
+  it('only counts boxes that really overlap (touching edges do not)', () => {
+    const d = effectiveDepths([at('a', 0, 0, 1), at('b', 100, 0, 2), at('c', 0, 50, 3)]);
+    expect([d.get('a'), d.get('b'), d.get('c')]).toEqual([0, 0, 0]);
+  });
+  it('lifts a box over the highest box under it that it overlaps', () => {
+    const d = effectiveDepths([at('a', 0, 0, 1), at('b', 20, 0, 2), at('wide', 0, 0, 3, { w: 400 }), at('far', 300, 0, 4)]);
+    expect(d.get('wide')).toBe(2 * L);
+    expect(d.get('far')).toBe(3 * L); // it overlaps only `wide`, so it sits one layer over it
+  });
+  it('makes a frame the backdrop of what it holds, whatever their z numbers say', () => {
+    const d = effectiveDepths([at('inside', 20, 20, 1, { frameId: 'f' }), frame('f', 0, 0, 400, 300, 9)]);
+    expect(d.get('f')).toBe(0);
+    expect(d.get('inside')).toBe(FRAME_THICKNESS + LAYER_GAP);
+  });
+  it('keeps a chosen depth, even 0, and lets the others follow around it', () => {
+    const d = effectiveDepths([at('a', 0, 0, 1, { depth: 500 }), at('b', 10, 0, 2), at('c', 20, 0, 3, { depth: 0 })]);
+    expect(d.get('a')).toBe(500);
+    expect(d.get('c')).toBe(0);
+    expect(d.get('b')).toBe(500 + L); // it lies over `a` on the page, so it rests on it wherever `a` was put
+  });
+  it('copes with nothing, and with a very large page', () => {
+    expect(effectiveDepths([]).size).toBe(0);
+    const many = Array.from({ length: 1600 }, (_, i) => at(`b${i}`, 0, 0, i));
+    const d = effectiveDepths(many);
+    expect(d.size).toBe(1600);
+    expect([...d.values()].every((v) => v === 0)).toBe(true); // too many to work out: all stay on the page
+  });
+});
+
+describe('choosing depth', () => {
   const boxes = () => [note('a', { z: 1 }), note('b', { z: 2 }), note('c', { z: 3, locked: true }), { ...note('f', { z: 0 }), type: 'frame' } as unknown as Block];
-  it('sets the depth of chosen boxes, never of frames or locked boxes', () => {
+  it('chooses the depth of given boxes, never of frames or locked boxes', () => {
     const bs = boxes();
     expect(applyDepth(bs, ['a', 'c', 'f'], 120)).toBe(1);
     expect(bs.map((b) => b.depth)).toEqual([120, undefined, undefined, undefined]);
     expect(applyDepth(bs, ['a'], 120)).toBe(0); // already there
     expect(applyDepth(bs, ['a'], 0)).toBe(1);
-    expect(bs[0]).not.toHaveProperty('depth');
+    expect(bs[0].depth).toBe(0); // a chosen 0 stays: the box is flat on purpose
     expect(applyDepth(bs, ['a'], 1e9)).toBe(1);
     expect(bs[0].depth).toBe(DEPTH_MAX);
   });
-  it('fans boxes out by stacking order around the page, the top one nearest', () => {
-    const bs = boxes();
-    expect(fanOut(bs, 40)).toBe(2); // a goes back and b comes forward; c (locked) and the frame stay
-    expect(bs[0].depth).toBe(-20);
-    expect(bs[1].depth).toBe(20);
-    expect(bs[2].depth).toBeUndefined();
-    const three = [note('x', { z: 1 }), note('y', { z: 2 }), note('w', { z: 3 })];
-    fanOut(three, 50);
-    expect(three.map((b) => b.depth)).toEqual([-50, undefined, 50]);
+  it('hands a box back to the page with null', () => {
+    const bs = [note('a', { depth: 80 }), note('b')];
+    expect(applyDepth(bs, ['a', 'b'], null)).toBe(1);
+    expect(bs[0]).not.toHaveProperty('depth');
   });
-  it('puts everything back on the page', () => {
-    const bs = [note('a', { depth: 80 }), note('b', { depth: -80 }), note('c', { depth: 80, locked: true })];
-    expect(flattenDepth(bs)).toBe(2);
-    expect(bs.map((b) => b.depth)).toEqual([undefined, undefined, 80]);
+  it('flattens everything to a chosen 0, and followStacking undoes every choice', () => {
+    const bs = [note('a', { depth: 80 }), note('b', { depth: -80 }), note('c', { depth: 80, locked: true }), note('d')];
+    expect(flattenDepth(bs)).toBe(3);
+    expect(bs.map((b) => b.depth)).toEqual([0, 0, 80, 0]);
+    expect(followStacking(bs)).toBe(3);
+    expect(bs.map((b) => b.depth)).toEqual([undefined, undefined, 80, undefined]);
+  });
+});
+
+describe('boxes as blocks', () => {
+  it('makes a square into a block close to a cube, and keeps thin and huge boxes sensible', () => {
+    expect(thicknessOf({ type: 'note', w: 160, h: 160 })).toBe(80);
+    expect(thicknessOf({ type: 'note', w: 40, h: 20 })).toBe(MIN_THICKNESS);
+    expect(thicknessOf({ type: 'note', w: 2000, h: 900 })).toBe(MAX_THICKNESS);
+    expect(thicknessOf({ type: 'frame', w: 600, h: 400 })).toBe(FRAME_THICKNESS);
+  });
+  it('never makes blocks run into each other: a box resting on another starts where the one below ends', () => {
+    const below = note('a', { x: 0, y: 0, w: 200, h: 160, z: 1 });
+    const above = note('b', { x: 10, y: 10, w: 100, h: 80, z: 2 });
+    const d = effectiveDepths([below, above]);
+    expect(d.get('b')! - d.get('a')!).toBeGreaterThanOrEqual(thicknessOf(below));
+  });
+  const o = { x: 0, y: 0 };
+  it('pushes the back face away from the viewer by the thickness', () => {
+    const s = boxSolid(note('a', { x: 0, y: 0, w: 100, h: 40 }), o, 60);
+    expect(s).toHaveLength(8);
+    expect(s[0].z).toBe(-60);
+    expect(s[4].z).toBe(-60 + thicknessOf({ type: 'note', w: 100, h: 40 }));
+    expect([s[4].x, s[4].y]).toEqual([s[0].x, s[0].y]);
+  });
+  it('sees the front face from the front, the top from above, and the side it is turned toward', () => {
+    const s = boxSolid(note('a', { x: 0, y: 0, w: 100, h: 40 }), o, 0);
+    const names = (cam: Parameters<typeof cameraPosition>[0]) => visibleFaces(s, cameraPosition(cam)).map((f) => f.name).sort();
+    expect(names({ yaw: 0, pitch: 0, dist: 900, target: { x: 50, y: -20, z: 0 } })).toEqual(['front']);
+    const tilted = names({ yaw: 0, pitch: 0.6, dist: 900, target: { x: 50, y: -20, z: 0 } });
+    expect(tilted).toContain('front');
+    expect(tilted.filter((n) => n === 'top' || n === 'bottom')).toHaveLength(1); // looking down or up at it: one of the two
+    const turned = names({ yaw: 0.8, pitch: 0, dist: 900, target: { x: 50, y: -20, z: 0 } });
+    expect(turned).toContain('front');
+    expect(turned.filter((n) => n === 'left' || n === 'right')).toHaveLength(1); // turned to one side: that side shows
+    expect(names({ yaw: Math.PI, pitch: 0, dist: 900, target: { x: 50, y: -20, z: 0 } })).toEqual(['back']);
+  });
+  it('never shows more than three faces of a block at once, and faces are all defined', () => {
+    expect(FACES).toHaveLength(6);
+    const s = boxSolid(note('a', { x: 0, y: 0, w: 100, h: 40 }), o, 0);
+    for (const yaw of [-2, -1, 0, 0.5, 1.2, 2.5]) for (const pitch of [-1, -0.4, 0, 0.4, 1]) {
+      const n = visibleFaces(s, cameraPosition({ yaw, pitch, dist: 900, target: { x: 50, y: -20, z: 0 } })).length;
+      expect(n).toBeGreaterThanOrEqual(1);
+      expect(n).toBeLessThanOrEqual(3);
+    }
+  });
+  it('knows where the camera is: dist from its target, and it looks at it', () => {
+    const cam = { yaw: 0.7, pitch: 0.3, dist: 900, target: { x: 10, y: 20, z: 30 } };
+    const eye = cameraPosition(cam);
+    expect(Math.hypot(eye.x - 10, eye.y - 20, eye.z - 30)).toBeCloseTo(900, 6);
+    const at = project(cam.target, cam, 800, 600)!;
+    expect([Math.round(at.x), Math.round(at.y)]).toEqual([400, 300]);
   });
 });
 

@@ -247,3 +247,12 @@ export const easeCamera = (from: Camera, to: Camera, k: number): Camera => ({
   dist: from.dist + (to.dist - from.dist) * k,
   target: { x: from.target.x + (to.target.x - from.target.x) * k, y: from.target.y + (to.target.y - from.target.y) * k, z: from.target.z + (to.target.z - from.target.z) * k },
 });
+
+/** Where the camera is in the picture's coordinates (to tell which faces of a block face it). */
+export function cameraPosition(c: Camera): P3 {
+  const cp = Math.cos(c.pitch);
+  const sp = Math.sin(c.pitch);
+  const cy = Math.cos(c.yaw);
+  const sy = Math.sin(c.yaw);
+  return { x: c.target.x - c.dist * cp * sy, y: c.target.y - c.dist * sp, z: c.target.z - c.dist * cp * cy };
+}

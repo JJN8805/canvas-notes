@@ -558,8 +558,7 @@ if (await page.locator('.ed-space').count()) {
   await page.click('.ed-space');
   await page.waitForSelector('.spaceview .tree3d-canvas');
   await page.waitForTimeout(500);
-  await page.click('.spaceview button:has-text("Spread into layers")');
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(400); // boxes already layer by how the page stacks them
   await shot('page-in-3d');
 }
 
