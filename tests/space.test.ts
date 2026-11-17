@@ -205,3 +205,55 @@ describe('what a box says in the picture', () => {
     expect(snippet(note('s', { html: '<img src=x onerror=alert(1)><script>1</script>hi' }))).not.toMatch(/</);
   });
 });
+
+describe('camera movement', () => {
+  const W = 800, H = 600;
+  const cam = { yaw: 0.45, pitch: 0.22, dist: 1400, target: { x: 10, y: -20, z: 30 } };
+  it('zooms toward the pointer: the point under it stays under it', async () => {
+    const { zoomAt } = await import('../src/lib/spaceCamera');
+    const sx = 620, sy = 150;
+    const under = unproject(sx, sy, cam.dist, cam, W, H);
+    const next = zoomAt(cam, 0.5, sx, sy, W, H);
+    expect(next.dist).toBeCloseTo(700);
+    const p = project(under, next, W, H)!;
+    expect(p.x).toBeCloseTo(sx, 3);
+    expect(p.y).toBeCloseTo(sy, 3);
+  });
+  it('zooming at the centre only changes the distance, and respects the limits', async () => {
+    const { zoomAt } = await import('../src/lib/spaceCamera');
+    const n = zoomAt(cam, 0.5, W / 2, H / 2, W, H);
+    expect(n.target.x).toBeCloseTo(cam.target.x); expect(n.target.y).toBeCloseTo(cam.target.y); expect(n.target.z).toBeCloseTo(cam.target.z);
+    expect(zoomAt(cam, 1e-6, 100, 100, W, H).dist).toBeGreaterThanOrEqual(120);
+    expect(zoomAt(cam, 1e6, 100, 100, W, H).dist).toBeLessThanOrEqual(6000);
+  });
+  it('slides so the world follows the pointer', async () => {
+    const { panBy } = await import('../src/lib/spaceCamera');
+    const point = { x: 50, y: 40, z: 0 };
+    const before = project(point, cam, W, H)!;
+    const after = project(point, panBy(cam, 60, -25, W, H), W, H)!;
+    expect(Math.abs(after.x - before.x - 60)).toBeLessThan(2); // exact on the plane through the pivot, a little off elsewhere (perspective)
+    expect(Math.abs(after.y - before.y + 25)).toBeLessThan(2);
+  });
+  it('turns the short way round, never over the top', async () => {
+    const { angleDiff, glide, orbitBy } = await import('../src/lib/spaceCamera');
+    expect(angleDiff(3, -3)).toBeCloseTo(2 * Math.PI - 6);
+    expect(angleDiff(0, Math.PI / 2)).toBeCloseTo(Math.PI / 2);
+    const g = glide({ ...cam, yaw: 3 }, { ...cam, yaw: -3 }, 0.5);
+    expect(Math.abs(angleDiff(g.yaw, 3.141))).toBeLessThan(0.2);
+    expect(orbitBy(cam, 0, 1e6).pitch).toBeLessThanOrEqual(1.45);
+  });
+  it('knows its named views, and which one the camera is in', async () => {
+    const { VIEW_NAMES, viewCamera, viewOf } = await import('../src/lib/spaceCamera');
+    for (const n of VIEW_NAMES) expect(viewOf(viewCamera(cam, n))).toBe(n);
+    expect(viewOf({ ...cam, yaw: 1.2 })).toBeNull();
+    expect(viewCamera(cam, 'front').dist).toBe(cam.dist);
+  });
+  it('stops turning after a flick', async () => {
+    const { spinStep } = await import('../src/lib/spaceCamera');
+    let v: { x: number; y: number } | null = { x: 20, y: 0 };
+    let n = 0;
+    while (v && n < 500) (v = spinStep(v)), n++;
+    expect(v).toBeNull();
+    expect(n).toBeLessThan(120);
+  });
+});

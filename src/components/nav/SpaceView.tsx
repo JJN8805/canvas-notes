@@ -8,7 +8,8 @@ import {
   DEPTH_MAX, DEPTH_MIN, DEPTH_STEP, applyDepth, boxCentre, boxSolid, chosenDepth, clampDepth, effectiveDepths, flattenDepth, followStacking, isLayerable, pageCentre, pointInQuad, rayPlaneZ, snippet, toPage, toWorld,
   visibleFaces, type FaceName,
 } from '../../lib/space';
-import { cameraPosition, clampDist, clampPitch, frame, project, unproject, type Camera, type P3 } from '../../lib/tree3d';
+import { cameraPosition, clampPitch, project, unproject, type Camera, type P3 } from '../../lib/tree3d';
+import { VIEWS, VIEW_NAMES, arrived, focusOn, glide, orbitBy, panBy, spinStep, viewCamera, viewOf, wheelFactor, zoomAt, type ViewName } from '../../lib/spaceCamera';
 import { blockHeight, textToHtml } from '../../lib/util';
 
 /** `var(--n-yellow)` as the colour the canvas needs (a canvas cannot read CSS variables itself). */
@@ -24,6 +25,7 @@ export interface SpaceScreenInfo {
   camera: { dist: number; yaw: number; pitch: number };
 }
 
+/** Where the camera is going (a glide), and how fast the picture is still turning after a flick. */
 const START_CAMERA: Camera = { yaw: 0.45, pitch: 0.22, dist: 1400, target: { x: 0, y: 0, z: 0 } };
 const TEXT_LEFT = 7;
 
@@ -38,11 +40,16 @@ export function SpaceView({ pageId }: { pageId: string }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const cam = useRef<Camera>({ ...START_CAMERA });
   const raf = useRef(0);
-  const orbit = useRef<{ x: number; y: number; yaw: number; pitch: number; target: P3; shift: boolean; moved: number } | null>(null);
+  const goal = useRef<Camera | null>(null);
+  const spin = useRef<{ x: number; y: number } | null>(null);
+  const touches = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ dist: number; x: number; y: number } | null>(null);
+  const orbit = useRef<{ x: number; y: number; lx: number; ly: number; vx: number; vy: number; pan: boolean; moved: number } | null>(null);
   const grab = useRef<{ id: string; mode: 'plane' | 'depth'; moved: number; startX: number; startY: number; startDepth: number; offX: number; offY: number; began: boolean } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
   const [text, setText] = useState('');
+  const [view, setView] = useState<ViewName | null>('angled');
   const fitted = useRef(false);
 
   const blocks = useMemo(() => page?.blocks ?? [], [page]);
@@ -239,7 +246,23 @@ export function SpaceView({ pageId }: { pageId: string }) {
     if (raf.current) return;
     raf.current = requestAnimationFrame(() => {
       raf.current = 0;
+      let busy = false;
+      if (goal.current) {
+        cam.current = glide(cam.current, goal.current, 0.2);
+        if (arrived(cam.current, goal.current)) {
+          cam.current = goal.current;
+          goal.current = null;
+          setView(viewOf(cam.current));
+        } else busy = true;
+      }
+      if (spin.current && !orbit.current) {
+        cam.current = orbitBy(cam.current, spin.current.x, spin.current.y);
+        spin.current = spinStep(spin.current);
+        if (spin.current) busy = true;
+        else setView(viewOf(cam.current));
+      }
       draw();
+      if (busy) scheduleRef.current();
     });
   }, [draw]);
   const scheduleRef = useRef(schedule);
@@ -257,7 +280,11 @@ export function SpaceView({ pageId }: { pageId: string }) {
     if (!el) return;
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
-      cam.current = { ...cam.current, dist: clampDist(cam.current.dist * Math.exp(e.deltaY * 0.0012)) };
+      const r = el.getBoundingClientRect();
+      goal.current = null;
+      spin.current = null;
+      cam.current = zoomAt(cam.current, wheelFactor(e.deltaY, e.ctrlKey), e.clientX - r.left, e.clientY - r.top, r.width, r.height); // toward the pointer
+      setView(null);
       scheduleRef.current();
     };
     el.addEventListener('wheel', wheel, { passive: false });
@@ -276,15 +303,36 @@ export function SpaceView({ pageId }: { pageId: string }) {
     const pts: P3[] = [];
     for (const b of d.blocks) pts.push(...boxSolid(b, d.origin, d.depths.get(b.id) ?? 0));
     pts.push({ x: 0, y: 0, z: 0 });
-    cam.current = frame(pts, { ...cam.current, yaw: START_CAMERA.yaw, pitch: START_CAMERA.pitch }, 2.8);
+    goalFor(focusOn(pts, { ...cam.current, yaw: START_CAMERA.yaw, pitch: START_CAMERA.pitch }, 2.8));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  /** Fly to a camera (the picture glides there). */
+  const goalFor = (to: Camera, now = false) => {
+    spin.current = null;
+    if (now) cam.current = to;
+    else goal.current = to;
     schedule();
-  }, [schedule]);
+  };
+  /** Fly to the selected box (or everything when nothing is selected), keeping the way you are looking. */
+  const flyTo = (id: string | null) => {
+    const d = dataRef.current;
+    const b = id ? d.blocks.find((x) => x.id === id) : null;
+    if (!b) return fit();
+    goalFor(focusOn(boxSolid(b, d.origin, d.depths.get(b.id) ?? 0), cam.current, 2.6));
+  };
+  const lookFrom = (name: ViewName) => {
+    setView(name);
+    canvas.current?.focus(); // so the number keys keep working after a click on a button
+    goalFor(viewCamera(goal.current ?? cam.current, name));
+  };
   useEffect(() => {
     if (!fitted.current && blocks.length) {
       fitted.current = true;
-      fit();
+      const d = dataRef.current;
+      const pts: P3[] = [{ x: 0, y: 0, z: 0 }];
+      for (const b of d.blocks) pts.push(...boxSolid(b, d.origin, d.depths.get(b.id) ?? 0));
+      goalFor(focusOn(pts, { ...cam.current, yaw: START_CAMERA.yaw, pitch: START_CAMERA.pitch }, 2.8), true); // the first fit is not a flight
     }
-  }, [blocks.length, fit]);
+  }, [blocks.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---- changing things (each one goes through the page store, so undo and sync work as usual) ---- */
   const setDepthOf = (id: string, depth: number | null, merge = true) =>
@@ -324,7 +372,21 @@ export function SpaceView({ pageId }: { pageId: string }) {
   const press = (e: React.PointerEvent) => {
     canvas.current!.setPointerCapture(e.pointerId);
     canvas.current!.focus();
-    const b = e.shiftKey ? null : boxAt(e);
+    goal.current = null;
+    spin.current = null;
+    // Two fingers: pinch to zoom, slide to move (a grab or a turn that began with the first finger is dropped).
+    if (e.pointerType === 'touch') {
+      touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.current.size === 2) {
+        grab.current = null;
+        orbit.current = null;
+        const [a, b2] = [...touches.current.values()];
+        pinch.current = { dist: Math.hypot(a.x - b2.x, a.y - b2.y), x: (a.x + b2.x) / 2, y: (a.y + b2.y) / 2 };
+        return;
+      }
+    }
+    const pan = e.shiftKey || e.button === 1 || e.button === 2;
+    const b = pan ? null : boxAt(e);
     if (b) {
       setSelected(b.id);
       if (isLayerable(b)) {
@@ -335,9 +397,28 @@ export function SpaceView({ pageId }: { pageId: string }) {
       }
       return;
     }
-    orbit.current = { x: e.clientX, y: e.clientY, yaw: cam.current.yaw, pitch: cam.current.pitch, target: { ...cam.current.target }, shift: e.shiftKey, moved: 0 };
+    orbit.current = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, vx: 0, vy: 0, pan, moved: 0 };
+    canvas.current!.style.cursor = 'grabbing';
   };
   const move = (e: React.PointerEvent) => {
+    if (touches.current.has(e.pointerId)) {
+      touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const pi = pinch.current;
+      if (pi && touches.current.size >= 2) {
+        const [a, b2] = [...touches.current.values()];
+        const dist = Math.hypot(a.x - b2.x, a.y - b2.y);
+        const mx = (a.x + b2.x) / 2;
+        const my = (a.y + b2.y) / 2;
+        const r = canvas.current!.getBoundingClientRect();
+        let c = zoomAt(cam.current, pi.dist / Math.max(dist, 1), mx - r.left, my - r.top, r.width, r.height);
+        c = panBy(c, mx - pi.x, my - pi.y, r.width, r.height);
+        cam.current = c;
+        pinch.current = { dist, x: mx, y: my };
+        setView(null);
+        schedule();
+        return;
+      }
+    }
     const g = grab.current;
     if (g) {
       g.moved = Math.max(g.moved, Math.hypot(e.clientX - g.startX, e.clientY - g.startY));
@@ -360,15 +441,18 @@ export function SpaceView({ pageId }: { pageId: string }) {
     }
     const o = orbit.current;
     if (o) {
-      const dx = e.clientX - o.x;
-      const dy = e.clientY - o.y;
-      o.moved = Math.max(o.moved, Math.hypot(dx, dy));
-      if (o.shift) {
-        const k = cam.current.dist / 700;
-        const cy = Math.cos(cam.current.yaw);
-        const sy = Math.sin(cam.current.yaw);
-        cam.current = { ...cam.current, target: { x: o.target.x - dx * cy * k, y: o.target.y + dy * k, z: o.target.z + dx * sy * k } };
-      } else cam.current = { ...cam.current, yaw: o.yaw - dx * 0.008, pitch: clampPitch(o.pitch + dy * 0.008) };
+      const dx = e.clientX - o.lx;
+      const dy = e.clientY - o.ly;
+      o.lx = e.clientX;
+      o.ly = e.clientY;
+      o.moved = Math.max(o.moved, Math.hypot(e.clientX - o.x, e.clientY - o.y));
+      o.vx = o.vx * 0.5 + dx * 0.5; // the recent speed, for the glide after a flick
+      o.vy = o.vy * 0.5 + dy * 0.5;
+      if (o.pan) {
+        const r = canvas.current!.getBoundingClientRect();
+        cam.current = panBy(cam.current, dx, dy, r.width, r.height);
+      } else cam.current = orbitBy(cam.current, dx, dy);
+      setView(null);
       schedule();
       return;
     }
@@ -379,7 +463,11 @@ export function SpaceView({ pageId }: { pageId: string }) {
       canvas.current!.style.cursor = b ? (isLayerable(b) ? 'move' : 'pointer') : 'grab';
     }
   };
-  const release = () => {
+  const release = (e?: React.PointerEvent) => {
+    if (e && touches.current.delete(e.pointerId)) {
+      if (touches.current.size < 2) pinch.current = null;
+      if (touches.current.size) return;
+    }
     const g = grab.current;
     grab.current = null;
     if (g?.began) {
@@ -389,6 +477,12 @@ export function SpaceView({ pageId }: { pageId: string }) {
     const o = orbit.current;
     orbit.current = null;
     if (o && o.moved < 4) setSelected(null);
+    // A flick keeps the picture turning for a moment, slowing down (not when the pointer rested before letting go).
+    if (o && !o.pan && o.moved >= 4 && Math.hypot(o.vx, o.vy) > 1.5) {
+      spin.current = { x: o.vx, y: o.vy };
+      schedule();
+    }
+    if (o && canvas.current) canvas.current.style.cursor = 'grab';
   };
 
   useEffect(() => {
@@ -452,10 +546,23 @@ export function SpaceView({ pageId }: { pageId: string }) {
               )}
             </section>
             <section>
+              <h3>View</h3>
+              <div className="space-btns" role="group" aria-label="Look from">
+                {VIEW_NAMES.map((n) => (
+                  <button key={n} className={`btn small${view === n ? ' on' : ''}`} aria-pressed={view === n} title={`${VIEWS[n].label} view (${VIEWS[n].key})`} onClick={() => lookFrom(n)}>
+                    {VIEWS[n].label}
+                  </button>
+                ))}
+              </div>
+              <div className="space-btns">
+                <button className="btn small" disabled={!chosen} title="Fly to the selected box (F)" onClick={() => flyTo(selected)}>Focus selected</button>
+                <button className="btn small" title="Show everything (0)" onClick={fit}>Fit</button>
+              </div>
+            </section>
+            <section>
               <h3>This page</h3>
               <button className="btn small" disabled={!anyChosen} onClick={restack} title="Every box follows the page's own stacking again: a box behind another on the page is behind it here">Layer like the page</button>
               <button className="btn small" onClick={flatten} title="Put every box on the page layer, side by side">Put everything on the page</button>
-              <button className="btn small" onClick={fit}>Fit</button>
             </section>
             <section>
               <h3>Why depth</h3>
@@ -468,36 +575,47 @@ export function SpaceView({ pageId }: { pageId: string }) {
               className="tree3d-canvas"
               tabIndex={0}
               role="img"
-              aria-label="The boxes of this page in 3D: drag a box to move it, Alt+drag to change its depth, drag the empty space to turn the picture, scroll to zoom."
+              aria-label="The boxes of this page in 3D: drag a box to move it, Alt+drag to change its depth, drag the empty space to turn the picture, scroll to zoom, double-click a box to fly to it."
               onPointerDown={press}
               onPointerMove={move}
               onPointerUp={release}
               onPointerCancel={release}
+              onContextMenu={(e) => e.preventDefault()}
               onPointerLeave={() => setHover(null)}
               onDoubleClick={(e) => {
                 const b = boxAt(e);
-                if (b) edit(b.id);
-                else fit();
+                if (b) {
+                  setSelected(b.id);
+                  flyTo(b.id); // fly to it and make it the pivot; Enter (or the button) opens it on the page
+                } else fit();
               }}
               onKeyDown={(e) => {
                 const c = cam.current;
-                if (e.key === ']' && chosen && isLayerable(chosen)) setDepthOf(chosen.id, depth + DEPTH_STEP, false);
+                const r = canvas.current!.getBoundingClientRect();
+                const named = VIEW_NAMES.find((n) => VIEWS[n].key === e.key);
+                if (named) lookFrom(named);
+                else if (e.key === 'f' || e.key === 'F') flyTo(selected);
+                else if (e.shiftKey && e.key.startsWith('Arrow')) {
+                  const s = 60;
+                  cam.current = panBy(c, e.key === 'ArrowLeft' ? s : e.key === 'ArrowRight' ? -s : 0, e.key === 'ArrowUp' ? s : e.key === 'ArrowDown' ? -s : 0, r.width, r.height);
+                  setView(null);
+                } else if (e.key === ']' && chosen && isLayerable(chosen)) setDepthOf(chosen.id, depth + DEPTH_STEP, false);
                 else if (e.key === '[' && chosen && isLayerable(chosen)) setDepthOf(chosen.id, depth - DEPTH_STEP, false);
                 else if (e.key === 'Enter' && chosen) return edit(chosen.id);
                 else if (e.key === 'ArrowLeft') cam.current = { ...c, yaw: c.yaw + 0.12 };
                 else if (e.key === 'ArrowRight') cam.current = { ...c, yaw: c.yaw - 0.12 };
                 else if (e.key === 'ArrowUp') cam.current = { ...c, pitch: clampPitch(c.pitch - 0.1) };
                 else if (e.key === 'ArrowDown') cam.current = { ...c, pitch: clampPitch(c.pitch + 0.1) };
-                else if (e.key === '+' || e.key === '=') cam.current = { ...c, dist: clampDist(c.dist * 0.85) };
-                else if (e.key === '-') cam.current = { ...c, dist: clampDist(c.dist / 0.85) };
-                else if (e.key === '0') return fit();
+                else if (e.key === '+' || e.key === '=') cam.current = zoomAt(c, 0.85, r.width / 2, r.height / 2, r.width, r.height);
+                else if (e.key === '-') cam.current = zoomAt(c, 1 / 0.85, r.width / 2, r.height / 2, r.width, r.height);
+                else if (e.key === '0' || e.key === 'Home') return fit();
                 else return;
                 e.preventDefault();
                 schedule();
               }}
             />
             {blocks.length === 0 && <p className="graph-empty">This page has no boxes yet. Write a note above and it will appear here.</p>}
-            <div className="tree3d-help" aria-hidden="true">Drag a box to move it · Alt+drag, [ and ] change its depth · Drag the space to turn · Scroll to zoom · Shift+drag to move · Double-click a box to edit it</div>
+            <div className="tree3d-help" aria-hidden="true">Drag the space to turn · Scroll zooms toward the pointer · Right-drag or Shift+drag slides · Double-click a box to fly to it, empty space to fit · 1–4 views · F focus · Enter edits · Alt+drag or [ ] set depth</div>
           </div>
         </div>
       </div>

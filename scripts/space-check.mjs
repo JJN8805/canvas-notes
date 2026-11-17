@@ -165,6 +165,33 @@ await page.waitForTimeout(150);
 check('scrolling zooms', (await screen()).camera.dist < dist);
 await page.screenshot({ path: join(OUT, 'space-turned.png') });
 
+/* ---- named views, zoom toward the pointer, sliding ---- */
+await page.click('.graph-panel button:has-text("Front")');
+await page.waitForTimeout(900);
+let cm = (await screen()).camera;
+check('the Front view looks at the page head-on', Math.abs(cm.yaw) < 0.01 && Math.abs(cm.pitch) < 0.01);
+await page.keyboard.press('3');
+await page.waitForTimeout(900);
+cm = (await screen()).camera;
+check('key 3 is the Side view', Math.abs(Math.abs(cm.yaw) - Math.PI / 2) < 0.01);
+await page.keyboard.press('2');
+await page.waitForTimeout(900);
+cm = (await screen()).camera;
+const pin = await box('n2');
+await page.mouse.move(pin.x, pin.y);
+await page.mouse.wheel(0, -500);
+await page.waitForTimeout(200);
+const pinAfter = await box('n2');
+check('zooming keeps what is under the pointer under it', Math.hypot(pinAfter.x - pin.x, pinAfter.y - pin.y) < 40);
+const slid = await box('n2');
+await page.mouse.move(cv.x + 40, cv.y + cv.height - 60);
+await page.mouse.down({ button: 'right' });
+await page.mouse.move(cv.x + 140, cv.y + cv.height - 60, { steps: 6 });
+await page.mouse.up({ button: 'right' });
+const slid2 = await box('n2');
+check('a right-drag slides the picture without turning it', Math.abs(slid2.x - slid.x) > 40 && Math.abs((await screen()).camera.yaw - cm.yaw) < 0.001);
+await page.screenshot({ path: join(OUT, 'space-front.png') });
+
 /* ---- it all went through the page: it shows on the page, undoes, and stays after closing ---- */
 await page.keyboard.press('Escape');
 await page.waitForTimeout(400);
@@ -186,9 +213,14 @@ check('and redo brings them back', (await pageBox('Background reading')) === mov
 /* ---- opening a box for editing goes back to the flat page ---- */
 await openSpace();
 const idea = await box('n3');
+const flownFrom = (await screen()).camera.dist;
 await page.mouse.dblclick(idea.x, idea.y);
 await page.waitForTimeout(500);
-check('double-clicking a box closes the view and takes you to it on the page', (await page.locator('.spaceview').count()) === 0 && (await page.locator('.world').count()) === 1);
+await page.waitForTimeout(700);
+check('double-clicking a box flies to it (the view stays open and the box is centred and nearer)', (await page.locator('.spaceview').count()) === 1 && (await screen()).camera.dist < flownFrom);
+await page.keyboard.press('Enter');
+await page.waitForTimeout(500);
+check('Enter on the selected box takes you to it on the page', (await page.locator('.spaceview').count()) === 0 && (await page.locator('.world').count()) === 1);
 
 /* ---- library: no 3D command there; and the view closes when the page is left ---- */
 await openSpace();
