@@ -530,6 +530,22 @@ await page.waitForSelector('.card-detail');
 await page.keyboard.type('A card');
 await shot('card-detail-new');
 
+// The graph view and its 3D hierarchy
+await page.keyboard.press('Escape').catch(() => {});
+await page.goto(URL + '#/');
+await page.waitForSelector('.sidebar');
+await page.keyboard.press('Control+p');
+await page.waitForSelector('.palette');
+await page.fill('.palette input', 'graph view');
+await page.click('.palette-row:has-text("graph view")');
+await page.waitForSelector('.graph-svg');
+await page.waitForTimeout(1500);
+await shot('graph-view');
+await page.click('.graph-tabs button:has-text("3D hierarchy")');
+await page.waitForSelector('.tree3d-canvas');
+await page.waitForTimeout(800);
+await shot('graph-3d-hierarchy');
+
 await browser.close();
 console.log(`${n} screenshots in ${OUT}`);
 if (problems.length) {

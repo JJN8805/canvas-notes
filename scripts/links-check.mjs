@@ -103,22 +103,22 @@ await page.click('.palette-row:has-text("graph view")');
 await page.waitForSelector('.graph-svg');
 check('graph has both pages and a box-link edge', (await page.locator('.graph-node').count()) >= 2 && (await page.locator('.graph-edge.box').count()) === 1);
 await page.screenshot({ path: join(OUT, 'graph.png') });
-await page.uncheck('.graph-tools >> text=Box links');
+await page.uncheck('.graph-panel >> text=Box links');
 check('turning box links off removes the edge', (await page.locator('.graph-edge').count()) === 0);
-await page.check('.graph-tools >> text=Box links');
+await page.check('.graph-panel >> text=Box links');
 await page.fill('.graph-tools input[type=search]', 'Target');
 check('searching dims the others', (await page.locator('.graph-node.off').count()) >= 1);
 
 // the graph: filter, drag, click a line
 await page.fill('.graph-tools input[type=search]', '');
 await page.screenshot({ path: join(OUT, 'graph2.png') });
-const before = await page.locator('.graph-node circle').first().getAttribute('cx');
+const before = await page.locator('.graph-node').first().getAttribute('transform');
 const nb = await page.locator('.graph-node').first().boundingBox();
 await page.mouse.move(nb.x + nb.width / 2, nb.y + 6);
 await page.mouse.down();
 await page.mouse.move(nb.x + 120, nb.y + 90, { steps: 8 });
 await page.mouse.up();
-const after = await page.locator('.graph-node circle').first().getAttribute('cx');
+const after = await page.locator('.graph-node').first().getAttribute('transform');
 check('dragging a dot moves it and does not open the page', before !== after && (await page.locator('.graph-svg').count()) === 1, `${before} -> ${after}`);
 await page.locator('.graph-edge-hit').first().dispatchEvent('click');
 check('clicking a line says which boxes it joins', (await page.locator('.graph-edge-info li').count()) === 1 && (await page.locator('.graph-edge-info').innerText()).includes('Sticky'));
