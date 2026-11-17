@@ -137,6 +137,48 @@ export interface SyncStore {
 /* Storage                                                             */
 /* ------------------------------------------------------------------ */
 
+/**
+ * One passage's embedding, for searching notes by meaning. Derived from the pages, so it is never synced or put in a backup: every device
+ * builds its own, and it can be deleted at any time (it is rebuilt). `vec` is one signed byte per number, base64 (see addons/ai/rag/vectors.ts).
+ */
+export interface VectorRow {
+  pageId: string;
+  blockId: string;
+  chunk: number;
+  /** Fingerprint of the passage text it was made from. */
+  hash: string;
+  /** Which model made it: `local:nomic-embed-text`, `openai:text-embedding-3-small` … Vectors of different models can't be compared. */
+  model: string;
+  dim: number;
+  scale: number;
+  vec: string;
+}
+
+export type VectorKey = Pick<VectorRow, 'pageId' | 'blockId' | 'chunk'>;
+
+export interface VectorStore {
+  /** Every stored vector of one model. */
+  load(model: string): Promise<VectorRow[]>;
+  /** Adds or replaces vectors (one per page, box, piece and model). */
+  put(rows: VectorRow[]): Promise<void>;
+  remove(model: string, keys: VectorKey[]): Promise<void>;
+  /** Deletes every vector, or every vector except those of `keepModel`. */
+  clear(keepModel?: string): Promise<void>;
+  /** How many vectors there are, of one model or of all. */
+  count(model?: string): Promise<number>;
+}
+
+/** A stored vector read back is checked before it is trusted: a damaged row is dropped, never fatal. */
+export function cleanVectorRow(r: unknown): VectorRow | null {
+  if (!r || typeof r !== 'object') return null;
+  const o = r as Record<string, unknown>;
+  const { pageId, blockId, chunk, hash, model, dim, scale, vec } = o;
+  if (typeof pageId !== 'string' || typeof blockId !== 'string' || typeof hash !== 'string' || typeof model !== 'string' || typeof vec !== 'string') return null;
+  if (!Number.isInteger(chunk) || (chunk as number) < 0 || !Number.isInteger(dim) || (dim as number) < 1 || (dim as number) > 4096) return null;
+  if (typeof scale !== 'number' || !Number.isFinite(scale) || scale <= 0) return null;
+  return { pageId, blockId, chunk: chunk as number, hash, model, dim: dim as number, scale, vec };
+}
+
 export interface NotesStorage {
   /** 'desktop' = SQLite + image files via Tauri, 'browser' = IndexedDB (for `npm run dev`). */
   kind: 'desktop' | 'browser';
@@ -180,6 +222,8 @@ export interface NotesStorage {
   tidy(): Promise<TidyResult>;
   getSetting(key: string): Promise<string | null>;
   setSetting(key: string, value: string | null): Promise<void>;
+  /** Embeddings for searching by meaning (derived data: not synced, not backed up). */
+  vectors: VectorStore;
   sync: SyncStore;
 }
 

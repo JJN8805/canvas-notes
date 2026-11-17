@@ -186,6 +186,7 @@ const backupPath = await download(page, async () => {
   await page.click('button:has-text("Encrypted backup")');
   await page.locator('input[type=password]').fill('correct horse');
   await page.keyboard.press('Enter');
+  await page.waitForSelector('.dialog:has-text("Type the passphrase again")'); // the second prompt replaces the first: wait for it
   await page.locator('input[type=password]').fill('correct horse');
   await page.keyboard.press('Enter');
 }, 'backup.json');

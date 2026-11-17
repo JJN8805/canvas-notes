@@ -9,8 +9,10 @@ import { toast } from '../../store/ui';
 import { Icon } from '../../components/ui/Icon';
 import type { Block } from '../../types';
 import { buildAttachments, MAX_ATTACHED, titleFromAnswer } from './attach';
-import { citedSources, NOTES_PROMPT, NOTHING_FOUND, notesMessage, passagesOf, rankPassages, type NoteSource } from './notesSearch';
-import { openBox } from './openBox';
+import { NOTES_PROMPT, NOTHING_FOUND, notesMessage } from './notesSearch';
+import { retrieveForQuestion } from './rag/runtime';
+import { Sources } from './Sources';
+import { SearchInfo } from './rag/SearchInfo';
 import { SYSTEM_PROMPT } from './prompts';
 import { hasPageText, mainChat, needsConfirmation, wireHistory, type Message } from './chat';
 import { useChatInbox } from './chatInbox';
@@ -74,22 +76,6 @@ function PagePicker({ chosen, onToggle, onClose }: { chosen: string[]; onToggle:
   );
 }
 
-/** The notes an answer rests on: the ones it cites, each a button that opens that box (or, if it cites none, the notes it was shown). */
-function Sources({ answer, sources }: { answer: string; sources: NoteSource[] }) {
-  const cited = citedSources(answer, sources);
-  const shown = cited.length ? cited : sources;
-  return (
-    <div className="chat-sources" aria-label={cited.length ? 'Sources' : 'Notes it looked at'}>
-      <span className="chat-sources-head">{cited.length ? 'From your notes' : 'Looked at (none cited)'}</span>
-      {shown.map((s) => (
-        <button key={s.n} className="chip src" title={s.text.slice(0, 240)} onClick={() => openBox(s.pageId, s.blockId)}>
-          <b>[{s.n}]</b> {s.title}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function ChatMessage({ m, last, canRetry, onRetry }: { m: Message; last: boolean; canRetry: boolean; onRetry: () => void }) {
   const saveAsPage = () => {
     const block = { id: newId(), type: 'note', style: 'text', x: 80, y: 80, w: 640, h: 120, z: 1, html: markdownToHtml(m.content) } as Block;
@@ -141,6 +127,8 @@ export function ChatView() {
   const [attached, setAttached] = useState<string[]>([]);
   const [picking, setPicking] = useState(false);
   const [searchNotes, setSearchNotes] = useState(false);
+  const [retrieving, setRetrieving] = useState(false); // looking through the notes for the question (one question at a time)
+  const [howFound, setHowFound] = useState<string | null>(null);
   const inboxNotes = useChatInbox((s) => s.notes);
   const [pending, setPending] = useState<{ pending: Pending; go: () => void } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -183,12 +171,23 @@ export function ChatView() {
   const model = settings.models[settings.provider] || '(no model chosen)';
   const attachments = useMemo(() => buildAttachments(pages, attached), [pages, attached]);
 
-  const send = (text: string, ids: string[] = attached, notes: boolean = searchNotes) => {
+  const send = async (text: string, ids: string[] = attached, notes: boolean = searchNotes) => {
     const t = text.trim();
-    if (!t || busy || !loaded) return;
+    if (!t || busy || !loaded || retrieving) return;
     const att = buildAttachments(pages, ids);
-    // "Search my notes": the best passages of every page, found here on this computer; only those go in the message.
-    const found = notes ? rankPassages(t, passagesOf(libraryPages(pages))) : [];
+    // "Search my notes": the best passages of every page, found by meaning and by words; only those go in the message. Finding them
+    // happens here (with embeddings from Ollama on this computer, unless the person chose a cloud source and agreed to it in Settings).
+    let found: Awaited<ReturnType<typeof retrieveForQuestion>>['passages'] = [];
+    if (notes) {
+      setRetrieving(true);
+      try {
+        const r = await retrieveForQuestion(t);
+        found = r.passages;
+        setHowFound(r.note ?? (r.mode === 'words+meaning' ? 'Searched by meaning and by words.' : null));
+      } finally {
+        setRetrieving(false);
+      }
+    }
     if (notes && !found.length && !att.texts.length) {
       setDraft('');
       follow.current = true;
@@ -225,7 +224,7 @@ export function ChatView() {
     if (inbox && loaded && !busy) {
       const ids = useChatInbox.getState().pageIds;
       useChatInbox.setState({ question: null, pageIds: [] });
-      send(inbox, ids.filter((id) => !!pages[id]), false);
+      void send(inbox, ids.filter((id) => !!pages[id]), false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inbox, loaded, inboxNotes]);
@@ -292,6 +291,7 @@ export function ChatView() {
             <span className="chat-chars">{attachments.chars.toLocaleString()} characters{attachments.truncated ? ', shortened' : ''}</span>
           </div>
         )}
+        {searchNotes && <SearchInfo howFound={howFound} />}
         <div className="chat-inputrow">
           <textarea
             ref={inputRef}
@@ -304,7 +304,7 @@ export function ChatView() {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
-                send(draft);
+                void send(draft);
               }
             }}
           />
@@ -312,8 +312,9 @@ export function ChatView() {
             <button
               className={'btn' + (searchNotes ? ' on' : '')}
               aria-pressed={searchNotes}
+              disabled={retrieving}
               onClick={() => setSearchNotes((v) => !v)}
-              title="Look through all your pages for the passages that answer the question, and answer from them with sources. The search runs on this computer; only the passages it picks are sent."
+              title="Look through all your pages, by meaning and by words, for the passages that answer the question, and answer from them with sources. The search runs on this computer (unless you chose a cloud source for it in Settings); only the passages it picks are sent to the chat model."
             >
               <Icon name="search" size={16} />
               Search my notes
@@ -325,7 +326,7 @@ export function ChatView() {
             {busy ? (
               <button className="btn" onClick={() => mainChat.stop()}>Stop</button>
             ) : (
-              <button className="btn primary" disabled={!draft.trim() || !loaded} onClick={() => send(draft)}>Send</button>
+              <button className="btn primary" disabled={!draft.trim() || !loaded || retrieving} onClick={() => void send(draft)}>{retrieving ? 'Searching…' : 'Send'}</button>
             )}
           </div>
         </div>

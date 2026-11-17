@@ -9,8 +9,10 @@ import { askInChat, askMyNotes, openChat } from './chatInbox';
 import { openInlineAi } from './inline';
 import { currentRoute } from '../../lib/route';
 import { openAddonPanel } from '../store';
+import { startRag } from './rag/runtime';
 
 void loadAiSettings();
+startRag(); // keeps the notes index (for searching by meaning) up to date while this add-on is on
 
 const addon: AddOnModule = {
   Settings: AiSettings,

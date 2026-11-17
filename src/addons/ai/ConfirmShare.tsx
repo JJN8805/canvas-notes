@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { SYSTEM_PROMPT } from './prompts';
 import type { Message } from './chat';
+import type { NoteSource } from './notesSearch';
 
 export interface Pending {
   text: string;
@@ -9,6 +10,8 @@ export interface Pending {
   aliases?: Message['aliases'];
   /** Instructions the app adds besides the standard ones (shown to the user too). */
   system?: string;
+  /** "Search my notes": the passages sent with this question, by the number the answer cites. */
+  sources?: NoteSource[];
   history: string[];
 }
 

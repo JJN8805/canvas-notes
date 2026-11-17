@@ -15,6 +15,10 @@ import { QUICK_ACTIONS, SYSTEM_PROMPT, userMessage } from './prompts';
 import { buildEditableContext, EDIT_PROMPT, parseAnswer, propose, summarize, visibleText, type EditableContext } from './edits';
 import { applyChanges } from './applyEdits';
 import { ConfirmShare, type Pending } from './ConfirmShare';
+import { Sources } from './Sources';
+import { notesMessage, REFERENCE_PROMPT, type NoteSource } from './notesSearch';
+import { retrieveForQuestion } from './rag/runtime';
+import { useRagSettings } from './rag/config';
 import { b64ToFile, imageDataUrl } from './picture';
 
 const DEST_LABEL = { local: 'On this computer', network: 'Another computer on your network', cloud: 'Cloud' } as const;
@@ -131,7 +135,9 @@ function Bubble({ m, pageId, onRetry }: { m: Message; pageId: string; onRetry?: 
         <div className="ai-text">{m.aliases && m.role === 'assistant' ? visibleText(m.content) : m.content}{m.streaming && <span className="ai-caret" aria-hidden="true" />}</div>
       )}
       {m.streaming && !m.content && !m.imageB64 && <div className="ai-text dim">Thinking…</div>}
-      {m.shared && <div className="ai-shared">Shared this page ({m.shared.blocks} box{m.shared.blocks === 1 ? '' : 'es'}, {m.shared.chars.toLocaleString()} characters)</div>}
+      {m.shared && m.shared.blocks - (m.sources?.length ?? 0) > 0 && <div className="ai-shared">Shared this page ({m.shared.blocks - (m.sources?.length ?? 0)} box{m.shared.blocks - (m.sources?.length ?? 0) === 1 ? '' : 'es'}, {(m.shared.chars - (m.sources ?? []).reduce((n, x) => n + x.text.length, 0)).toLocaleString()} characters)</div>}
+      {m.role === 'assistant' && !m.streaming && !m.error && m.sources && m.sources.length > 0 && <Sources answer={m.content} sources={m.sources} />}
+      {m.role === 'user' && m.sources && m.sources.length > 0 && <div className="ai-shared">Added {m.sources.length} passage{m.sources.length === 1 ? '' : 's'} from your other notes</div>}
       {m.error && <div className="ai-error" role="alert">{m.error}</div>}
       {m.role === 'assistant' && !m.streaming && !m.error && <Proposal m={m} pageId={pageId} />}
       {onRetry && m.role === 'assistant' && !m.streaming && !m.imageB64 && (
@@ -167,6 +173,8 @@ export function AiPanel({ pageId, onClose }: { pageId: string; onClose: () => vo
   const [draft, setDraft] = useState('');
   const [picture, setPicture] = useState(false);
   const [pending, setPending] = useState<Pending | null>(null);
+  const [alsoNotes, setAlsoNotes] = useState(() => useRagSettings.getState().settings.assistantNotes);
+  const [retrieving, setRetrieving] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -194,30 +202,42 @@ export function AiPanel({ pageId, onClose }: { pageId: string; onClose: () => vo
   // request, and the toggle names where it goes, so ticking it and sending is the consent.
   const canPicture = true;
 
-  const go = (text: string, wire: string, shared: Message['shared'], consent: boolean, aliases?: Message['aliases']) => {
+  const go = (text: string, wire: string, shared: Message['shared'], consent: boolean, aliases?: Message['aliases'], extra: { sources?: NoteSource[]; system?: string } = {}) => {
     setDraft('');
-    void askChat(settings, text, { wire, shared, consent, aliases });
+    void askChat(settings, text, { wire, shared, consent, aliases, ...extra });
   };
 
-  const send = (text: string) => {
+  const send = async (text: string) => {
     const t = text.trim();
-    if (!t || busy) return;
+    if (!t || busy || retrieving) return;
     if (picture && canPicture) {
       setDraft('');
       void drawImage(settings, t);
       return;
     }
     const attach = ctx && ctx.text.trim() ? ctx : null;
-    const wire = userMessage(t, attach?.text);
+    // "Also search my other notes": the passages of the OTHER pages that bear on the question, by meaning and words, as background.
+    let noted: ReturnType<typeof notesMessage> | null = null;
+    if (alsoNotes) {
+      setRetrieving(true);
+      try {
+        const r = await retrieveForQuestion(t, { except: [pageId] });
+        if (r.passages.length) noted = notesMessage(t, r.passages);
+      } finally {
+        setRetrieving(false);
+      }
+    }
+    const wire = userMessage(noted ? noted.wire : t, attach?.text);
     const aliasesOf = attach && suggest ? (attach as EditableContext).aliases : undefined;
-    const shared = attach ? { chars: attach.chars, blocks: attach.blocks } : undefined;
+    const shared = attach || noted ? { chars: (attach?.chars ?? 0) + (noted?.sources ?? []).reduce((n, x) => n + x.text.length, 0), blocks: (attach?.blocks ?? 0) + (noted?.sources.length ?? 0) } : undefined;
+    const extra = noted ? { sources: noted.sources, system: REFERENCE_PROMPT } : {};
     const history = wireHistory(messages);
     const confirm = needsConfirmation({
-      destination: dest, confirmShare: settings.confirmShare, newMessageHasPage: !!attach,
+      destination: dest, confirmShare: settings.confirmShare, newMessageHasPage: !!attach || !!noted,
       historyHasPage: history.some((h) => hasPageText(h.content)), provider: settings.provider, consented,
     });
-    if (confirm) setPending({ text: t, wire, shared, aliases: aliasesOf, history: history.map((h) => `${h.role === 'user' ? 'You' : 'Assistant'}: ${h.content}`) });
-    else go(t, wire, shared, false, aliasesOf);
+    if (confirm) setPending({ text: t, wire, shared, aliases: aliasesOf, ...extra, history: history.map((h) => `${h.role === 'user' ? 'You' : 'Assistant'}: ${h.content}`) });
+    else go(t, wire, shared, false, aliasesOf, extra);
   };
 
   return (
@@ -241,7 +261,7 @@ export function AiPanel({ pageId, onClose }: { pageId: string; onClose: () => vo
             <p>Ask about this page, or have the assistant write something for it. Chats aren’t saved: closing this panel forgets them.</p>
             <div className="ai-quick">
               {QUICK_ACTIONS.map((a) => (
-                <button key={a.id} className="btn small" disabled={busy || (a.needsPage && !(ctx && ctx.text.trim()))} onClick={() => send(a.prompt)}>
+                <button key={a.id} className="btn small" disabled={busy || (a.needsPage && !(ctx && ctx.text.trim()))} onClick={() => void send(a.prompt)}>
                   {a.label}
                 </button>
               ))}
@@ -260,6 +280,10 @@ export function AiPanel({ pageId, onClose }: { pageId: string; onClose: () => vo
               ? `Share ${ctx.usedSelection ? 'the selected boxes' : 'this page'} (${ctx.blocks} box${ctx.blocks === 1 ? '' : 'es'}, ${ctx.chars.toLocaleString()} characters${ctx.truncated ? ', shortened' : ''})`
               : 'Share this page with each message'}
           </span>
+        </label>
+        <label className="ai-share" title="Look through your other pages, by meaning and by words, for passages related to the question, and give them to the assistant as background (with their sources). Only those passages are sent.">
+          <input type="checkbox" checked={alsoNotes} onChange={(e) => setAlsoNotes(e.target.checked)} />
+          <span>Also search my other notes</span>
         </label>
         <label className="ai-share" title="The assistant may suggest changes to the boxes on this page. Nothing changes until you press Apply, and Undo takes it back.">
           <input type="checkbox" checked={canEdit} disabled={!share} onChange={(e) => setCanEdit(e.target.checked)} />
@@ -283,14 +307,14 @@ export function AiPanel({ pageId, onClose }: { pageId: string; onClose: () => vo
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
-                send(draft);
+                void send(draft);
               }
             }}
           />
           {busy ? (
             <button className="btn" onClick={stopChat}>Stop</button>
           ) : (
-            <button className="btn primary" disabled={!draft.trim()} onClick={() => send(draft)}>Send</button>
+            <button className="btn primary" disabled={!draft.trim() || retrieving} onClick={() => void send(draft)}>{retrieving ? 'Searching…' : 'Send'}</button>
           )}
         </div>
       </div>
@@ -299,12 +323,12 @@ export function AiPanel({ pageId, onClose }: { pageId: string; onClose: () => vo
         <ConfirmShare
           pending={pending}
           to={info.label}
-          system={pending.aliases ? SYSTEM_PROMPT + '\n\n' + EDIT_PROMPT : SYSTEM_PROMPT}
+          system={[SYSTEM_PROMPT, pending.aliases ? EDIT_PROMPT : '', pending.system ?? ''].filter(Boolean).join('\n\n')}
           onNo={() => setPending(null)}
           onYes={() => {
             const p = pending;
             setPending(null);
-            go(p.text, p.wire, p.shared, true, p.aliases);
+            go(p.text, p.wire, p.shared, true, p.aliases, { sources: p.sources, system: p.system });
           }}
         />
       )}

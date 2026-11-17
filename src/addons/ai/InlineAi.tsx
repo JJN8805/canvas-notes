@@ -15,6 +15,9 @@ import { applyToEditor, closeInlineAi, insertAsBox, insertAsChecklist, insertWri
 import { checklistItems } from './markdown';
 import { userMessage } from './prompts';
 import { streamChat } from './stream';
+import { notesMessage, REFERENCE_PROMPT } from './notesSearch';
+import { retrieveForQuestion } from './rag/runtime';
+import { useRagSettings } from './rag/config';
 import { EDIT_SYSTEM, LANGUAGES, MAIN_TASKS, MORE_TASKS, TONES, WRITE_SUGGESTIONS, WRITE_SYSTEM, editMessage, refineMessage, toneTask, translateTask, type AiTask } from './tasks';
 
 const DEST_LABEL = { local: 'On this computer', network: 'Another computer on your network', cloud: 'Cloud' } as const;
@@ -123,24 +126,38 @@ function InlineAiCard({ target }: { target: InlineTarget }) {
     });
     if (confirm) {
       const last = messages[messages.length - 1].content;
-      setPending({ pending: { text: last, wire: last, history: [] }, go: () => void run() });
+      setPending({ pending: { text: last, wire: last, history: [], system }, go: () => void run() });
     } else void run();
   };
 
   const runEditTask = (task: AiTask, instruction = task.instruction) => start(EDIT_SYSTEM, [{ role: 'user', content: editMessage(instruction, target.original) }], task.where, true);
-  const runFree = () => {
+  /** The message for writing something new. When the person allowed it in Settings, passages of their OTHER pages that bear on the request go along as background. */
+  const writeMessage = async (text: string, attach?: string) => {
+    if (!useRagSettings.getState().settings.inlineNotes) return { content: userMessage(text, attach), system: WRITE_SYSTEM, leaves: !!attach };
+    setPhase('working');
+    try {
+      const r = await retrieveForQuestion(text, { except: target.pageId ? [target.pageId] : [] });
+      if (r.passages.length) return { content: userMessage(notesMessage(text, r.passages).wire, attach), system: WRITE_SYSTEM + '\n\n' + REFERENCE_PROMPT, leaves: true };
+    } catch {
+      /* no notes: write without them */
+    }
+    return { content: userMessage(text, attach), system: WRITE_SYSTEM, leaves: !!attach };
+  };
+  const runFree = async () => {
     const text = draft.trim();
     if (!text) return;
     setDraft('');
     if (edit) runEditTask({ id: 'free', label: text, where: 'replace', instruction: text });
     else {
       const attach = sharePage && pageCtx && pageCtx.text.trim() ? pageCtx.text : undefined;
-      start(WRITE_SYSTEM, [{ role: 'user', content: userMessage(text, attach) }], 'below', !!attach);
+      const m = await writeMessage(text, attach);
+      start(m.system, [{ role: 'user', content: m.content }], 'below', m.leaves);
     }
   };
-  const runSuggestion = (prompt: string) => {
+  const runSuggestion = async (prompt: string) => {
     const attach = sharePage && pageCtx && pageCtx.text.trim() ? pageCtx.text : undefined;
-    start(WRITE_SYSTEM, [{ role: 'user', content: userMessage(prompt, attach) }], 'below', !!attach);
+    const m = await writeMessage(prompt, attach);
+    start(m.system, [{ role: 'user', content: m.content }], 'below', m.leaves);
   };
   const refine = () => {
     const text = draft.trim();
@@ -270,7 +287,7 @@ function InlineAiCard({ target }: { target: InlineTarget }) {
         <ConfirmShare
           pending={pending.pending}
           to={info.label}
-          system={edit ? EDIT_SYSTEM : WRITE_SYSTEM}
+          system={pending.pending.system ?? (edit ? EDIT_SYSTEM : WRITE_SYSTEM)}
           onNo={() => setPending(null)}
           onYes={() => {
             const go = pending.go;

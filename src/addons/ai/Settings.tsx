@@ -7,6 +7,7 @@ import { LlmError, type ImageSource, type ProviderId } from '../../lib/llm/types
 import { isTauri } from '../../storage';
 import { loadAiSettings, saveAiSettings, useAiSettings } from './config';
 import { SYSTEM_PROMPT } from './prompts';
+import { RagSettings } from './rag/RagSettings';
 
 const DEST_TEXT = {
   local: 'Ollama on this computer. Nothing leaves it.',
@@ -251,6 +252,7 @@ export function AiSettings() {
         <span>Show me what will be sent, and ask first, before page text goes to a cloud or network model</span>
       </label>
       <p className="ai-note">Chats are not saved anywhere: closing the panel forgets the conversation.</p>
+      <RagSettings />
     </div>
   );
 }

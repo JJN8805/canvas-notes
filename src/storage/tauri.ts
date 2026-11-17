@@ -15,6 +15,7 @@ import { fileIdsOf } from '../lib/files';
 import {
   base64ToBytes,
   bytesToBase64,
+  cleanVectorRow,
   newEtag,
   normalizePage,
   type GroupRecord,
@@ -25,6 +26,7 @@ import {
   type SyncKind,
   type SyncRecord,
   type SyncStore,
+  type VectorRow,
 } from './types';
 
 // The SQL plugin keeps `sqlite:` databases in the app config directory
@@ -148,6 +150,14 @@ const MIGRATIONS: string[][] = [
     `DROP TABLE IF EXISTS connectors`, `DROP TABLE IF EXISTS blocks`, `DROP TABLE IF EXISTS edges`, `DROP TABLE IF EXISTS nodes`,
     `DROP TABLE IF EXISTS assets`, `DROP TABLE IF EXISTS sync_peers`, `DROP TABLE IF EXISTS devices`,
     `DELETE FROM settings WHERE key IN ('graph_device_id', 'graph_imported_at')`,
+  ],
+  // v17: embeddings for searching notes by meaning (derived from the pages, never synced or backed up; rebuilt on each device)
+  [
+    `CREATE TABLE IF NOT EXISTS embeddings (
+      model TEXT NOT NULL, page_id TEXT NOT NULL, block_id TEXT NOT NULL, chunk INTEGER NOT NULL,
+      hash TEXT NOT NULL, dim INTEGER NOT NULL, scale REAL NOT NULL, vec TEXT NOT NULL,
+      PRIMARY KEY (model, page_id, block_id, chunk)
+    )`,
   ],
 ];
 
@@ -763,6 +773,34 @@ export async function createTauriStorage(): Promise<NotesStorage> {
         n++;
       }
       return n;
+    },
+
+    vectors: {
+      async load(model) {
+        const rows = await db.select<Record<string, unknown>[]>('SELECT page_id, block_id, chunk, hash, model, dim, scale, vec FROM embeddings WHERE model = $1', [model]);
+        return rows.map((r) => cleanVectorRow({ pageId: r.page_id, blockId: r.block_id, chunk: r.chunk, hash: r.hash, model: r.model, dim: r.dim, scale: r.scale, vec: r.vec })).filter((r): r is VectorRow => !!r);
+      },
+      async put(rows) {
+        for (const r of rows) {
+          const c = cleanVectorRow(r);
+          if (!c) continue;
+          await db.execute(
+            'INSERT INTO embeddings (model, page_id, block_id, chunk, hash, dim, scale, vec) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT(model, page_id, block_id, chunk) DO UPDATE SET hash = excluded.hash, dim = excluded.dim, scale = excluded.scale, vec = excluded.vec',
+            [c.model, c.pageId, c.blockId, c.chunk, c.hash, c.dim, c.scale, c.vec],
+          );
+        }
+      },
+      async remove(model, keys) {
+        for (const k of keys) await db.execute('DELETE FROM embeddings WHERE model = $1 AND page_id = $2 AND block_id = $3 AND chunk = $4', [model, k.pageId, k.blockId, k.chunk]);
+      },
+      async clear(keepModel) {
+        if (keepModel === undefined) await db.execute('DELETE FROM embeddings');
+        else await db.execute('DELETE FROM embeddings WHERE model <> $1', [keepModel]);
+      },
+      async count(model) {
+        const rows = model === undefined ? await db.select<{ n: number }[]>('SELECT COUNT(*) AS n FROM embeddings') : await db.select<{ n: number }[]>('SELECT COUNT(*) AS n FROM embeddings WHERE model = $1', [model]);
+        return rows[0]?.n ?? 0;
+      },
     },
 
     async getSetting(key) {

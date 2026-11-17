@@ -81,7 +81,7 @@ pub fn check_target(provider: &str, method: &str, url: &str) -> Result<Option<&'
         }
         "gemini" => {
             // Only the model methods Gemini and Imagen use, on Google's API host: /v1beta/models/<name>:generateContent,
-            // :streamGenerateContent (with ?alt=sse) and :predict. The key goes in a header, never in the address.
+            // :streamGenerateContent (with ?alt=sse), :predict and :batchEmbedContents (the embeddings the notes search uses). The key goes in a header, never in the address.
             let path = u.path();
             let rest = path.strip_prefix("/v1beta/models/").unwrap_or("");
             let (name, method_name) = rest.split_once(':').unwrap_or(("", ""));
@@ -90,8 +90,8 @@ pub fn check_target(provider: &str, method: &str, url: &str) -> Result<Option<&'
                 None => true,
                 Some(q) => q == "alt=sse",
             };
-            if u.scheme() != "https" || host != "generativelanguage.googleapis.com" || u.port().is_some() || !name_ok || !matches!(method_name, "generateContent" | "streamGenerateContent" | "predict") || !query_ok || u.fragment().is_some() {
-                return Err("Gemini requests may only go to https://generativelanguage.googleapis.com/v1beta/models/ (generateContent, streamGenerateContent or predict).".into());
+            if u.scheme() != "https" || host != "generativelanguage.googleapis.com" || u.port().is_some() || !name_ok || !matches!(method_name, "generateContent" | "streamGenerateContent" | "predict" | "batchEmbedContents") || !query_ok || u.fragment().is_some() {
+                return Err("Gemini requests may only go to https://generativelanguage.googleapis.com/v1beta/models/ (generateContent, streamGenerateContent, predict or batchEmbedContents).".into());
             }
             Ok(Some("gemini"))
         }
@@ -336,6 +336,9 @@ mod tests {
         assert_eq!(check_target("gemini", "POST", "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse"), Ok(Some("gemini")));
         assert_eq!(check_target("gemini", "POST", "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent"), Ok(Some("gemini")));
         assert_eq!(check_target("gemini", "POST", "https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict"), Ok(Some("gemini")));
+        assert_eq!(check_target("gemini", "POST", "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents"), Ok(Some("gemini")));
+        assert_eq!(check_target("openai", "POST", "https://api.openai.com/v1/embeddings"), Ok(Some("openai")));
+        assert_eq!(check_target("ollama", "POST", "http://localhost:11434/api/embed"), Ok(None));
         for url in [
             "https://generativelanguage.googleapis.com.evil.com/v1beta/models/x:generateContent",
             "http://generativelanguage.googleapis.com/v1beta/models/x:generateContent",
@@ -346,6 +349,11 @@ mod tests {
             "https://generativelanguage.googleapis.com/v1beta/models/../files/x:generateContent",
             "https://generativelanguage.googleapis.com/v1beta/models/a/b:generateContent",
             "https://generativelanguage.googleapis.com/v1beta/models/x:generateContent?key=stolen",
+            "https://generativelanguage.googleapis.com/v1beta/models/x:batchEmbedContents?key=stolen",
+            "https://generativelanguage.googleapis.com/v1beta/models/x:embedContentt",
+            "https://generativelanguage.googleapis.com/v1beta/models/x:batchEmbedContents/extra",
+            "https://generativelanguage.googleapis.com/v1beta/models/../files/x:batchEmbedContents",
+            "https://generativelanguage.googleapis.com.evil.com/v1beta/models/x:batchEmbedContents",
             "https://generativelanguage.googleapis.com/v1beta/models/x:streamGenerateContent?alt=sse&key=k",
             "https://user:pw@generativelanguage.googleapis.com/v1beta/models/x:generateContent",
             "https://api.openai.com/v1/models/x:generateContent",

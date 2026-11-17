@@ -9,6 +9,7 @@ import { newId } from '../lib/util';
 import {
   base64ToBytes,
   bytesToBase64,
+  cleanVectorRow,
   newEtag,
   normalizePage,
   type GroupRecord,
@@ -17,6 +18,8 @@ import {
   type SaveResult,
   type Snapshot,
   type SyncStore,
+  type VectorKey,
+  type VectorRow,
 } from './types';
 import { cleanSheet } from '../lib/sheet';
 
@@ -35,6 +38,8 @@ interface Schema extends DBSchema {
   snapshots: { key: string; value: SnapRow; indexes: { pageId: string } };
   /** Each distinct box of the version history once, by fingerprint. */
   historyBlocks: { key: string; value: { hash: string; json: string } };
+  /** Embeddings for searching by meaning, by `model|page|box|piece`. Derived data: not synced, not backed up. */
+  embeddings: { key: string; value: VectorRow; indexes: { model: string } };
 }
 
 interface ImageRow {
@@ -47,6 +52,9 @@ interface ImageRow {
 }
 /** A saved version: its boxes as fingerprints (`refs`), or written out in full (`blocks`, the older form). */
 type SnapRow = Omit<Snapshot, 'blocks'> & { refs?: string[]; blocks?: Block[] };
+
+/** The key of a stored vector. */
+const vecId = (model: string, k: VectorKey) => `${model}|${k.pageId}|${k.blockId}|${k.chunk}`;
 
 const rowToPage = (r: PageRow): Page => normalizePage({ ...r });
 const pageRecord = (r: PageRow): PageRecord => ({
@@ -61,7 +69,7 @@ const groupRecord = (r: GroupRow): GroupRecord => ({
 
 /** Browser fallback so the UI can be developed with `npm run dev` without Tauri. */
 export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesStorage> {
-  const db = await openDB<Schema>(dbName, 4, {
+  const db = await openDB<Schema>(dbName, 5, {
     upgrade(d, oldVersion, _newVersion, tx) {
       if (oldVersion < 1) {
         d.createObjectStore('pages', { keyPath: 'id' });
@@ -79,6 +87,9 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
         d.createObjectStore('historyBlocks', { keyPath: 'hash' });
         d.createObjectStore('blobs', { keyPath: 'hash' });
         tx.objectStore('images').createIndex('hash', 'hash');
+      }
+      if (oldVersion < 5) {
+        d.createObjectStore('embeddings', { keyPath: 'k' as never }).createIndex('model', 'model');
       }
     },
   });
@@ -463,6 +474,34 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
         n++;
       }
       return n;
+    },
+
+    vectors: {
+      async load(model) {
+        return (await db.getAllFromIndex('embeddings', 'model', model)).map((r) => cleanVectorRow(r)).filter((r): r is VectorRow => !!r);
+      },
+      async put(rows) {
+        const tx = db.transaction('embeddings', 'readwrite');
+        for (const r of rows) {
+          const c = cleanVectorRow(r);
+          if (c) await tx.store.put({ ...c, k: vecId(c.model, c) } as VectorRow);
+        }
+        await tx.done;
+      },
+      async remove(model, keys) {
+        const tx = db.transaction('embeddings', 'readwrite');
+        for (const k of keys) await tx.store.delete(vecId(model, k));
+        await tx.done;
+      },
+      async clear(keepModel) {
+        if (keepModel === undefined) return void (await db.clear('embeddings'));
+        const tx = db.transaction('embeddings', 'readwrite');
+        for (const r of await tx.store.getAll()) if (r.model !== keepModel) await tx.store.delete(vecId(r.model, r));
+        await tx.done;
+      },
+      async count(model) {
+        return model === undefined ? db.count('embeddings') : db.countFromIndex('embeddings', 'model', model);
+      },
     },
 
     async getSetting(key) {
