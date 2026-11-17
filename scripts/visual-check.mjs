@@ -546,6 +546,23 @@ await page.click('.graph-tabs button:has-text("Hierarchy")');
 await page.waitForTimeout(1500);
 await shot('graph-hierarchy');
 
+// A page in 3D: the boxes spread through depth
+await page.keyboard.press('Escape').catch(() => {});
+await page.goto(URL + '#/');
+await page.waitForSelector('.sidebar');
+await page.click('.sidebar >> text=All pages');
+await page.waitForTimeout(300);
+await page.locator('.card:has(.card-title)').first().click().catch(() => {});
+await page.waitForSelector('.ed-space', { timeout: 5000 }).catch(() => problems.push('a page should have a 3D button'));
+if (await page.locator('.ed-space').count()) {
+  await page.click('.ed-space');
+  await page.waitForSelector('.spaceview .tree3d-canvas');
+  await page.waitForTimeout(500);
+  await page.click('.spaceview button:has-text("Spread into layers")');
+  await page.waitForTimeout(400);
+  await shot('page-in-3d');
+}
+
 await browser.close();
 console.log(`${n} screenshots in ${OUT}`);
 if (problems.length) {

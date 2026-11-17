@@ -21,7 +21,7 @@ describe('feature switches', () => {
   it('the profiles are what they say', () => {
     const by = (id: string) => PROFILES.find((p) => p.id === id)!;
     expect(by('everything').off).toEqual([]);
-    for (const id of ['office', 'documents']) for (const f of ['canvas', 'journal', 'cards', 'groups', 'tags', 'templates', 'links', 'graph', 'media', 'drawing', 'widgets', 'sync']) expect(by(id).off, `${id} ${f}`).toContain(f);
+    for (const id of ['office', 'documents']) for (const f of ['canvas', 'journal', 'cards', 'groups', 'tags', 'templates', 'links', 'graph', 'space', 'media', 'drawing', 'widgets', 'sync']) expect(by(id).off, `${id} ${f}`).toContain(f);
     expect(by('office').off).not.toContain('doc');
     expect(by('office').off).not.toContain('sheet');
     expect(by('office').off).not.toContain('slides');

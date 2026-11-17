@@ -40,6 +40,8 @@ export function cleanBlock(raw: unknown): Block | null {
   };
   if (out.over !== true) delete out.over; // only ever "true" or absent
   if (out.locked !== true) delete out.locked;
+  if (typeof out.depth !== 'number' || !Number.isFinite(out.depth) || Math.round(out.depth) === 0) delete out.depth; // absent = 0
+  else out.depth = Math.max(-1200, Math.min(1200, Math.round(out.depth)));
   const links = cleanLinks(out.links);
   if (links.length) out.links = links;
   else delete out.links;

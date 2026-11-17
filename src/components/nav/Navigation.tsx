@@ -5,6 +5,7 @@ import { useUi } from '../../store/ui';
 import { useDraw } from '../../store/draw';
 import { modKey } from '../../lib/util';
 import { GraphView } from './GraphView';
+import { SpaceView } from './SpaceView';
 import { OutlinePanel } from './OutlinePanel';
 import { Palette } from './Palette';
 import { WeeklyReviewDialog } from '../journal/WeeklyReviewDialog';
@@ -31,7 +32,8 @@ export function Navigation() {
 
   // A page's outline belongs to that page: leaving it closes the panel.
   useEffect(() => {
-    if (useNav.getState().open === 'outline' && route.name !== 'page') closeNav();
+    const o = useNav.getState().open;
+    if ((o === 'outline' || o === 'space') && route.name !== 'page') closeNav();
   }, [route]);
 
   return (
@@ -40,6 +42,7 @@ export function Navigation() {
       <WeeklyReviewDialog />
       {open === 'graph' && <GraphView />}
       {open === 'outline' && route.name === 'page' && <OutlinePanel pageId={route.id} />}
+      {open === 'space' && route.name === 'page' && <SpaceView pageId={route.id} />}
     </>
   );
 }

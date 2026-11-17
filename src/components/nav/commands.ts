@@ -20,6 +20,7 @@ import type { IconName } from '../ui/Icon';
 import type { FeatureId } from '../../lib/features';
 import { featureOn } from '../../store/features';
 import { openNewPage } from '../library/shared';
+import { pageApp } from '../../lib/office/app';
 
 export interface Command {
   id: string;
@@ -123,6 +124,7 @@ export function buildCommands(): Command[] {
     list.push(
       ...(widgetsAvailableNow() ? [{ id: 'pin-page', feature: 'widgets' as const, icon: 'pin' as const, title: 'Pin this page to the desktop', run: () => void pinPage(useNotes.getState().pages[onPage]) }] : []),
       { id: 'outline', icon: 'outline', title: 'Show outline and links of this page', run: () => openNav('outline') },
+      ...(pageApp(useNotes.getState().pages[onPage]) ? [] : [{ id: 'space', feature: 'space' as const, icon: 'graph' as const, title: 'Open this page in 3D', run: () => openNav('space') }]),
       { id: 'tidy', icon: 'pages', title: 'Tidy this page…', run: () => openTidy(onPage) },
       { id: 'undo', icon: 'undo', title: 'Undo', keys: `${MOD_LABEL}+Z`, run: () => void undo(onPage) },
       { id: 'redo', icon: 'redo', title: 'Redo', keys: `${MOD_LABEL}+Shift+Z`, run: () => void redo(onPage) },

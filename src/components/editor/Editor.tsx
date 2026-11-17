@@ -203,6 +203,7 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
   const tagsOn = useFeature('tags');
   const linksOn = useFeature('links');
   const templatesOn = useFeature('templates');
+  const spaceOn = useFeature('space');
   const addons = useAddons((s) => s.loaded);
   const openAddon = useAddons((s) => s.panel);
 
@@ -299,6 +300,12 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
       <button className="btn ed-outline" title="Headings, frames and links of this page" onClick={() => openNav('outline')}>
         <Icon name="outline" size={16} />
         Outline
+      </button>
+      )}
+      {app !== 'doc' && app !== 'sheet' && spaceOn && (
+      <button className="btn ed-space" title="See this page's boxes in 3D: place them nearer or further away" onClick={() => openNav('space')}>
+        <Icon name="graph" size={16} />
+        3D
       </button>
       )}
       {app !== 'doc' && app !== 'sheet' && (

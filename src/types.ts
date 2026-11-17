@@ -26,6 +26,8 @@ interface BlockBase {
   over?: boolean;
   /** Pinned in place: it cannot be dragged, resized, nudged, aligned or deleted until unlocked. Absent = free. Older app versions ignore it. */
   locked?: boolean;
+  /** How far toward you (positive) or away from you (negative) the box sits in the page's 3D view. Absent = on the page itself (0). Only the 3D view uses it; older app versions ignore it. */
+  depth?: number;
   /** Links from this box to other pages, cards or boxes (a frame is a box too). Absent = none. Stored in the page JSON, so they sync and older app versions ignore them. */
   links?: BoxLink[];
   /** Background tint (a border for pictures). Absent or null = no colour. Frames use their own `color` instead. */
