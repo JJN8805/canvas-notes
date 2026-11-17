@@ -9,7 +9,7 @@ import { outline } from './links';
 import { pageApp, type OfficeApp } from './office/app';
 import { isTemplate, kindOf } from './pages';
 
-export type TKind = 'root' | 'group' | 'page' | 'heading';
+export type TKind = 'root' | 'group' | 'page' | 'card' | 'tag' | 'heading';
 
 export interface TNode {
   id: string;
@@ -25,6 +25,8 @@ export interface TNode {
   color?: string;
   /** For a page: a Workspace page's kind. */
   app?: OfficeApp | null;
+  /** Links in and out (pages, cards, tags), which sizes the dot. */
+  links?: number;
   /** Pages and headings below this node (a leaf counts one), which sizes its wedge. */
   weight: number;
 }
@@ -77,7 +79,12 @@ export function buildTree(pages: Record<string, Page>, groups: Group[], o: TreeO
     const gid = p.groupId && groupNode.has(p.groupId) ? p.groupId : null;
     (gid ? groupNode.get(gid)! : root).children.push(node);
   }
-  // Depth and weight, then each node's children in a steady order: groups first, then pages and headings by name.
+  finishTree(root);
+  return root;
+}
+
+/** Depth and weight, then each node's children in a steady order: groups first, then pages and headings by name. Run again after changing a tree. */
+export function finishTree(root: TNode): void {
   const finish = (n: TNode, depth: number): number => {
     n.depth = depth;
     n.children.sort((a, b) => (a.kind === b.kind ? byLabel(a, b) : a.kind === 'group' ? -1 : b.kind === 'group' ? 1 : 0));
@@ -85,7 +92,6 @@ export function buildTree(pages: Record<string, Page>, groups: Group[], o: TreeO
     return n.weight;
   };
   finish(root, 0);
-  return root;
 }
 
 export const flatten = (n: TNode): TNode[] => [n, ...n.children.flatMap(flatten)];
@@ -198,7 +204,7 @@ export function pick(items: readonly { id: string; at: Projected; r: number }[],
 export const lookAt = (c: Camera, p: P3): Camera => ({ ...c, target: { ...p } });
 
 /** A camera far enough back to see every position. */
-export function frame(positions: Iterable<P3>, c: Camera = DEFAULT_CAMERA): Camera {
+export function frame(positions: Iterable<P3>, c: Camera = DEFAULT_CAMERA, margin = 3.1): Camera {
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity, any = false;
   for (const p of positions) {
     any = true;
@@ -208,5 +214,36 @@ export function frame(positions: Iterable<P3>, c: Camera = DEFAULT_CAMERA): Came
   }
   if (!any) return c;
   const radius = Math.max(maxX - minX, maxY - minY, maxZ - minZ) / 2 + 80;
-  return { ...c, target: { x: (minX + maxX) / 2, y: (minY + maxY) / 2, z: (minZ + maxZ) / 2 }, dist: clampDist(radius * 3.1) };
+  return { ...c, target: { x: (minX + maxX) / 2, y: (minY + maxY) / 2, z: (minZ + maxZ) / 2 }, dist: clampDist(radius * margin) };
 }
+
+/** The point in space at a screen position and a distance in front of the camera (the opposite of `project`): used to drag a node. */
+export function unproject(screenX: number, screenY: number, depth: number, c: Camera, w: number, h: number): P3 {
+  const scale = FOV / depth;
+  const x1 = (screenX - w / 2) / scale;
+  const y2 = (h / 2 - screenY) / scale;
+  const z2 = depth - c.dist;
+  const cp = Math.cos(c.pitch);
+  const sp = Math.sin(c.pitch);
+  const y0 = y2 * cp + z2 * sp;
+  const z1 = -y2 * sp + z2 * cp;
+  const cy = Math.cos(c.yaw);
+  const sy = Math.sin(c.yaw);
+  return { x: x1 * cy + z1 * sy + c.target.x, y: y0 + c.target.y, z: -x1 * sy + z1 * cy + c.target.z };
+}
+
+/** How far a point is from a line segment, in pixels (to tell which line the pointer is on). */
+export function segmentDistance(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+/** A camera moved a fraction of the way to another (for a smooth fit). */
+export const easeCamera = (from: Camera, to: Camera, k: number): Camera => ({
+  ...from,
+  dist: from.dist + (to.dist - from.dist) * k,
+  target: { x: from.target.x + (to.target.x - from.target.x) * k, y: from.target.y + (to.target.y - from.target.y) * k, z: from.target.z + (to.target.z - from.target.z) * k },
+});

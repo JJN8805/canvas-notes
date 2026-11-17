@@ -23,7 +23,7 @@ export function TreeList({ root, closed, selected, matches, onToggle, onActivate
     return out;
   }, [root, closed]);
   return (
-    <nav className="tree-list" aria-label="Library tree">
+    <nav className="tree-list" aria-label="Notes as a tree">
       <ul role="tree">
         {rows.map(({ n, level }) => {
           const folds = n.children.length > 0;
@@ -34,7 +34,7 @@ export function TreeList({ root, closed, selected, matches, onToggle, onActivate
               aria-level={level + 1}
               aria-expanded={folds ? !closed.has(n.id) : undefined}
               aria-selected={selected === n.id}
-              className={`tl-row ${n.kind}${selected === n.id ? ' on' : ''}${matches && !matches.has(n.id) ? ' off' : ''}`}
+              className={`tl-row tl-${n.kind}${selected === n.id ? ' on' : ''}${matches && !matches.has(n.id) ? ' off' : ''}`}
               style={{ paddingLeft: 6 + level * 14 }}
             >
               {folds ? (
@@ -47,7 +47,7 @@ export function TreeList({ root, closed, selected, matches, onToggle, onActivate
               <button
                 className="tl-name"
                 title={n.label}
-                onClick={() => (n.kind === 'page' || n.kind === 'heading' ? onActivate(n) : onFocusNode(n.id))}
+                onClick={() => (n.kind === 'page' || n.kind === 'heading' || n.kind === 'card' ? onActivate(n) : onFocusNode(n.id))}
               >
                 {n.label}
               </button>

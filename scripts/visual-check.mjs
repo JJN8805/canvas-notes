@@ -530,7 +530,7 @@ await page.waitForSelector('.card-detail');
 await page.keyboard.type('A card');
 await shot('card-detail-new');
 
-// The graph view and its 3D hierarchy
+// The graph view: one 3D picture as a network, then as a hierarchy
 await page.keyboard.press('Escape').catch(() => {});
 await page.goto(URL + '#/');
 await page.waitForSelector('.sidebar');
@@ -538,13 +538,13 @@ await page.keyboard.press('Control+p');
 await page.waitForSelector('.palette');
 await page.fill('.palette input', 'graph view');
 await page.click('.palette-row:has-text("graph view")');
-await page.waitForSelector('.graph-svg');
-await page.waitForTimeout(1500);
-await shot('graph-view');
-await page.click('.graph-tabs button:has-text("3D hierarchy")');
 await page.waitForSelector('.tree3d-canvas');
-await page.waitForTimeout(800);
-await shot('graph-3d-hierarchy');
+for (let i = 0; i < 40 && (await page.evaluate(() => document.querySelector('.tree3d-canvas').__screen().alpha)) > 0.002; i++) await page.waitForTimeout(250);
+await page.waitForTimeout(800); // (the camera glides to fit once the layout has cooled)
+await shot('graph-network');
+await page.click('.graph-tabs button:has-text("Hierarchy")');
+await page.waitForTimeout(1500);
+await shot('graph-hierarchy');
 
 await browser.close();
 console.log(`${n} screenshots in ${OUT}`);
