@@ -87,6 +87,7 @@ const PATHS = {
     </>
   ),
   star: <path d="M10 3l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 8.3l5-.7z" />,
+  archive: <path d="M3 4.5h14v3.5H3zM4.2 8v7.5a1 1 0 001 1h9.6a1 1 0 001-1V8M8 11.2h4" />,
   sticky: <path d="M4 4h12v8l-4 4H4zM12 16v-4h4" />,
   frame: <rect x="3" y="3" width="14" height="14" rx="1.5" strokeDasharray="2.5 2" />,
   draw: <path d="M4 16l1-4L14 3l3 3-9 9-4 1zM12 5l3 3" />,

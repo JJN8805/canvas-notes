@@ -2,6 +2,7 @@ import { memo } from 'react';
 import type { Page } from '../../types';
 import { cardInitial, cardLabel, cardParts } from '../../lib/cards';
 import { useImageUrl } from '../../lib/useImageUrl';
+import { Picture } from '../blocks/Picture';
 
 /** A card as it looks in the gallery: its cover picture and its label. Click it to open the details. */
 export const CardTile = memo(function CardTile({ card, onOpen, onKeyboardOpen }: { card: Page; onOpen: () => void; onKeyboardOpen?: () => void }) {
@@ -11,7 +12,7 @@ export const CardTile = memo(function CardTile({ card, onOpen, onKeyboardOpen }:
   return (
     <button className="ctile" onClick={(e) => (onKeyboardOpen ? e.detail === 0 && onKeyboardOpen() : onOpen())} aria-label={`Open card ${label}`}>
       <span className="ctile-cover">
-        {cover && url ? <img src={url} alt="" draggable={false} /> : <span className="ctile-initial" aria-hidden="true">{cardInitial(card)}</span>}
+        {cover && url ? <Picture url={url} video={cover.video} play="hover" /> : <span className="ctile-initial" aria-hidden="true">{cardInitial(card)}</span>}
       </span>
       <span className="ctile-label" title={label}>{label}</span>
     </button>

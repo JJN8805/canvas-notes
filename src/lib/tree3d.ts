@@ -7,7 +7,7 @@ import type { Group, Page } from '../types';
 import { effectiveParents } from './groups';
 import { outline } from './links';
 import { pageApp, type OfficeApp } from './office/app';
-import { isTemplate, kindOf } from './pages';
+import { isArchived, isTemplate, kindOf } from './pages';
 
 export type TKind = 'root' | 'group' | 'page' | 'card' | 'tag' | 'heading';
 
@@ -57,7 +57,7 @@ export function buildTree(pages: Record<string, Page>, groups: Group[], o: TreeO
     (p && groupNode.get(p) ? groupNode.get(p)! : root).children.push(n);
     made++;
   }
-  const list = Object.values(pages).filter((p) => kindOf(p) === 'page' && !isTemplate(p) && !p.dailyDate).sort((a, b) => b.updated - a.updated);
+  const list = Object.values(pages).filter((p) => kindOf(p) === 'page' && !isTemplate(p) && !p.dailyDate && !isArchived(p)).sort((a, b) => b.updated - a.updated);
   for (const p of list) {
     if (made >= maxNodes) break;
     const node: TNode = { id: `p:${p.id}`, label: p.title.trim() || 'Untitled', kind: 'page', depth: 0, children: [], pageId: p.id, app: pageApp(p), weight: 1 };

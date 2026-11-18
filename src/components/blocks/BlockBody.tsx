@@ -1,5 +1,7 @@
 import type { Block, FrameBlock } from '../../types';
 import { TextBody } from './TextBody';
+import { NoteHeader } from './NoteHeader';
+import { hasHeader } from '../../lib/note';
 import { AudioBody } from './AudioBody';
 import { PdfBody } from './PdfBody';
 import { CardBody } from './CardBody';
@@ -13,7 +15,9 @@ export function BlockBody({ block }: { block: NonFrameBlock }) {
   switch (block.type) {
     case 'note':
       // The editor is made for one style; changing the style makes a fresh one.
-      return block.style === 'code' ? <CodeBody block={block} /> : <TextBody key={block.style} block={block} />;
+      if (block.style === 'code') return <CodeBody block={block} />;
+      // The optional header sits above the text; the text box stays mounted (keyed) when the header is added, removed or folded.
+      return [hasHeader(block) ? <NoteHeader key="header" block={block} /> : null, <TextBody key={block.style} block={block} />];
     case 'checklist':
       return <ChecklistBody block={block} />;
     case 'table':

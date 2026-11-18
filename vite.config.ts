@@ -23,6 +23,10 @@ export default defineConfig(({ command }) => ({
     __BUILD_INFO__: JSON.stringify({ version: pkg.version, commit, builtAt: new Date().toISOString(), mode: command === 'build' ? 'production' : 'development' }),
   },
   clearScreen: false,
+  // The dev server keeps its pre-bundled libraries in a folder of its own. Tests, builds and other Vite processes share the default
+  // `node_modules/.vite`, and one of them replacing the dev server's libraries under the open window ("Importing a module script failed")
+  // was the cause of the desktop window refusing to open. (Vitest sets VITEST; it keeps the default folder.)
+  cacheDir: command === 'serve' && !process.env.VITEST ? 'node_modules/.vite-dev' : 'node_modules/.vite',
   server: {
     port: 1420,
     strictPort: true,
@@ -33,6 +37,9 @@ export default defineConfig(({ command }) => ({
   // Libraries that are only imported lazily. Vite would find them late and re-bundle while the app is running, which makes files the
   // window already loaded answer "504 Outdated Optimize Dep" ("Importing a module script failed"). Listing them bundles them once, at start.
   optimizeDeps: {
+    // Never look for more libraries while running: everything is listed below, and tests/viteDeps.test.ts fails if an import is missing.
+    // (A late discovery re-bundles with a new hash, and every file the window already loaded answers 504.)
+    noDiscovery: true,
     include: [
       '@tauri-apps/api/core',
       '@tauri-apps/api/event',
@@ -44,7 +51,7 @@ export default defineConfig(({ command }) => ({
       '@tauri-apps/plugin-sql',
       'html-to-image',
       // Everything the app imports at run time, so none of it is found late (which re-bundles and breaks the open window).
-      'idb', 'dompurify', 'fflate', 'immer', 'turndown', 'zustand', 'react', 'react-dom', 'react-dom/client',
+      'idb', 'dompurify', 'fflate', 'immer', 'turndown', 'zustand', 'zustand/middleware/immer', 'react', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-dom', 'react-dom/client',
       '@tiptap/react', '@tiptap/starter-kit', '@tiptap/extensions',
       'pdfjs-dist/legacy/build/pdf.mjs', '@excalidraw/excalidraw',
     ],

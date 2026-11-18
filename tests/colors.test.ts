@@ -249,7 +249,7 @@ describe('colour on every kind of box', () => {
       /\.b-checklist \.body \{[^}]*var\(--tint, var\(--sheet\)\)/,
       /\.b-code \.body \{[^}]*var\(--tint, var\(--code-bg\)\)/,
       /\.b-table \.body \{[^}]*var\(--tint, var\(--sheet\)\)/,
-      /\.b-image img \{[^}]*var\(--tint, transparent\)/,
+      /\.b-image img, \.b-image video \{[^}]*var\(--tint, transparent\)/,
       /\.b-sticky \{[^}]*var\(--tint, var\(--sheet\)\)/,
     ]) expect(css).toMatch(rule);
   });

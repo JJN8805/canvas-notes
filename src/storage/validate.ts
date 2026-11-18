@@ -27,15 +27,23 @@ export const MEDIA_EXT: Readonly<Record<string, string>> = {
   'audio/flac': 'flac',
 };
 
-/** Everything the file store accepts: pictures, audio and PDFs. */
-export const FILE_EXT: Readonly<Record<string, string>> = { ...IMAGE_EXT, ...MEDIA_EXT };
+/** Videos (a card's cover can be one), stored in the same place as pictures. Playing them depends on the device's codecs; MP4 (H.264) and WebM play almost everywhere. */
+export const VIDEO_EXT: Readonly<Record<string, string>> = {
+  'video/mp4': 'mp4',
+  'video/webm': 'webm',
+  'video/quicktime': 'mov',
+  'video/ogg': 'ogv',
+};
+
+/** Everything the file store accepts: pictures, audio, PDFs and videos. */
+export const FILE_EXT: Readonly<Record<string, string>> = { ...IMAGE_EXT, ...MEDIA_EXT, ...VIDEO_EXT };
 
 /** Ids the app makes are letters and digits (base 36); allow `-` and `_` too, but never a path separator or dot. */
 export const isSafeId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(id);
 
 export const isKnownFileType = (mime: unknown): mime is string => typeof mime === 'string' && Object.prototype.hasOwnProperty.call(FILE_EXT, mime);
 
-/** Throws unless an incoming stored file (picture, audio or PDF) has a safe id and a known type. (Named for pictures once; it has covered every stored file for a while.) */
+/** Throws unless an incoming stored file (picture, audio, PDF or video) has a safe id and a known type. (Named for pictures once; it has covered every stored file for a while.) */
 export function assertSafeFile(img: { id: unknown; mime: unknown }): void {
   if (!isSafeId(img.id)) throw new Error('Rejected a file with an unsafe id.');
   if (!isKnownFileType(img.mime)) throw new Error('Rejected a file of an unsupported type.');

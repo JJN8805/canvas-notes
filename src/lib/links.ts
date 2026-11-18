@@ -8,7 +8,7 @@ import type { Group, Page } from '../types';
 import { withDescendants } from './groups';
 import { blockPlainText, extractLinks, htmlToText } from './pageText';
 import { boxEdges, incomingLinks, pageLabel } from './boxLinks';
-import { kindOf, libraryPages } from './pages';
+import { isArchived, kindOf, libraryPages } from './pages';
 import type { Block } from '../types';
 
 /** Titles of the pages that `page` links to, in order of first appearance. */
@@ -125,7 +125,7 @@ export interface GraphOptions {
 /** Every page (and, if asked, card) and the links between them. `links` counts links in and out. Self-links and repeats are dropped. */
 export function linkGraph(pages: Record<string, Page>, opts: GraphOptions = {}): LinkGraph {
   const { cards = false, boxes = true, text = true } = opts;
-  const list = Object.values(pages).filter((p) => (kindOf(p) === 'page' || (cards && kindOf(p) === 'card')));
+  const list = Object.values(pages).filter((p) => !isArchived(p) && (kindOf(p) === 'page' || (cards && kindOf(p) === 'card'))); // archived ones are put away
   const ids = new Set(list.map((p) => p.id));
   const count = new Map<string, number>(list.map((p) => [p.id, 0]));
   const seen = new Map<string, GraphEdge>();

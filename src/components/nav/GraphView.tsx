@@ -1,3 +1,4 @@
+import { COARSE } from '../../lib/touch';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { closeNav } from '../../store/nav';
 import { useNotes } from '../../store/notes';
@@ -88,7 +89,7 @@ export function GraphView() {
             {count === 0 ? (
               <p className="graph-empty">Nothing to show with these filters.</p>
             ) : scene.edges.length === 0 ? (
-              <p className="graph-empty">No links yet. Use a box’s link button (or right-click → Links…), or type <code>[[Page title]]</code> in a note. Tags can be shown as dots too.</p>
+              <p className="graph-empty">No links yet. Use a box’s link button (or {COARSE ? 'long-press' : 'right-click'} → Links…), or type <code>[[Page title]]</code> in a note. Tags can be shown as dots too.</p>
             ) : null}
             <Scene3D tree={scene.tree} edges={scene.edges} groups={groups} prefs={prefs} here={here} query={query} onOpen={open} onEdge={setEdge} selectedEdge={edge} />
             {edge && (

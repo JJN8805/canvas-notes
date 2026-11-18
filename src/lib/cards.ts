@@ -42,7 +42,7 @@ export const newCardBlocks = (): Block[] => [newBody()];
  * The blocks with the cover set to a picture (or removed with null). The details box moves down to
  * make room, so opening the card as a page on the canvas still reads top to bottom.
  */
-export function withCover(blocks: Block[], cover: { imageId: string; aspect: number } | null): Block[] {
+export function withCover(blocks: Block[], cover: { imageId: string; aspect: number; video?: boolean } | null): Block[] {
   const next = blocks.map((b) => ({ ...b })) as Block[];
   const existing = cardParts({ blocks: next }).cover;
   if (!cover) return existing ? next.filter((b) => b.id !== existing.id) : next;
@@ -50,10 +50,12 @@ export function withCover(blocks: Block[], cover: { imageId: string; aspect: num
   const h = Math.round(COVER_W / aspect);
   if (existing) {
     Object.assign(existing, { imageId: cover.imageId, aspect, h });
+    if (cover.video) existing.video = true;
+    else delete existing.video; // a picture replaces a video
     return next;
   }
   const z = next.reduce((m, b) => Math.max(m, b.z || 0), 0) + 1;
-  next.push({ id: newId(), type: 'image', x: 0, y: 0, w: COVER_W, h, z, imageId: cover.imageId, aspect } as ImageBlock);
+  next.push({ id: newId(), type: 'image', x: 0, y: 0, w: COVER_W, h, z, imageId: cover.imageId, aspect, ...(cover.video ? { video: true } : {}) } as ImageBlock);
   const { body } = cardParts({ blocks: next });
   if (body && body.y < h + GAP) body.y = h + GAP;
   return next;

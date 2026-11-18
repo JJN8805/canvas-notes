@@ -4,7 +4,7 @@
  */
 import type { Block, NoteBlock, NoteStyle } from '../types';
 import { htmlToText } from './pageText';
-import { textToHtml } from './util';
+import { escapeHtml, textToHtml } from './util';
 
 export const isNote = (b: { type: string }): b is NoteBlock => b.type === 'note';
 /** A note of this style (a type guard, so the fields of a note are available afterwards). */
@@ -34,7 +34,19 @@ export function legacyNote<T extends Record<string, unknown>>(b: T): T | (Record
 }
 
 /** What a note says, as plain text (any style). */
-export const noteText = (b: NoteBlock): string => (b.style === 'code' ? (b.code ?? '') : htmlToText(b.html));
+export const noteText = (b: NoteBlock): string => {
+  const body = b.style === 'code' ? (b.code ?? '') : htmlToText(b.html);
+  return b.header ? `${b.header}\n${body}`.trim() : body;
+};
+
+/** The header of a text box, as stored: one line of at most 200 characters, or null when the box has none. */
+export const cleanHeader = (v: unknown): string | null => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, 200) : null);
+
+/** Whether this note shows a header: only a plain text box (not a sticky, code or a document's text) can have one. */
+export const hasHeader = (b: { type?: string; style?: string; header?: string; doc?: unknown }): boolean => b.type === 'note' && b.style === 'text' && typeof b.header === 'string' && !b.doc;
+
+/** A header box folded down to its header. */
+export const isFolded = (b: { type?: string; style?: string; header?: string; folded?: boolean; doc?: unknown }): boolean => hasHeader(b) && b.folded === true;
 
 /**
  * Change a note's style in place. Code is plain text, so going to it keeps the words and drops the formatting; coming back from it
@@ -42,6 +54,15 @@ export const noteText = (b: NoteBlock): string => (b.style === 'code' ? (b.code 
  */
 export function setNoteStyle(b: NoteBlock, style: NoteStyle): void {
   if (b.style === style) return;
+  // Only a text box has a header: leaving that style keeps its words by putting the header at the top of the text.
+  if (typeof b.header === 'string') {
+    if (b.header) {
+      if (style === 'code') b.html = `<p>${escapeHtml(b.header)}</p>${b.html}`;
+      else if (style === 'sticky') b.html = `<p><strong>${escapeHtml(b.header)}</strong></p>${b.html}`;
+    }
+    delete b.header;
+    delete b.folded;
+  }
   if (style === 'code') {
     b.code = htmlToText(b.html);
     b.html = '';

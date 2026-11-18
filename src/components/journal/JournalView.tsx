@@ -1,3 +1,4 @@
+import { COARSE } from '../../lib/touch';
 import { useEffect, useMemo, useState } from 'react';
 import { addDays, dailyPageFor, dailyTitle, dateKey } from '../../lib/daily';
 import { entrySnippet, filterEntries, journalEntries, longDate, monthHeading, neighbourEntries, templateLines } from '../../lib/journal';
@@ -34,7 +35,7 @@ function EmptyDay({ date }: { date: string }) {
       <button className="btn primary" onClick={() => { dontRemake(null); openDailyPage(date); }}>
         {future ? 'Plan this day' : 'Start this day'}
       </button>
-      <small>Turn the page with the arrows, or press [ and ].</small>
+      <small>{COARSE ? 'Turn the page with the arrows above.' : 'Turn the page with the arrows, or press [ and ].'}</small>
     </div>
   );
 }

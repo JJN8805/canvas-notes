@@ -171,7 +171,7 @@ export function duplicatePage(id: string): Page | null {
   const src = get().pages[id];
   if (!src) return null;
   // A copy is a normal page, even of a template, and never takes over a daily page's date.
-  return createPage({ ...deepClone(src), ...cloneContent(src), kind: 'page', dailyDate: null, id: newId(), title: `${src.title || 'Untitled'} copy`, created: Date.now(), rev: 0 });
+  return createPage({ ...deepClone(src), ...cloneContent(src), kind: 'page', dailyDate: null, archived: undefined, id: newId(), title: `${src.title || 'Untitled'} copy`, created: Date.now(), rev: 0 });
 }
 
 /** Deletes a page and offers an undo toast. */

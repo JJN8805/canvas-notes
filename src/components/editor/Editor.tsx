@@ -56,6 +56,12 @@ import { closeDraw, toggleDraw, useDraw } from '../../store/draw';
 import { openTidy } from '../../store/tidy';
 import { liveDrawing } from '../../lib/drawing';
 import { SlashMenu } from './SlashMenu';
+import { useTyping } from './useTyping';
+import { setTouchDock } from '../../store/touchDock';
+import { archivePage, restorePage } from '../../store/archive';
+import { canArchive, isArchived } from '../../lib/pages';
+import { openSlash } from '../../store/slash';
+import { COARSE } from '../../lib/touch';
 import { choosePageIcon } from '../../store/pageIcon';
 import { toggleStar, useFavorites } from '../../store/favorites';
 import { setFocusMode, toggleFocusMode, useFocusMode } from '../../store/focusMode';
@@ -116,9 +122,11 @@ export function Editor({ pageId, variant = 'page' }: { pageId: string; variant?:
   const view = pageAppView(app);
   if (!exists || asCard || redirect) return null;
   const focusOn = useFocusMode((s) => s.on) && variant === 'page';
+  const typing = useTyping(COARSE);
+  const oneSelected = useCanvas((s) => s.selected.length === 1);
   useEffect(() => () => setFocusMode(false), [pageId]); // leaving a page leaves focus mode
   return (
-    <div className={'editor' + (focusOn ? ' focus-mode' : '')}>
+    <div className={'editor' + (focusOn ? ' focus-mode' : '') + (typing ? ' typing' : '') + (COARSE && oneSelected ? ' has-sel' : '')}>
       {focusOn && (
         <button className="focus-exit" onClick={toggleFocusMode} title={`Leave focus mode (${MOD_LABEL}+Shift+F)`}>
           Leave focus mode
@@ -134,9 +142,10 @@ export function Editor({ pageId, variant = 'page' }: { pageId: string; variant?:
             <Canvas pageId={pageId} />
             <DrawOverlay pageId={pageId} />
             <AddToolbar pageId={pageId} />
-            <FormatBar />
+            <FormatBar pageId={pageId} insert />
             <ZoomControls />
             <SlashMenu pageId={pageId} />
+            {COARSE && <div className="touch-dock" ref={setTouchDock} />}
           </>
         )}
         {view?.Extras && <view.Extras pageId={pageId} />}
@@ -209,6 +218,7 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
   const canRedo = history.canRedo(pageId);
   const titleRef = useRef<HTMLInputElement>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [more, setMore] = useState(false); // phone: the rest of the header's controls, folded away until asked for
   const sheet = useNotes((s) => s.pages[pageId]?.sheet ?? null);
   const app = useNotes((s) => pageApp(s.pages[pageId]));
   const groupsOn = useFeature('groups');
@@ -216,6 +226,10 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
   const linksOn = useFeature('links');
   const templatesOn = useFeature('templates');
   const spaceOn = useFeature('space');
+  const canvasOn = useFeature('canvas');
+  const archiveOn = useFeature('archive');
+  const canArch = useNotes((s) => !!s.pages[pageId] && canArchive(s.pages[pageId]));
+  const archived = useNotes((s) => !!s.pages[pageId] && isArchived(s.pages[pageId]));
   const addons = useAddons((s) => s.loaded);
   const openAddon = useAddons((s) => s.panel);
 
@@ -226,7 +240,7 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
   }, []);
 
   return (
-    <header className={'ed-head' + (compact ? ' compact' : '')}>
+    <header className={'ed-head' + (compact ? ' compact' : '') + (more ? ' more' : '')}>
       {!compact && (
       <button
         className="btn ed-back"
@@ -237,7 +251,7 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
         }}
       >
         <Icon name="back" />
-        {template ? 'Templates' : attendance ? 'Journal' : 'Library'}
+        <span className="ed-back-lbl">{template ? 'Templates' : attendance ? 'Journal' : 'Library'}</span>
       </button>
       )}
       {!compact && !template && <IconButton pageId={pageId} />}
@@ -268,6 +282,11 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
           <Icon name="redo" />
         </button>
       </div>
+      {!compact && (
+        <button className="icon-btn ed-more" aria-expanded={more} aria-label={more ? 'Fewer page options' : 'More page options'} title="Group, tags, outline, history, export…" onClick={() => setMore(!more)}>
+          <Icon name="more" size={22} />
+        </button>
+      )}
       {!template && !compact && (
         <>
       {groupsOn && (
@@ -365,11 +384,39 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
       </button>
       {showHistory && <HistoryPanel pageId={pageId} onClose={() => setShowHistory(false)} />}
       {Object.entries(addons).filter(([, m]) => m.Panel).map(([id, m]) => (
-        <button key={id} className={'btn' + (openAddon === id ? ' on' : '')} aria-pressed={openAddon === id} onClick={() => openAddonPanel(openAddon === id ? null : (id as AddOnId))}>
+        <button key={id} className={'btn ed-addon' + (openAddon === id ? ' on' : '')} aria-pressed={openAddon === id} onClick={() => openAddonPanel(openAddon === id ? null : (id as AddOnId))}>
           <Icon name={m.panelIcon ?? 'puzzle'} size={16} />
           {m.panelLabel ?? id}
         </button>
       ))}
+      {!compact && (
+        <>
+          {canvasOn && app !== 'sheet' && (
+            <button className="btn ed-phoneonly" onClick={() => toggleFocusMode()}>
+              <Icon name="frame" size={16} />
+              Focus mode
+            </button>
+          )}
+          <button className="btn ed-phoneonly" onClick={() => openNav('commands')}>
+            <Icon name="outline" size={16} />
+            Commands
+          </button>
+        </>
+      )}
+      {archiveOn && canArch && !template && (
+        <button
+          className="btn ed-archive"
+          aria-label={archived ? 'Restore this page from the Archive' : 'Archive this page'}
+          title={archived ? 'Bring this page back into the library' : 'Put this page in the Archive: kept, but out of the library and search'}
+          onClick={() => {
+            if (archived) restorePage(pageId);
+            else if (archivePage(pageId)) navigate({ name: 'library' });
+          }}
+        >
+          <Icon name="archive" size={16} />
+          <span className="ed-lbl">{archived ? 'Restore' : 'Archive'}</span>
+        </button>
+      )}
       {!template && (
       <button
         className="btn ed-export"
@@ -392,6 +439,7 @@ function IconButton({ pageId }: { pageId: string }) {
   return (
     <button className={'icon-btn ed-icon' + (icon ? ' has' : '')} aria-label={icon ? `Page icon ${icon}: change` : 'Add a page icon'} title={icon ? 'Change the page icon' : 'Add a page icon'} onClick={() => void choosePageIcon(pageId, icon)}>
       {icon ? <span aria-hidden="true">{icon}</span> : <Icon name="sticky" size={18} />}
+      <span className="ed-lbl-more">{icon ? 'Page icon' : 'Add a page icon'}</span>
     </button>
   );
 }
@@ -709,13 +757,15 @@ function ZoomControls() {
   );
 }
 
-export function FormatBar() {
+/** `insert`: show the "＋ Insert" button on a touch screen (only where the "/" menu is mounted: free canvas pages, not documents). */
+export function FormatBar({ pageId, insert = false }: { pageId: string; insert?: boolean }) {
   const editor = useCanvas((s) => s.activeEditor);
   if (!editor || editor.isDestroyed) return null;
-  return <FormatButtons editor={editor} />;
+  return <FormatButtons editor={editor} pageId={pageId} insert={insert} />;
 }
 
-function FormatButtons({ editor }: { editor: TipTapEditor }) {
+function FormatButtons({ editor, pageId, insert: canInsert }: { editor: TipTapEditor; pageId: string; insert: boolean }) {
+  const canvasOn = useFeature('canvas');
   const addons = useAddons((s) => s.loaded);
   const st = useEditorState({
     editor,
@@ -748,6 +798,17 @@ function FormatButtons({ editor }: { editor: TipTapEditor }) {
       {content}
     </button>
   );
+  /** The "/" menu without a keyboard: in an empty box the choice takes its place, in one with words it turns the box into another kind. */
+  const insertMenu = () => {
+    const el = editor.view.dom as HTMLElement;
+    const id = el.closest<HTMLElement>('[data-id]')?.dataset.id;
+    const blk = useNotes.getState().pages[pageId]?.blocks.find((x) => x.id === id);
+    if (!id || !blk || blk.type !== 'note' || blk.style === 'code') return;
+    const empty = !editor.getText().trim();
+    if (!empty && blk.locked) return;
+    const r = el.getBoundingClientRect();
+    openSlash({ pageId, screen: { x: r.left, y: r.bottom + 6 }, world: { x: blk.x, y: blk.y }, focus: (i) => canvasApi.current?.focusBlock(i), ...(empty ? { replace: id } : { turn: id }) });
+  };
   const editLink = async () => {
     const prev = editor.getAttributes('link').href as string | undefined;
     const url = await ask({ title: prev ? 'Edit link' : 'Add link', initial: prev ?? 'https://', okLabel: 'Apply', text: 'Leave empty to remove the link.' });
@@ -778,6 +839,8 @@ function FormatButtons({ editor }: { editor: TipTapEditor }) {
       has('link') && b('Link', <Icon name="link" size={16} />, st.link, () => void editLink()),
       b('Clear formatting', 'Clear', false, () => chain().unsetAllMarks().clearNodes().run(), { fontWeight: 500 }),
     ],
+    // No "/" key on a touch screen: a button opens the same menu.
+    COARSE && canInsert && canvasOn ? [b('Insert or turn into…', '＋ Insert', false, insertMenu, { fontWeight: 600 })] : [],
   ].map((items) => items.filter(Boolean)).filter((items) => items.length);
   return (
     <div className="fmt" role="toolbar" aria-label="Text formatting">

@@ -289,13 +289,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .empty .row { display: flex; gap: 8px; flex-wrap: wrap; }
 
 @media (max-width: 760px) {
-  .library { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-  .sidebar { border-right: 0; border-bottom: 1px solid var(--rule); flex-direction: row; align-items: center; overflow-x: auto; overflow-y: hidden; padding: 10px 12px; gap: 6px; }
-  .side-section { display: contents; }
-  .side-head, .side-foot, .side-note { display: none; }
-  .nav-item { width: auto; flex: none; border: 1px solid var(--rule); border-radius: 999px; padding: 5px 10px; }
+  .library { grid-template-columns: 1fr; grid-template-rows: 1fr; }
   .nav-item .gm { display: none; }
-  .main { padding: 20px 16px 64px; }
+  .main { padding: 20px 16px calc(96px + env(safe-area-inset-bottom, 0px)); }
   .search { width: 100%; }
   .search-wrap { flex: 1 1 160px; }
   .cards { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 34px 14px; }
@@ -401,15 +397,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .tools { left: 50%; top: auto; bottom: 12px; transform: translateX(-50%); flex-direction: row; }
   .tool { min-width: 52px; }
   .zoom { bottom: 84px; right: 10px; }
-  .ed-title { font-size: 18px; flex-basis: 100%; order: 2; }
-  .ed-back { order: 1; }
-  .status { order: 1; margin-left: auto; }
-  .ed-actions { order: 1; }
-  .ed-group { order: 3; }
-  .tags-ed { order: 4; flex: 1; }
-  .ed-export { order: 1; }
-  .ed-backlinks { order: 1; }
-  .ed-history, .ed-size { order: 1; }
   /* On phones the selection bar goes to the top, clear of the toolbar and zoom buttons. */
   .multi-bar { top: 12px; bottom: auto; max-width: calc(100% - 24px); }
 }
@@ -538,7 +525,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 /* Image */
 .b-image .body { width: 100%; height: 100%; touch-action: none; cursor: move; }
-.b-image img { box-shadow: 0 0 0 4px var(--tint, transparent); width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 4px; user-select: none; -webkit-user-drag: none; pointer-events: none; }
+.b-image img, .b-image video { box-shadow: 0 0 0 4px var(--tint, transparent); width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 4px; user-select: none; -webkit-user-drag: none; pointer-events: none; }
 .draw-overlay { position: absolute; inset: 0; z-index: 150; }
 .draw-overlay .excalidraw { width: 100%; height: 100%; }
 .draw-done { position: absolute; top: 8px; right: 8px; z-index: 5; }
@@ -732,7 +719,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .tool { min-width: 58px; padding: 10px 6px 8px; font-size: 12px; }
   .btn { padding: 10px 14px; }
   .btn.small { padding: 7px 12px; }
-  .zoom .val { height: 40px; }
+  .zoom .val { height: 44px; }
   .chip { padding: 3px 4px 3px 10px; }
   .chip-x { font-size: 20px; padding: 0 6px; }
   .tag-input { min-height: 34px; font-size: 15px; }
@@ -762,11 +749,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .nav-item .caret.closed svg { transform: rotate(-90deg); }
 .side-head.drop-ok { box-shadow: inset 0 0 0 2px var(--accent); border-radius: 6px; background: var(--accent-soft); }
 @media (prefers-reduced-motion: reduce) { .nav-item .caret svg { transition: none; } }
-@media (max-width: 760px) {
-  /* Phone chip row: nesting shown by order, not indentation. */
-  .nav-item.sub { padding-left: 10px; }
-  .new-group { padding-left: 4px; }
-}
 @media (pointer: coarse) { .nav-item .caret { width: 28px; height: 28px; } }
 
 /* ---------------- Settings tabs, profile ---------------- */
@@ -893,12 +875,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ctile:hover { border-color: var(--graphite); }
 .ctile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ctile-cover { display: grid; place-items: center; aspect-ratio: 4 / 3; background: color-mix(in srgb, var(--accent) 12%, var(--hover)); overflow: hidden; }
-.ctile-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ctile-cover img, .ctile-cover video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ctile-initial { font-size: 44px; font-weight: 650; color: color-mix(in srgb, var(--accent) 70%, var(--graphite)); }
 .ctile-label { padding: 10px 12px 12px; font-weight: 600; font-size: 15px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dialog.card-detail { width: min(640px, 100%); max-height: 92vh; display: flex; flex-direction: column; gap: 12px; overflow: auto; }
 .cd-cover { position: relative; border-radius: 10px; overflow: hidden; background: var(--hover); min-height: 120px; display: grid; place-items: center; }
-.cd-cover img { width: 100%; max-height: 320px; object-fit: cover; display: block; }
+.cd-cover img, .cd-cover video { width: 100%; max-height: 320px; object-fit: cover; display: block; }
+.pic-failed { display: grid; place-items: center; padding: 12px; text-align: center; font-size: 12.5px; color: var(--graphite); }
+.ctile-cover .pic-failed, .cd-cover .pic-failed { width: 100%; height: 100%; }
 .cd-nocover { color: var(--graphite); font-size: 13px; padding: 40px 0; }
 .cd-cover-actions { position: absolute; right: 8px; bottom: 8px; display: flex; gap: 6px; }
 .cd-label { font: inherit; font-size: 22px; font-weight: 650; border: 0; border-bottom: 1px solid var(--rule); background: transparent; color: inherit; padding: 4px 2px; outline: none; }
@@ -1271,7 +1255,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @media (max-width: 760px) {
   .side-toggle, .side-open { display: none; }
   .library.side-closed { grid-template-columns: 1fr; }
-  .library.side-closed .sidebar { display: flex; }
   .library.side-closed .main:not(:has(> .cf)) { padding-left: 16px; }
   .library.side-closed .cf-tree-head { padding-left: 8px; }
   .library.side-closed .cf.tree-closed .cf-main { padding-left: 16px; }
@@ -1485,7 +1468,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .space-name { margin: 0; font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .space-btns { display: flex; flex-wrap: wrap; gap: 6px; }
 .space-hint { margin: 0; font-size: 12.5px; color: var(--graphite); line-height: 1.45; }
-@media (max-width: 760px) { .space-body { grid-template-columns: minmax(0, 1fr); } .space-body .graph-panel { display: none; } }
+@media (max-width: 760px) { .space-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; } .space-body .graph-panel { order: 2; max-height: 36vh; overflow-y: auto; border-right: 0; border-top: 1px solid var(--rule); } .space-body .tree3d-stage { order: 1; } }
 
 /* ---- The "/" insert menu (Notion's slash menu) ---- */
 .slash { position: fixed; z-index: 90; width: 280px; max-height: min(420px, 70vh); display: flex; flex-direction: column; background: var(--sheet); border: 1px solid var(--rule); border-radius: 10px; box-shadow: var(--lift); overflow: hidden; }
@@ -1516,7 +1499,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @media (max-width: 1640px) {
   /* Labels give way to icons (each has a tooltip and a name for screen readers) before the title gets cut. */
   .ed-head .ed-lbl { display: none; }
-  .ed-head .btn.ed-template, .ed-head .btn.ed-outline, .ed-head .btn.ed-space, .ed-head .btn.ed-size, .ed-head .btn.ed-history, .ed-head .btn.ed-export { padding: 7px 8px; }
+  .ed-head .btn.ed-template, .ed-head .btn.ed-outline, .ed-head .btn.ed-space, .ed-head .btn.ed-size, .ed-head .btn.ed-history, .ed-head .btn.ed-export, .ed-head .btn.ed-archive { padding: 7px 8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1558,3 +1541,129 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .ed-icon { color: var(--graphite); }
 .ed-icon.has { font-size: 20px; line-height: 1; }
 .ed-icon.has span { font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
+
+/* ------------------------------------------------------------------
+   Phone layout (a narrow window). Research (thumb zone, bottom navigation, 44-48 px targets, Keep/Evernote's floating button):
+   the main places are tabs at the bottom where the thumb rests, the one main action floats over the list, the rest slides up as a sheet.
+   ------------------------------------------------------------------ */
+.phone-tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; background: var(--sheet); border-top: 1px solid var(--rule); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.phone-tab { flex: 1; min-width: 0; min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 0; background: transparent; color: var(--graphite); font-size: 11.5px; font-weight: 500; cursor: pointer; padding: 6px 2px; }
+.phone-tab.on { color: var(--accent); font-weight: 650; }
+.phone-tab.on svg { color: var(--accent); }
+.fab { position: fixed; right: 16px; bottom: calc(72px + env(safe-area-inset-bottom, 0px)); z-index: 41; width: 56px; height: 56px; border-radius: 18px; border: 0; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; box-shadow: 0 6px 18px -4px rgba(0, 0, 0, 0.45); cursor: pointer; }
+.fab:active { transform: scale(0.96); }
+.phone-scrim { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.4); display: flex; align-items: flex-end; }
+.phone-sheet { width: 100%; max-height: 82vh; overflow-y: auto; background: var(--desk); border-radius: 18px 18px 0 0; padding: 8px 4px calc(16px + env(safe-area-inset-bottom, 0px)); animation: sheet-up 0.18s ease-out; }
+.sheet-grip { width: 40px; height: 4px; border-radius: 2px; background: var(--rule); margin: 4px auto 6px; }
+.phone-sheet .sidebar { border: 0; padding: 8px 12px 0; overflow: visible; background: transparent; }
+.phone-sheet .side-search kbd { display: none; }
+.phone-sheet .nav-item { min-height: 48px; font-size: 15px; }
+@keyframes sheet-up { from { transform: translateY(40px); opacity: 0.6; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .phone-sheet { animation: none; } }
+@media (max-width: 760px) {
+  .main .controls .new-page-btn { display: none; } /* the floating button does it */
+  .main .controls { width: 100%; }
+  .main .controls .search-wrap { flex: 1 1 100%; }
+  .main .controls select.field, .main .controls > .btn { flex: 1 1 0; justify-content: center; }
+  .main-head { align-items: flex-start; }
+}
+
+/* The page header on a phone: one row (back, title, star, undo, redo, more), everything else a tap away. */
+.ed-more { display: none; }
+.ed-lbl-more { display: none; }
+@media (max-width: 760px) {
+  .ed-head { flex-wrap: wrap; gap: 2px 4px; padding: 4px 6px; }
+  .ed-head .ed-back { order: 0; padding: 0; width: 44px; height: 44px; justify-content: center; }
+  .ed-back-lbl { display: none; }
+  .ed-head .ed-title { order: 1; flex: 1 1 0; min-width: 0; font-size: 18px; }
+  .ed-head .ed-star { order: 2; }
+  .ed-head .ed-actions { order: 3; }
+  .ed-head .ed-more { order: 4; display: inline-grid; }
+  .ed-head:not(.more) :is(.ed-icon, .ed-group, .tags-ed, .ed-backlinks, .ed-template, .ed-outline, .ed-space, .ed-size, .ed-history, .ed-export, .ed-archive, .ed-addon, .status) { display: none; }
+  .ed-head.more { padding-bottom: 8px; }
+  .ed-head.more .ed-more { background: var(--accent-soft); color: var(--accent); }
+  /* The opened header: each control on its own full-width row with its label, easy to hit and to read. */
+  .ed-head.more :is(.ed-icon, .ed-group, .tags-ed, .ed-backlinks, .ed-template, .ed-outline, .ed-space, .ed-size, .ed-history, .ed-export, .ed-archive, .ed-addon) { order: 5; flex: 1 1 100%; max-width: none; justify-content: flex-start; min-height: 44px; }
+  .ed-head.more .ed-lbl { display: inline; }
+  .ed-head.more .ed-icon { width: auto; padding: 0 12px; gap: 8px; border-radius: 8px; color: var(--ink); }
+  .ed-head.more .ed-lbl-more { display: inline; font-size: 14px; font-weight: 500; }
+  .ed-head.more .status { order: 6; flex: 1 1 100%; text-align: left; }
+}
+
+/* Touch screens: finger-sized controls (44-48 px), no minimap, and the keyboard's room given back while typing. */
+@media (pointer: coarse) {
+  .icon-btn { width: 44px; height: 44px; }
+  .btn { min-height: 44px; }
+  .btn.small { min-height: 40px; }
+  .field, select.field { min-height: 44px; }
+  .ed-head .btn.ed-template, .ed-head .btn.ed-outline, .ed-head .btn.ed-space, .ed-head .btn.ed-size, .ed-head .btn.ed-history, .ed-head .btn.ed-export, .ed-head .btn.ed-archive { min-width: 44px; }
+  .ed-head:not(.more) .btn.ed-template, .ed-head:not(.more) .btn.ed-outline, .ed-head:not(.more) .btn.ed-space, .ed-head:not(.more) .btn.ed-size, .ed-head:not(.more) .btn.ed-history, .ed-head:not(.more) .btn.ed-export, .ed-head:not(.more) .btn.ed-archive { justify-content: center; }
+  .nav-item { min-height: 48px; }
+  .bar button, .bar .grip { height: 40px; min-width: 40px; }
+  .frame-head { min-height: 40px; }
+  .frame-head button { width: 36px; height: 36px; }
+  .tool { min-height: 56px; }
+  .zoom button { width: 44px; height: 44px; }
+  .fmt button { height: 42px; min-width: 42px; }
+  .minimap { display: none; }
+  .editor.typing .tools, .editor.typing .zoom, .editor.typing .multi-bar { display: none; }
+  .editor.typing .fmt { position: fixed; top: auto; left: 8px; right: 8px; transform: none; max-width: none; bottom: calc(var(--kb, 0px) + 8px); z-index: 70; }
+}
+
+/* The selected box's actions, docked at the bottom on a touch screen (in place of the add tools), and no desktop key names. */
+.touch-dock { display: none; }
+@media (pointer: coarse) {
+  .touch-dock { display: block; position: fixed; left: 8px; right: 8px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 45; pointer-events: none; }
+  .touch-dock .bar-wrap { position: static; opacity: 1; pointer-events: auto; padding: 0; display: flex; justify-content: center; }
+  .touch-dock .bar { max-width: 100%; overflow-x: auto; border-radius: 14px; padding: 5px; box-shadow: var(--lift); }
+  .editor.has-sel:not(.typing) .tools { display: none; }
+  .menu-key { display: none; }
+  .editor.typing .touch-dock { display: none; }
+}
+
+/* The Journal on a phone: no book frame, one scrolling row of buttons, the day's page gets the room; clear of the tabs. */
+@media (max-width: 760px) {
+  .main-journal { padding: 8px 0 calc(56px + env(safe-area-inset-bottom, 0px)); }
+  .journal { gap: 6px; }
+  .journal-bar { padding: 0 12px; gap: 6px; }
+  .journal-bar .main-title p { display: none; }
+  .journal-bar .main-title h1 { font-size: 22px; }
+  .journal-bar .controls { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+  .journal-bar .controls > .btn, .journal-bar .controls > .icon-btn { flex: none; }
+  .book { padding: 0; background: none; box-shadow: none; border-radius: 0; }
+  .book-page.right, .book-page.right.alone { border-radius: 0; box-shadow: none; border-top: 1px solid var(--rule); }
+  .book-heading { padding: 8px 14px; }
+  .book-heading .wd { font-size: 20px; }
+  .book-heading .dt { font-size: 14px; }
+}
+@media (max-width: 760px) {
+  .cf-tree { max-height: 30vh; }
+  .cf-new { display: none; } /* the toolbar below has "New folder" */
+}
+
+/* Buttons that exist for the phone (no keyboard): in the header's opened panel, and the "Commands" row of the More sheet. */
+.ed-phoneonly { display: none; }
+@media (max-width: 760px) {
+  .ed-head.more .ed-phoneonly { display: inline-flex; order: 5; flex: 1 1 100%; min-height: 44px; justify-content: flex-start; }
+}
+.sheet-cmd { display: flex; align-items: center; gap: 10px; width: calc(100% - 24px); margin: 4px 12px 0; min-height: 52px; padding: 8px 14px; border: 1px solid var(--rule); border-radius: 12px; background: var(--sheet); color: var(--ink); font: inherit; font-size: 15px; font-weight: 500; cursor: pointer; text-align: left; }
+.sheet-cmd small { margin-left: auto; color: var(--graphite); font-size: 12px; font-weight: 400; text-align: right; }
+@media (pointer: coarse) { .fe-hint, .tree3d-tip { display: none; } }
+
+/* The optional header of a text box (NoteBlock.header): a fold arrow and a title row; folded, the box is just this row. */
+.note-head { display: flex; align-items: center; gap: 2px; height: 40px; box-sizing: border-box; padding: 0 8px 0 2px; border-radius: 6px 6px 0 0; border-bottom: 1px solid var(--rule); background: color-mix(in srgb, var(--accent) 9%, var(--sheet)); color: var(--ink); }
+.note-fold { flex: none; width: 40px; height: 40px; display: inline-grid; place-items: center; border: 0; background: transparent; color: inherit; cursor: pointer; border-radius: 6px; font-size: 14px; padding: 0; }
+.note-fold > span { display: inline-block; transition: transform 0.12s ease; }
+.block.folded .note-fold > span, .note-head.static + .folded-mark { transform: rotate(-90deg); }
+.note-title { flex: 1; min-width: 0; border: 0; background: transparent; font: inherit; font-weight: 650; font-size: 15px; color: inherit; outline: none; padding: 0 4px; height: 100%; }
+.note-title::placeholder { color: var(--graphite); font-weight: 400; }
+.note-title:focus { box-shadow: inset 0 -2px 0 var(--accent); }
+span.note-title { display: flex; align-items: center; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.block.folded { border-radius: 6px; border: 1px solid var(--rule); }
+.block.folded .note-head { border-bottom: 0; border-radius: 6px; }
+.block.folded .text-editor { display: none; }
+.b-text .note-head + .text-editor .body { border-radius: 0 0 6px 6px; }
+@media (prefers-reduced-motion: reduce) { .note-fold > span { transition: none; } }
+
+/* A video cover has its own controls along the bottom, so the picture buttons go to the top corner. */
+.cd-cover.has-video .cd-cover-actions { top: 8px; bottom: auto; }

@@ -17,7 +17,7 @@ export function htmlToText(html: string): string {
 export function blockPlainText(b: Block): string {
   switch (b.type) {
     case 'note':
-      return b.style === 'code' ? (b.code ?? '') : htmlToText(b.html ?? '');
+      return (b.header ? b.header + '\n' : '') + (b.style === 'code' ? (b.code ?? '') : htmlToText(b.html ?? ''));
     case 'checklist':
       return b.items.map((i) => i.text).filter(Boolean).join('\n');
     case 'table':

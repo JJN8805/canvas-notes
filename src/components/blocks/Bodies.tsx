@@ -7,6 +7,7 @@ import { updateBlock } from '../../store/notes';
 import { newId } from '../../lib/util';
 import { dropIndex, moveItem } from '../../lib/reorder';
 import { useCanvas } from '../../store/canvas';
+import { Picture } from './Picture';
 import { useImageUrl } from '../../lib/useImageUrl';
 import { AutoTextarea } from '../ui/AutoTextarea';
 import { useCanvasCtx } from '../editor/context';
@@ -260,9 +261,9 @@ export function ImageBody({ block }: { block: ImageBlock }) {
   return (
     <div className="body" onPointerDown={(e) => startMove(e, block.id)}>
       {url ? (
-        <img src={url} alt={block.alt ?? ''} draggable={false} />
+        <Picture url={url} video={block.video} alt={block.alt ?? ''} play="controls" />
       ) : (
-        <div className="missing">{url === null ? 'Image not found' : ''}</div>
+        <div className="missing">{url === null ? (block.video ? 'Video not found' : 'Image not found') : ''}</div>
       )}
     </div>
   );

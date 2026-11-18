@@ -26,7 +26,7 @@ export function DocScreen({ pageId }: { pageId: string }) {
   const size = doc.doc?.size ?? 'letter';
   return (
     <div className="doc-screen">
-      <FormatBar />
+      <FormatBar pageId={pageId} />
       <div className="doc-scroll">
         <div className="doc-paper" style={{ width: DOC_WIDTH[size], minHeight: PAGE_HEIGHT[size] }}>
           <CanvasCtx.Provider value={ctx}>

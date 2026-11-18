@@ -5,7 +5,7 @@
  * defaults, and entries that can't be a box at all (a null, a number) are left out. Valid data passes through unchanged.
  */
 import type { Block, Page } from '../types';
-import { cleanStyle, legacyNote } from './note';
+import { cleanHeader, cleanStyle, legacyNote } from './note';
 import { cleanLinks } from './boxLinks';
 import { newId } from './util';
 
@@ -56,6 +56,15 @@ export function cleanBlock(raw: unknown): Block | null {
         out.html = text(b.html);
         delete out.code;
       }
+      // A header (and its fold) only on a plain text box that is not a document's text; anything else is dropped.
+      if (out.style === 'text' && !b.doc && typeof b.header === 'string') {
+        out.header = cleanHeader(b.header) ?? '';
+        if (b.folded !== true) delete out.folded;
+        else out.folded = true;
+      } else {
+        delete out.header;
+        delete out.folded;
+      }
       break;
     case 'checklist':
       out.items = cleanItems(b.items);
@@ -79,6 +88,8 @@ export function cleanBlock(raw: unknown): Block | null {
     case 'image':
       out.imageId = text(b.imageId);
       out.aspect = num(b.aspect, 1) > 0 ? num(b.aspect, 1) : 1;
+      if (b.video === true) out.video = true;
+      else delete out.video;
       break;
     case 'card':
       out.cardId = text(b.cardId);

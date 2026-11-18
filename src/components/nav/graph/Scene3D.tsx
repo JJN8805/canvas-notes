@@ -8,6 +8,8 @@ import {
   type Camera, type P3, type Projected, type TNode,
 } from '../../../lib/tree3d';
 import { colorVar } from '../../../lib/util';
+import { panBy, zoomAt } from '../../../lib/spaceCamera';
+import { COARSE } from '../../../lib/touch';
 import { TreeList } from './TreeList';
 
 const MORPH_MS = 700; // how long the dots take to glide from one layout to the other
@@ -478,8 +480,26 @@ export function Scene3D({ tree, edges, groups, prefs, here, query, onOpen, onEdg
     };
   });
 
+  /** Fingers on the screen: two of them pinch to zoom and slide the picture (a touch screen has no wheel and no Shift key). */
+  const touches = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ dist: number; x: number; y: number } | null>(null);
   const press = (e: React.PointerEvent) => {
     canvas.current!.setPointerCapture(e.pointerId);
+    if (e.pointerType === 'touch') {
+      touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.current.size === 2) {
+        if (grab.current) {
+          const node = sim.current?.byId.get(grab.current.id);
+          if (node) (node.fx = null), (node.fy = null), (node.fz = null);
+        }
+        grab.current = null;
+        orbit.current = null;
+        const [a, b] = [...touches.current.values()];
+        pinch.current = { dist: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        follow.current = false;
+        return;
+      }
+    }
     const n = !e.shiftKey && network ? hitNode(e) : null;
     if (n && sim.current) {
       // In the network a dot can be dragged: hold it where the pointer is, and the rest follow.
@@ -489,6 +509,21 @@ export function Scene3D({ tree, edges, groups, prefs, here, query, onOpen, onEdg
     orbit.current = { x: e.clientX, y: e.clientY, yaw: cam.current.yaw, pitch: cam.current.pitch, target: { ...cam.current.target }, shift: e.shiftKey, moved: 0 };
   };
   const move = (e: React.PointerEvent) => {
+    if (touches.current.has(e.pointerId)) {
+      touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const pi = pinch.current;
+      if (pi && touches.current.size >= 2) {
+        const [a, b] = [...touches.current.values()];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2;
+        const r = canvas.current!.getBoundingClientRect();
+        cam.current = panBy(zoomAt(cam.current, pi.dist / Math.max(dist, 1), mx - r.left, my - r.top, r.width, r.height), mx - pi.x, my - pi.y, r.width, r.height);
+        pinch.current = { dist, x: mx, y: my };
+        schedule();
+        return;
+      }
+    }
     const g = grab.current;
     if (g) {
       const node = sim.current?.byId.get(g.id);
@@ -535,6 +570,10 @@ export function Scene3D({ tree, edges, groups, prefs, here, query, onOpen, onEdg
     }
   };
   const release = (e: React.PointerEvent) => {
+    if (touches.current.delete(e.pointerId)) {
+      if (touches.current.size < 2) pinch.current = null;
+      if (touches.current.size) return; // a finger is still down after a pinch: do not treat the lift as a tap
+    }
     const g = grab.current;
     grab.current = null;
     if (g) {
@@ -613,7 +652,9 @@ export function Scene3D({ tree, edges, groups, prefs, here, query, onOpen, onEdg
         />
         {tip && <div className="tree3d-tip" style={{ left: tip.x + 14, top: tip.y + 12 }}>{tip.text}</div>}
         <div className="tree3d-help" aria-hidden="true">
-          Drag to turn · Scroll to zoom · Shift+drag to move · {network ? 'Drag a dot to pull it · ' : ''}Click a dot to open it, a group to fold it · Double-click to fit
+          {COARSE
+            ? <>Drag to turn · Pinch to zoom · Two fingers to slide · {network ? 'Drag a dot to pull it · ' : ''}Tap a dot to open it, a group to fold it · Double-tap to fit</>
+            : <>Drag to turn · Scroll to zoom · Shift+drag to move · {network ? 'Drag a dot to pull it · ' : ''}Click a dot to open it, a group to fold it · Double-click to fit</>}
         </div>
         <div className="tree3d-btns">
           <button className="btn small" onClick={fitAll}>Fit</button>

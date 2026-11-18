@@ -1,5 +1,5 @@
 import { useNotes } from '../../store/notes';
-import { isStyle, kindClass } from '../../lib/note';
+import { hasHeader, isFolded, isStyle, kindClass } from '../../lib/note';
 import { isCard } from '../../lib/pages';
 import { cardInitial, cardLabel, cardParts } from '../../lib/cards';
 import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
@@ -10,6 +10,7 @@ import { frameInk, tintVars } from '../../lib/colors';
 import { liveDrawing, svgSrc, unionBounds } from '../../lib/drawing';
 import { blockHeight, colorVar, isFixedHeight, sanitizeHtml } from '../../lib/util';
 import { routeBetween } from '../../lib/arrows';
+import { Picture } from '../blocks/Picture';
 import { hiddenBlockIds, paintOrder } from '../../lib/frames';
 import { useImageUrl } from '../../lib/useImageUrl';
 import { formatDuration } from '../../lib/media';
@@ -71,7 +72,7 @@ export const Thumbnail = memo(function Thumbnail({
         left: b.x - l.minX + PAD,
         top: b.y - l.minY + PAD,
         width: b.w,
-        ...(isFixedHeight(b) || b.type === 'frame' ? { height: blockHeight(b) } : { minHeight: b.h }),
+        ...(isFixedHeight(b) || b.type === 'frame' || isFolded(b) ? { height: blockHeight(b) } : { minHeight: b.h }),
         ...tintVars(b),
       } as CSSProperties}
     >
@@ -140,7 +141,17 @@ export function StaticBody({ block: b }: { block: Block }) {
           </div>
         );
       }
-      return <div className="body prose" dangerouslySetInnerHTML={{ __html: sanitizeHtml(b.html) }} />;
+      return (
+        <>
+          {hasHeader(b) && (
+            <div className="note-head static">
+              <span className="note-fold" aria-hidden="true"><span>▾</span></span>
+              <span className="note-title">{b.header}</span>
+            </div>
+          )}
+          {!isFolded(b) && <div className="body prose" dangerouslySetInnerHTML={{ __html: sanitizeHtml(b.html) }} />}
+        </>
+      );
     case 'checklist':
       return (
         <div className="body">
@@ -169,7 +180,7 @@ export function StaticBody({ block: b }: { block: Block }) {
         </div>
       );
     case 'image':
-      return <StaticImage imageId={b.imageId} />;
+      return <StaticImage imageId={b.imageId} video={b.video} />;
     case 'audio':
       return (
         <div className="body audio-body static-file">
@@ -204,9 +215,9 @@ export function StaticBody({ block: b }: { block: Block }) {
   }
 }
 
-function StaticImage({ imageId }: { imageId: string }) {
+function StaticImage({ imageId, video = false }: { imageId: string; video?: boolean }) {
   const url = useImageUrl(imageId);
-  return <div className="body">{url ? <img src={url} alt="" draggable={false} /> : <div className="missing" />}</div>;
+  return <div className="body">{url ? <Picture url={url} video={video} play="never" /> : <div className="missing" />}</div>;
 }
 
 /** A card on a page, as a still picture and label (page thumbnails, PNG and PDF export). */
@@ -218,7 +229,7 @@ function StaticCard({ cardId }: { cardId: string }) {
   return (
     <div className="body card-body">
       <div className="ctile static-ctile">
-        <span className="ctile-cover">{url ? <img src={url} alt="" draggable={false} /> : <span className="ctile-initial" aria-hidden="true">{cardInitial(card)}</span>}</span>
+        <span className="ctile-cover">{url ? <Picture url={url} video={cover?.video} play="never" /> : <span className="ctile-initial" aria-hidden="true">{cardInitial(card)}</span>}</span>
         <span className="ctile-label">{cardLabel(card)}</span>
       </div>
     </div>

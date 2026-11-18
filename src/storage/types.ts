@@ -47,6 +47,8 @@ export interface PageRecord {
   cover?: string | null;
   /** The page's icon; absent in records from app versions before icons. */
   icon?: string | null;
+  /** True for a page in the Archive; absent in records from app versions before the Archive. */
+  archived?: boolean;
   /** Absent in records from app versions before page colours. */
   color?: NoteColor | null;
   created: number;
@@ -247,6 +249,7 @@ export function normalizePage(p: Partial<Page> & { id: string }): Page {
     sheet: sheet && sheetCovering(sheet, blocks),
     cover: typeof p.cover === 'string' && isSafeId(p.cover) ? p.cover : null,
     icon: cleanIcon(p.icon),
+    ...(p.archived === true ? { archived: true } : {}),
     created: p.created ?? Date.now(),
     updated: p.updated ?? p.created ?? Date.now(),
     rev: p.rev ?? 0,

@@ -11,6 +11,7 @@ import {
 import { cameraPosition, clampPitch, project, unproject, type Camera, type P3 } from '../../lib/tree3d';
 import { FACE_VIEW, parseCamera, VIEWS, VIEW_NAMES, arrived, cubeFaces, focusOn, glide, orbitBy, panBy, spinStep, viewCamera, viewOf, wheelFactor, zoomAt, type ViewName } from '../../lib/spaceCamera';
 import { blockHeight, textToHtml } from '../../lib/util';
+import { COARSE } from '../../lib/touch';
 
 /** `var(--n-yellow)` as the colour the canvas needs (a canvas cannot read CSS variables itself). */
 function resolve(el: Element, v: string): string {
@@ -656,7 +657,7 @@ export function SpaceView({ pageId }: { pageId: string }) {
                   {!layerable && <p className="space-hint">{chosen.locked ? 'This box is locked.' : 'A frame stays on the page with what is inside it.'}</p>}
                 </>
               ) : (
-                <p className="space-hint">Boxes are solid blocks. A box that is behind another on the page is behind it here too. Click one to select it, drag it to move it on its layer, Alt+drag to bring it nearer or push it back.</p>
+                <p className="space-hint">{COARSE ? 'Boxes are solid blocks. A box that is behind another on the page is behind it here too. Tap one to select it, drag it to move it on its layer, and drag the round grip to bring it nearer or push it back.' : 'Boxes are solid blocks. A box that is behind another on the page is behind it here too. Click one to select it, drag it to move it on its layer, Alt+drag to bring it nearer or push it back.'}</p>
               )}
             </section>
             <section>
@@ -743,7 +744,7 @@ export function SpaceView({ pageId }: { pageId: string }) {
             />
             <p className="sr" aria-live="polite">{chosen ? `${boxLabel(chosen)}, ${depth > 0 ? `${depth} nearer` : depth < 0 ? `${-depth} further` : 'on the page'}.` : view ? `${VIEWS[view].label} view.` : ''}</p>
             {blocks.length === 0 && <p className="graph-empty">This page has no boxes yet. Write a note above and it will appear here.</p>}
-            <div className="tree3d-help" aria-hidden="true">Tab steps through boxes · Drag the space to turn, or click the cube · Scroll zooms toward the pointer · Right-drag or Shift+drag slides · Double-click a box to fly to it, empty space to fit · 1–4 views · F focus · Enter edits · Alt+drag or [ ] set depth</div>
+            <div className="tree3d-help" aria-hidden="true">{COARSE ? 'Drag to turn, or tap the cube · Pinch to zoom · Two fingers to slide · Double-tap a box to fly to it · Drag the round grip to set its depth' : 'Tab steps through boxes · Drag the space to turn, or click the cube · Scroll zooms toward the pointer · Right-drag or Shift+drag slides · Double-click a box to fly to it, empty space to fit · 1–4 views · F focus · Enter edits · Alt+drag or [ ] set depth'}</div>
           </div>
         </div>
       </div>

@@ -1,3 +1,5 @@
+import { createPortal } from 'react-dom';
+import { useTouchDock } from '../../store/touchDock';
 import { openCard } from '../../store/cardView';
 import { useFeature } from '../../store/features';
 import { LinkBadge } from './LinkBadge';
@@ -8,12 +10,13 @@ import { ResizeHandles } from './ResizeHandles';
 import { NOTE_STYLES, type NoteBlock, type NoteColor, type NoteStyle, type TableBlock } from '../../types';
 import { duplicateBlocks, ensureAttendancePage, setColor, setTracking, updateBlock } from '../../store/notes';
 import { layerMenu } from './layerMenu';
-import { deleteWithUndo } from './actions';
+import { branchFrom, deleteWithUndo } from './actions';
 import { navigate } from '../../lib/route';
 import { kindClass, noteStyleLabel } from '../../lib/note';
 import { changeNoteStyle } from './noteStyle';
 import { canvasApi, setSelected } from '../../store/canvas';
-import { BLOCK_LABEL, isFixedHeight, newId } from '../../lib/util';
+import { BLOCK_LABEL, NOTE_HEAD_H, isFixedHeight, newId } from '../../lib/util';
+import { hasHeader, isFolded } from '../../lib/note';
 import { Icon, type IconName } from '../ui/Icon';
 import { BlockBody } from '../blocks/BlockBody';
 import { colorOf, noteVar, tintVars } from '../../lib/colors';
@@ -38,6 +41,7 @@ export const BlockFrame = memo(function BlockFrame({
   single: boolean;
 }) {
   const ctx = useCanvasCtx();
+  const dock = useTouchDock((s) => s.el); // touch screens: the selected box's bar lives in the strip at the bottom of the page
   const ref = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -52,6 +56,7 @@ export const BlockFrame = memo(function BlockFrame({
     top: block.y,
     width: block.w,
     ...(isFixedHeight(block) ? { height: block.h } : { minHeight: block.h }),
+    ...(isFolded(block) ? { height: NOTE_HEAD_H, minHeight: 0 } : {}), // folded to its header
     ...tintVars(block),
   } as CSSProperties;
 
@@ -59,15 +64,18 @@ export const BlockFrame = memo(function BlockFrame({
   if (selected) cls.push('sel');
   if (block.locked) cls.push('locked');
   if (block.type === 'note' && block.style === 'text' && block.fill) cls.push('fill');
+  if (isFolded(block)) cls.push('folded');
 
   return (
     <div ref={ref} className={cls.join(' ')} data-id={block.id} style={style} onPointerDownCapture={(e) => ctx.pointerDownBlock(e, block.id)}
       onDoubleClick={block.type === 'note' && block.style === 'sticky' ? () => canvasApi.current?.focusBlock(block.id) : undefined}>
       {/* A band just outside and inside the box's edge that moves it, so it can be grabbed without the bar. */}
       <div className="grab" aria-hidden="true" title="Drag to move" onPointerDown={(e) => ctx.startMove(e, block.id)} />
-      <div className="bar-wrap">
-        <BlockBar block={block} />
-      </div>
+      {dock && selected && single ? createPortal(<div className="bar-wrap"><BlockBar block={block} /></div>, dock) : (
+        <div className="bar-wrap">
+          <BlockBar block={block} />
+        </div>
+      )}
       <BlockBody block={block} />
       <LinkBadge block={block} pageId={ctx.pageId} />
       {block.locked && (
@@ -134,6 +142,26 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
         {noteStyleLabel[block.style]} ▾
       </button>,
     );
+    if (block.style === 'sticky') {
+      // Tab on a keyboard; a button for a finger: a new sticky beside this one, joined to it by an arrow (a mind map grows from here).
+      extra.push(btn('Add a linked note', '+ Linked', () => void branchFrom(pageId, block.id, (id) => canvasApi.current?.focusBlock(id))));
+    }
+    if (block.style === 'text' && !block.doc) {
+      // An optional header row above the text, with a fold arrow (tap it to tuck the box away).
+      extra.push(
+        btn(hasHeader(block) ? 'Remove the header' : 'Add a header', hasHeader(block) ? 'Header ✓' : 'Header', () => {
+          const adding = !hasHeader(block);
+          updateBlock<NoteBlock>(pageId, block.id, (b) => {
+            if (adding) b.header = '';
+            else {
+              delete b.header;
+              delete b.folded;
+            }
+          });
+          if (adding) requestAnimationFrame(() => document.querySelector<HTMLInputElement>(`[data-id="${CSS.escape(block.id)}"] .note-title`)?.focus());
+        }),
+      );
+    }
     if (block.style === 'text') {
       extra.push(
         btn(block.fill ? 'Remove background' : 'Add background', 'Fill', () =>

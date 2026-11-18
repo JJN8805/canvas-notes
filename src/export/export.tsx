@@ -18,6 +18,7 @@ import { pageApp } from '../lib/office/app';
 import { toast } from '../store/ui';
 import { isTauri } from '../storage';
 import { base64ToBytes } from '../storage/types';
+import { VIDEO_EXT } from '../storage/validate';
 import { StaticBody } from '../components/library/Thumbnail';
 
 export type ExportFormat = 'markdown' | 'pdf' | 'png' | 'xlsx' | 'docx';
@@ -336,6 +337,8 @@ function blocksToMarkdown(blocks: Block[], all: Block[], imagePath: (b: ImageBlo
         }
         const md = htmlToMarkdown(b.html);
         if (b.style === 'text') {
+          // A header becomes a bold line above the text (a heading would clash with the frame headings around it).
+          if (b.header) out.push(`**${b.header.replace(/\*/g, '\\*')}**`);
           if (md) out.push(md);
           break;
         }
@@ -359,7 +362,8 @@ function blocksToMarkdown(blocks: Block[], all: Block[], imagePath: (b: ImageBlo
       }
       case 'image': {
         const img = b as ImageBlock;
-        out.push(`![${(img.alt ?? '').replace(/[[\]]/g, '')}](${imagePath(img)})`);
+        const alt = (img.alt ?? '').replace(/[[\]]/g, '');
+        out.push(img.video ? `[🎬 ${alt || 'Video'}](${imagePath(img)})` : `![${alt}](${imagePath(img)})`); // a video is a link (Markdown has no video)
         break;
       }
       case 'card': {
@@ -421,7 +425,7 @@ function cardInfo(b: CardBlock): { label: string; text: string } | null {
   return p && isCard(p) ? { label: cardLabel(p), text: cardText(p) } : null;
 }
 
-const FILE_EXTS: Record<string, string> = { ...EXT, 'application/pdf': 'pdf', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/aac': 'aac', 'audio/ogg': 'ogg', 'audio/opus': 'opus', 'audio/wav': 'wav', 'audio/webm': 'weba', 'audio/flac': 'flac' };
+const FILE_EXTS: Record<string, string> = { ...EXT, ...VIDEO_EXT, 'application/pdf': 'pdf', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/aac': 'aac', 'audio/ogg': 'ogg', 'audio/opus': 'opus', 'audio/wav': 'wav', 'audio/webm': 'weba', 'audio/flac': 'flac' };
 
 /** Markdown file, or a zip with the Markdown, an images/ folder and a files/ folder (audio, PDFs) when the page has any. */
 async function markdownExport(page: Page): Promise<{ bytes: Uint8Array<ArrayBuffer>; ext: 'md' | 'zip' }> {
@@ -438,7 +442,7 @@ async function markdownExport(page: Page): Promise<{ bytes: Uint8Array<ArrayBuff
     if (names.has(b.imageId)) continue;
     const img = await getStorage().sync.readImage(b.imageId);
     if (!img) continue;
-    const name = `images/${b.imageId}.${EXT[img.mime] ?? 'png'}`;
+    const name = `images/${b.imageId}.${EXT[img.mime] ?? VIDEO_EXT[img.mime] ?? 'png'}`; // a card's cover can be a video
     names.set(b.imageId, name);
     files[name] = base64ToBytes(img.data);
   }

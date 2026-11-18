@@ -108,7 +108,7 @@ export const BLOCK_LABEL: Record<Block['type'], string> = {
 export function blockText(b: Block): string {
   switch (b.type) {
     case 'note':
-      return b.style === 'code' ? (b.code ?? '') : htmlToText(b.html);
+      return (b.header ? b.header + ' ' : '') + (b.style === 'code' ? (b.code ?? '') : htmlToText(b.html));
     case 'checklist':
       return b.items.map((i) => i.text).join(' ');
     case 'table':
@@ -125,12 +125,15 @@ export function blockText(b: Block): string {
 
 /** Height of a frame's always-visible title bar; a collapsed frame shrinks to just this. */
 export const FRAME_HEAD_H = 32;
+/** The height of a text box folded down to its header (see `NoteBlock.header`). */
+export const NOTE_HEAD_H = 40;
 
 /** Pictures, stickies, audio players and PDFs keep the height they were given; every other box grows with its content. */
 export const isFixedHeight = (b: Block) => b.type === 'image' || (b.type === 'note' && b.style === 'sticky') || b.type === 'audio' || b.type === 'pdf';
 
 export function blockHeight(b: Block): number {
   if (b.type === 'frame') return b.collapsed ? FRAME_HEAD_H : b.h;
+  if (b.type === 'note' && b.style === 'text' && !b.doc && typeof b.header === 'string' && b.folded === true) return NOTE_HEAD_H; // folded to its header
   return isFixedHeight(b) ? b.h : Math.max(b.h, b.ah ?? 0);
 }
 

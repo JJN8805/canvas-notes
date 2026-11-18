@@ -15,6 +15,8 @@ import { Thumbnail } from './Thumbnail';
 import { chooseCover } from './chooseCover';
 import { removePageCover } from '../../store/pageCover';
 import { choosePageIcon } from '../../store/pageIcon';
+import { archivePage } from '../../store/archive';
+import { canArchive } from '../../lib/pages';
 import { useImageUrl } from '../../lib/useImageUrl';
 import { COARSE, PAGE_MIME } from './shared';
 
@@ -41,6 +43,7 @@ export const PageCard = memo(function PageCard({ page, group }: { page: Page; gr
     openMenu(menuRef.current, [
       { label: 'Open', action: open },
       { label: page.icon ? 'Change icon…' : 'Add icon…', action: () => void choosePageIcon(page.id, page.icon) },
+      ...(featureOn('archive') && canArchive(page as Page) ? [{ label: 'Archive', action: () => void archivePage(page.id) }] : []),
       {
         label: 'Rename…',
         action: async () => {

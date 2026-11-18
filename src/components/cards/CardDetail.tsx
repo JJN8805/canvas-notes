@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { cardLabel, cardParts } from '../../lib/cards';
 import { useImageUrl } from '../../lib/useImageUrl';
 import { useNotes, deletePage } from '../../store/notes';
+import { archivePage } from '../../store/archive';
+import { Picture } from '../blocks/Picture';
+import { featureOn } from '../../store/features';
 import { ensureCardBody, removeCardCover, setCardCover, setCardLabel } from '../../store/cards';
 import { confirmDanger, toast } from '../../store/ui';
 import { Icon } from '../ui/Icon';
@@ -96,11 +99,11 @@ export function CardDetail({ cardId, onClose: onCloseProp }: { cardId: string; o
           }
         }}
       >
-        <div className="cd-cover">
-          {cover && url ? <img src={url} alt="" draggable={false} /> : <span className="cd-nocover">No picture yet</span>}
+        <div className={'cd-cover' + (cover?.video ? ' has-video' : '')}>
+          {cover && url ? <Picture url={url} video={cover.video} play="controls" /> : <span className="cd-nocover">No picture yet</span>}
           <div className="cd-cover-actions">
             <button className="btn small" disabled={busy} onClick={() => fileRef.current?.click()}>
-              {cover ? 'Change picture' : 'Add picture'}
+              {cover ? 'Change picture or video' : 'Add picture, GIF or video'}
             </button>
             {sources.map((s) => (
               <button key={s.key} className="btn small" disabled={busy} onClick={() => setSourceKey(s.key)}>
@@ -112,7 +115,7 @@ export function CardDetail({ cardId, onClose: onCloseProp }: { cardId: string; o
                 Remove
               </button>
             )}
-            <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => void pick(e.target.files?.[0])} />
+            <input ref={fileRef} type="file" accept="image/*,video/mp4,video/webm,video/quicktime,video/ogg,.mp4,.webm,.mov,.m4v,.ogv" hidden onChange={(e) => void pick(e.target.files?.[0])} />
           </div>
         </div>
         <input
@@ -160,6 +163,17 @@ export function CardDetail({ cardId, onClose: onCloseProp }: { cardId: string; o
             <Icon name="trash" size={16} />
             Delete
           </button>
+          {featureOn('archive') && (
+            <button
+              className="btn"
+              onClick={() => {
+                if (archivePage(cardId)) onClose();
+              }}
+            >
+              <Icon name="archive" size={16} />
+              Archive
+            </button>
+          )}
           <span className="cd-spacer" />
           <button className="btn primary" onClick={onClose}>Done</button>
         </div>

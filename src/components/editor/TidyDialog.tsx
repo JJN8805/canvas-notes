@@ -1,3 +1,4 @@
+import { COARSE } from '../../lib/touch';
 import { confirmsOnEnter, enterKey } from '../../lib/enterConfirm';
 import { useEffect, useMemo, useRef } from 'react';
 import { applyTidy, useNotes } from '../../store/notes';
@@ -29,7 +30,7 @@ export function TidyDialog() {
   const doApply = () => {
     const out = applyTidy(pageId, r);
     closeTidy();
-    if (out === 'applied') toast('Tidied the page. Undo with Ctrl+Z.');
+    if (out === 'applied') toast(COARSE ? 'Tidied the page. Undo with the arrow at the top.' : 'Tidied the page. Undo with Ctrl+Z.');
     else if (out === 'stale') toast('The page changed while this was open. Nothing was changed.');
   };
   return (

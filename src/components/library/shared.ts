@@ -10,7 +10,7 @@ import { groupTree } from '../../lib/groups';
 export const PAGE_MIME = 'application/x-canvas-page';
 export const GROUP_MIME = 'application/x-canvas-group';
 /** Touch screens: no drag-to-group (long-press opens the menu instead). */
-export const COARSE = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
+export { COARSE } from '../../lib/touch';
 
 
 /**

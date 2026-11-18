@@ -3,6 +3,8 @@ import type { Page } from '../types';
 import { cardParts, newBody, newCardBlocks, withCover } from '../lib/cards';
 import { addBlock, createPage, getStorage, mutatePage, useNotes } from './notes';
 import { prepareImage } from './images';
+import { readVideoInfo } from './video';
+import { coverProblem, isVideoFile, videoMimeOf } from '../lib/media';
 
 /** A new card, in a card folder or section (or in none). */
 export function createCard(label = '', folderId: string | null = null): Page {
@@ -19,8 +21,17 @@ export function setCardLabel(id: string, label: string) {
 
 /** Stores the picture and makes it the card's cover. Throws a message fit to show when the file can't be used. */
 export async function setCardCover(id: string, file: File): Promise<void> {
-  if (!file.type.startsWith('image/')) throw new Error('Choose an image file.');
-  const { blob, width, height } = await prepareImage(file);
+  const problem = coverProblem(file);
+  if (problem) throw new Error(problem[0].toUpperCase() + problem.slice(1) + '.');
+  if (isVideoFile(file)) {
+    // A video is kept as it is (with a clean type); the webview tells us its shape, or that it can't play the format.
+    const blob = new Blob([file], { type: videoMimeOf(file) });
+    const { width, height } = await readVideoInfo(blob);
+    const imageId = await getStorage().putImage(blob);
+    mutatePage(id, (p) => void (p.blocks = withCover(p.blocks, { imageId, aspect: width / height, video: true })), { history: 'none' });
+    return;
+  }
+  const { blob, width, height } = await prepareImage(file); // a GIF is kept untouched, so it still moves
   const imageId = await getStorage().putImage(blob);
   mutatePage(id, (p) => void (p.blocks = withCover(p.blocks, { imageId, aspect: width / height })), { history: 'none' });
 }

@@ -6,8 +6,23 @@ export const kindOf = (p: { kind?: PageKind | string | null }): PageKind => (p.k
 export const isTemplate = (p: { kind?: PageKind | string | null }) => kindOf(p) === 'template';
 export const isCard = (p: { kind?: PageKind | string | null }) => kindOf(p) === 'card';
 
-/** The pages that belong in the library, search, tag lists and counts: everything except templates and cards. */
-export const libraryPages = (pages: Record<string, Page>): Page[] => Object.values(pages).filter((p) => kindOf(p) === 'page');
+/** Put away with Archive: kept, but out of the library, search, tag lists and counts. */
+export const isArchived = (p: { archived?: boolean }) => p.archived === true;
+
+/**
+ * Whether a page can be archived: ordinary pages and cards. Not templates (they have their own screen), not the journal's daily pages (the
+ * Journal makes a day's page again when it finds none, so hiding one would start a second page for that day) and not attendance pages.
+ */
+export const canArchive = (p: Page): boolean => (kindOf(p) === 'page' || kindOf(p) === 'card') && !cleanDate(p.dailyDate) && !attendanceLink(p);
+
+/** The pages that belong in the library, search, tag lists and counts: everything except templates, cards and archived pages. */
+export const libraryPages = (pages: Record<string, Page>): Page[] => Object.values(pages).filter((p) => kindOf(p) === 'page' && !isArchived(p));
+
+/** The archive: archived pages and cards, the most recently archived-or-edited first. */
+export const archivedPages = (pages: Record<string, Page>): Page[] =>
+  Object.values(pages)
+    .filter((p) => isArchived(p) && canArchive(p))
+    .sort((a, b) => b.updated - a.updated);
 
 /**
  * The pages the library lists (All pages, counts, groups, tags): the library pages without the journal's daily pages, which live in
@@ -22,10 +37,10 @@ export const attendancePagesOf = (pages: Record<string, Page>): Page[] =>
     .filter((p) => !!attendanceLink(p))
     .sort((a, b) => (a.title || '').localeCompare(b.title || ''));
 
-/** The cards, by label. */
+/** The cards, by label (archived ones are in the Archive). */
 export const cardsOf = (pages: Record<string, Page>): Page[] =>
   Object.values(pages)
-    .filter(isCard)
+    .filter((p) => isCard(p) && !isArchived(p))
     .sort((a, b) => (a.title || 'Untitled card').localeCompare(b.title || 'Untitled card'));
 
 /** The templates, by name. */

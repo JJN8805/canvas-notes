@@ -1,7 +1,7 @@
 import { APP_NAME, buildInfo } from '../../lib/appInfo';
 import { useMemo, useState } from 'react';
 import { Filter, Group, Page } from '../../types';
-import { cardsOf, templatesOf } from '../../lib/pages';
+import { archivedPages, cardsOf, templatesOf } from '../../lib/pages';
 import { openSettings } from '../../store/settingsUi';
 import { usePrefs } from '../../store/prefs';
 import { Avatar } from '../ui/Avatar';
@@ -30,6 +30,8 @@ export function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Grou
   const groupIds = new Set(groups.map((g) => g.id));
   const cardCount = useNotes((s) => cardsOf(s.pages).length);
   const trashCount = useNotes((s) => s.trash.length);
+  const archiveCount = useNotes((s) => archivedPages(s.pages).length);
+  const archiveOn = useFeature('archive');
   const journalCount = useNotes((s) => journalEntries(s.pages).length);
   const templateCount = useNotes((s) => templatesOf(s.pages).length);
   const ungrouped = pages.filter((p) => !p.groupId || !groupIds.has(p.groupId)).length;
@@ -98,6 +100,7 @@ export function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Grou
             onClick={() => setFilter({ kind: 'templates' })}
           />
         )}
+        {archiveOn && <NavItem icon="archive" label="Archive" count={archiveCount} active={filter.kind === 'archive'} onClick={() => setFilter({ kind: 'archive' })} />}
         <NavItem
           icon="trash"
           label="Trash"

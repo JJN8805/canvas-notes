@@ -1,3 +1,4 @@
+import { COARSE } from '../../lib/touch';
 import { currentRoute, navigate } from '../../lib/route';
 import { dateKey } from '../../lib/daily';
 import { isDarkTheme } from '../../lib/settings';
@@ -20,6 +21,8 @@ import { MOD_LABEL } from '../../lib/util';
 import type { IconName } from '../ui/Icon';
 import type { FeatureId } from '../../lib/features';
 import { featureOn } from '../../store/features';
+import { archivePage, restorePage } from '../../store/archive';
+import { canArchive, isArchived } from '../../lib/pages';
 import { openNewPage } from '../library/shared';
 import { pageApp } from '../../lib/office/app';
 
@@ -43,8 +46,9 @@ export function buildCommands(): Command[] {
     { id: 'today', feature: 'journal', icon: 'today', title: 'Open today in the journal', keys: 'Ctrl+Alt+D', run: () => openJournal(dateKey()) },
     { id: 'journal', feature: 'journal', icon: 'book', title: 'Open the journal', run: () => openJournal() },
     { id: 'weekly', feature: 'journal', icon: 'calendar', title: 'Review my week…', run: () => openWeekly(route.name === 'library' ? useJournal.getState().date : dateKey()) },
-    { id: 'shortcuts', icon: 'keyboard', title: 'Keyboard shortcuts', keys: '?', run: openShortcuts },
+    ...(COARSE ? [] : [{ id: 'shortcuts', icon: 'keyboard' as const, title: 'Keyboard shortcuts', keys: '?', run: openShortcuts }]),
     { id: 'switcher', icon: 'search', title: 'Open quick switcher', keys: `${MOD_LABEL}+O`, run: () => openNav('switcher') },
+    { id: 'archive', feature: 'archive', icon: 'archive', title: 'Open the archive', run: () => { setFilter({ kind: 'archive' }); navigate({ name: 'library' }); } },
     { id: 'graph', feature: 'graph', icon: 'graph', title: 'Open graph view', run: () => openNav('graph') },
     {
       id: 'library',
@@ -127,6 +131,11 @@ export function buildCommands(): Command[] {
       { id: 'outline', icon: 'outline', title: 'Show outline and links of this page', run: () => openNav('outline') },
       ...(pageApp(useNotes.getState().pages[onPage]) ? [] : [{ id: 'space', feature: 'space' as const, icon: 'graph' as const, title: 'Open this page in 3D', run: () => openNav('space') }]),
       { id: 'focus', feature: 'canvas' as const, icon: 'frame' as const, title: 'Focus mode: hide everything but the page', keys: `${MOD_LABEL}+Shift+F`, run: () => toggleFocusMode() },
+      ...(useNotes.getState().pages[onPage] && canArchive(useNotes.getState().pages[onPage])
+        ? [isArchived(useNotes.getState().pages[onPage])
+            ? { id: 'restore-page', feature: 'archive' as const, icon: 'archive' as const, title: 'Restore this page from the Archive', run: () => void restorePage(onPage) }
+            : { id: 'archive-page', feature: 'archive' as const, icon: 'archive' as const, title: 'Archive this page', run: () => void (archivePage(onPage) && navigate({ name: 'library' })) }]
+        : []),
       { id: 'tidy', icon: 'pages', title: 'Tidy this page…', run: () => openTidy(onPage) },
       { id: 'undo', icon: 'undo', title: 'Undo', keys: `${MOD_LABEL}+Z`, run: () => void undo(onPage) },
       { id: 'redo', icon: 'redo', title: 'Redo', keys: `${MOD_LABEL}+Shift+Z`, run: () => void redo(onPage) },

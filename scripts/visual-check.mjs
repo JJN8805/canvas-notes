@@ -465,16 +465,16 @@ watch(w, 'widget');
 for (const [name, cls, size] of [['text', 'b-text', [420, 260]], ['list', 'b-checklist', [360, 300]], ['table', 'b-table', [460, 340]]]) {
   const id = blocks.find((b) => b[1].includes(cls))?.[0];
   await w.setViewportSize({ width: size[0], height: size[1] });
-  await w.goto(`${URL}/?widget=${pageId}&block=${id}`, { waitUntil: 'domcontentloaded' });
-  await w.waitForSelector('.widget-body .block');
+  await w.goto(`${URL}/?widget=${pageId}&block=${id}`, { waitUntil: 'domcontentloaded', timeout: 120_000 });
+  await w.waitForSelector('.widget-body .block', { timeout: 120_000 });
   await shot(`widget-${name}`, w);
 }
 await w.setViewportSize({ width: 560, height: 440 });
-await w.goto(`${URL}/?widget=${pageId}`, { waitUntil: 'domcontentloaded' }); // the dev server is slow to serve the PDF worker the first time; the selector waits below are what matter
-await w.waitForSelector('.widget-body .viewport');
+await w.goto(`${URL}/?widget=${pageId}`, { waitUntil: 'domcontentloaded', timeout: 120_000 }); // the dev server is slow to serve the PDF worker the first time; the selector waits below are what matter
+await w.waitForSelector('.widget-body .viewport', { timeout: 120_000 });
 await shot('widget-page', w);
-await w.goto(`${URL}/?widget=${pageId}&block=missing`, { waitUntil: 'domcontentloaded' });
-await w.waitForSelector('.widget-gone');
+await w.goto(`${URL}/?widget=${pageId}&block=missing`, { waitUntil: 'domcontentloaded', timeout: 120_000 });
+await w.waitForSelector('.widget-gone', { timeout: 120_000 });
 await shot('widget-deleted', w);
 
 // Workspace: documents, spreadsheets, presentations, and the graph (the add-on is switched on in Settings first)

@@ -60,7 +60,7 @@ const vecId = (model: string, k: VectorKey) => `${model}|${k.pageId}|${k.blockId
 const rowToPage = (r: PageRow): Page => normalizePage({ ...r });
 const pageRecord = (r: PageRow): PageRecord => ({
   id: r.id, etag: r.etag, deleted: r.deleted, title: r.title, groupId: r.groupId,
-  tags: r.tags, blocks: r.blocks, arrows: r.arrows, drawing: r.drawing ?? null, color: r.color ?? null, kind: kindOf(r), dailyDate: cleanDate(r.dailyDate), sheet: cleanSheet(r.sheet), ...(r.cover ? { cover: r.cover } : {}), ...(r.icon ? { icon: r.icon } : {}), created: r.created, updated: r.updated,
+  tags: r.tags, blocks: r.blocks, arrows: r.arrows, drawing: r.drawing ?? null, color: r.color ?? null, kind: kindOf(r), dailyDate: cleanDate(r.dailyDate), sheet: cleanSheet(r.sheet), ...(r.cover ? { cover: r.cover } : {}), ...(r.icon ? { icon: r.icon } : {}), ...(r.archived ? { archived: true } : {}), created: r.created, updated: r.updated,
 });
 const groupRecord = (r: GroupRow): GroupRecord => ({
   id: r.id, etag: r.etag, deleted: r.deleted, name: r.name, color: r.color, position: r.position, parentId: r.parentId ?? null,
@@ -166,7 +166,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
   async function purgePage(id: string) {
     const tx = db.transaction('pages', 'readwrite');
     const p = await tx.store.get(id);
-    if (p?.deleted) await tx.store.put({ ...p, title: '', tags: [], blocks: [], arrows: [], drawing: null, color: null, dailyDate: null, sheet: null, cover: null, icon: null, etag: newEtag(), rev: p.rev + 1 });
+    if (p?.deleted) await tx.store.put({ ...p, title: '', tags: [], blocks: [], arrows: [], drawing: null, color: null, dailyDate: null, sheet: null, cover: null, icon: null, archived: false, etag: newEtag(), rev: p.rev + 1 });
     await tx.done;
     for (const s of await db.getAllFromIndex('snapshots', 'pageId', id)) await db.delete('snapshots', s.id);
     await sweepHistory();
@@ -375,7 +375,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
       // A deleted page that is edited again comes back.
       const rev = existing ? existing.rev + 1 : 1;
       await tx.store.put({
-        id: page.id, title: page.title, groupId: page.groupId, tags: page.tags, blocks: page.blocks, arrows: page.arrows, drawing: page.drawing ?? null, color: page.color ?? null, kind: kindOf(page), dailyDate: cleanDate(page.dailyDate), sheet: cleanSheet(page.sheet), ...(page.cover ? { cover: page.cover } : {}), ...(cleanIcon(page.icon) ? { icon: cleanIcon(page.icon)! } : {}),
+        id: page.id, title: page.title, groupId: page.groupId, tags: page.tags, blocks: page.blocks, arrows: page.arrows, drawing: page.drawing ?? null, color: page.color ?? null, kind: kindOf(page), dailyDate: cleanDate(page.dailyDate), sheet: cleanSheet(page.sheet), ...(page.cover ? { cover: page.cover } : {}), ...(cleanIcon(page.icon) ? { icon: cleanIcon(page.icon)! } : {}), ...(page.archived === true ? { archived: true } : {}),
         created: page.created, updated: page.updated, rev, etag: newEtag(), synced: existing?.synced ?? null, deleted: false,
       });
       await tx.done;

@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { isModuleLoadFailure, nextHeal, parseHealState } from './lib/bootHeal';
 import { useRoute } from './lib/route';
 import { initNotes, useNotes } from './store/notes';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
@@ -30,6 +31,24 @@ export function App() {
     void initNotes();
   }, []);
 
+  // A script that would not load (the dev server restarted, or was still bundling): reload by itself a few times before showing an error.
+  const [healing, setHealing] = useState(false);
+  useEffect(() => {
+    if (status !== 'failed' || !isModuleLoadFailure(error)) return;
+    let key = 'ui.bootHeal';
+    let next: ReturnType<typeof nextHeal>;
+    try {
+      next = nextHeal(parseHealState(sessionStorage.getItem(key)), Date.now());
+      if (next.reload) sessionStorage.setItem(key, JSON.stringify(next.state));
+    } catch {
+      return; // no storage: leave the message and the button
+    }
+    if (!next.reload) return;
+    setHealing(true);
+    const t = window.setTimeout(() => location.reload(), next.delayMs);
+    return () => window.clearTimeout(t);
+  }, [status, error]);
+
   // Ctrl+Alt+D opens the Journal at today from anywhere (today's page is made from the daily template if it doesn't exist yet).
   useEffect(() => {
     if (status !== 'ready') return;
@@ -54,6 +73,7 @@ export function App() {
   }, [status]);
 
   if (status === 'loading') return <div className="loading">Opening your notes…</div>;
+  if (status === 'failed' && healing) return <div className="loading">Reconnecting…</div>;
   if (status === 'failed') {
     return (
       <div className="loading">

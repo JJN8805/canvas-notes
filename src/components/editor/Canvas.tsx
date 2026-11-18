@@ -32,6 +32,8 @@ import { kindClass } from '../../lib/note';
 
 const kindClassOf = (b: { type: string; style?: unknown } | undefined) => (b ? kindClass(b) : '');
 import { liveDrawing, svgSrc } from '../../lib/drawing';
+import { PHONE_QUERY, fitWidthStart } from '../../lib/phoneView';
+import { COARSE } from '../../lib/touch';
 import {
   blockHeight,
   clamp,
@@ -325,6 +327,24 @@ export function Canvas({ pageId }: { pageId: string }) {
     const f = fitView(content, v.clientWidth, v.clientHeight, MIN_ZOOM);
     setView({ zoom: f.zoom, left: f.x * f.zoom, top: f.y * f.zoom });
   }, [setView]);
+
+  /** On a phone a page opens at a readable size, fitted to the screen's width, from the top left of what is on it (not at 100% with most of it off screen). */
+  const startOnPhone = useCallback(() => {
+    const v = viewportRef.current;
+    if (!v || !matchMedia(PHONE_QUERY).matches || !v.clientWidth) return;
+    const boxes: Rect[] = blocksRef.current.map((b) => ({ x: b.x, y: b.y, w: b.w, h: heights.current.get(b.id) ?? blockHeight(b) }));
+    const ink = liveDrawing(drawingRef.current);
+    if (ink) boxes.push(ink);
+    const sh = sheetRef.current;
+    const content = sh ? { minX: sh.x, minY: sh.y, maxX: sh.x + sh.w, maxY: sh.y + sh.h } : contentBounds(boxes);
+    if (!content) return;
+    const f = fitWidthStart(content, v.clientWidth);
+    setView({ zoom: f.zoom, left: f.x * f.zoom, top: f.y * f.zoom });
+  }, [setView]);
+  useEffect(() => {
+    const t = window.setTimeout(startOnPhone, 80); // after the first layout
+    return () => window.clearTimeout(t);
+  }, [pageId, startOnPhone]);
 
   /** Zooms and scrolls so the selected boxes (and what is inside a selected frame) fill the view. */
   const fitSelection = useCallback(() => {
@@ -1006,7 +1026,7 @@ export function Canvas({ pageId }: { pageId: string }) {
       {hand && (
         <div className="hand-badge" role="status">
           Hand tool: drag to move around
-          <button onClick={() => setHand(false)}>Done (Esc)</button>
+          <button onClick={() => setHand(false)}>{COARSE ? 'Done' : 'Done (Esc)'}</button>
         </div>
       )}
       {dropping && <div className="drop-hint">Drop images to place them here</div>}

@@ -102,6 +102,7 @@ export async function restoreBackup(storage: NotesStorage, backup: Backup): Prom
       sheet: p.sheet,
       cover: p.cover,
       icon: p.icon,
+      archived: p.archived,
       created: p.created,
       updated: p.updated,
     });

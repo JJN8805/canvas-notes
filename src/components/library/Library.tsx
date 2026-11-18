@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Filter, Group } from '../../types';
 import { searchPages } from '../../lib/search';
 import { listedPages } from '../../lib/pages';
@@ -10,8 +10,11 @@ import { Icon } from '../ui/Icon';
 import { SyncButton } from '../sync/SyncPanel';
 import { openNewPage } from './shared';
 import { EmptyState } from './EmptyState';
+import { PhoneTabs } from './PhoneTabs';
+import { usePhone } from '../ui/usePhone';
 import { TemplatesView } from './TemplatesView';
 import { TrashView } from './TrashView';
+import { ArchiveView } from './ArchiveView';
 import { Sidebar } from './Sidebar';
 import { Crumbs, GroupCard, GroupsView, TagsView } from './Browse';
 import { PageCard } from './PageCard';
@@ -31,6 +34,7 @@ function filterTitle(f: Filter, groups: Group[]): string {
   if (f.kind === 'tags') return 'Tags';
   if (f.kind === 'cards') return 'Cards';
   if (f.kind === 'trash') return 'Trash';
+  if (f.kind === 'archive') return 'Archive';
   if (f.kind === 'templates') return 'Templates';
   if (f.kind === 'addon') return 'Chat';
   if (f.kind === 'journal') return 'Journal';
@@ -57,12 +61,14 @@ function useOffScreen(kind: Filter['kind']): boolean {
   const groups = useFeature('groups');
   const tags = useFeature('tags');
   const templates = useFeature('templates');
+  const archive = useFeature('archive');
   return (
     (kind === 'journal' && !journal) ||
     (kind === 'cards' && !cards) ||
     ((kind === 'groups' || kind === 'group' || kind === 'ungrouped') && !groups) ||
     ((kind === 'tags' || kind === 'tag') && !tags) ||
-    (kind === 'templates' && !templates)
+    (kind === 'templates' && !templates) ||
+    (kind === 'archive' && !archive)
   );
 }
 
@@ -129,14 +135,16 @@ export function Library() {
     return out;
   }, [all, filter, query, sort, groupIds, inGroup, groups]);
 
+  const phone = usePhone();
+  const [moreOpen, setMoreOpen] = useState(false);
   const groupById = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups]);
   const summaries = useMemo(() => groupSummaries(groups, all), [groups, all]);
   const subgroups = useMemo(() => (filter.kind === 'group' ? childSummaries(summaries, filter.id) : []), [summaries, filter]);
 
   return (
-    <div className={'library' + (sidebarOpen ? '' : ' side-closed')}>
-      <Sidebar pages={all} groups={groups} filter={filter} />
-      {!sidebarOpen && (
+    <div className={'library' + (sidebarOpen ? '' : ' side-closed') + (phone ? ' phone' : '')}>
+      {phone ? <PhoneTabs pages={all} groups={groups} filter={filter} more={moreOpen} setMore={setMoreOpen} /> : <Sidebar pages={all} groups={groups} filter={filter} />}
+      {!phone && !sidebarOpen && (
         <button className="icon-btn side-open" onClick={toggleSidebar} aria-label="Show sidebar" title={`Show sidebar (${MOD_LABEL}+\\)`}>
           <Icon name="sidebar" size={18} />
         </button>
@@ -144,6 +152,8 @@ export function Library() {
       <main className={'main' + (filter.kind === 'journal' ? ' main-journal' : '')}>
         {filter.kind === 'trash' ? (
           <TrashView />
+        ) : filter.kind === 'archive' ? (
+          <ArchiveView />
         ) : filter.kind === 'templates' ? (
           <TemplatesView />
         ) : filter.kind === 'journal' ? (
@@ -191,7 +201,7 @@ export function Library() {
               <option value="title">Title A–Z</option>
             </select>
             {syncOn && <SyncButton />}
-            <button className="btn primary" onClick={openNewPage}>
+            <button className="btn primary new-page-btn" onClick={openNewPage}>
               <Icon name="plus" size={16} />
               {canvasOn ? 'New page' : 'New…'}
             </button>

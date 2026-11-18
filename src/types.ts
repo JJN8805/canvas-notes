@@ -100,12 +100,22 @@ export interface NoteBlock extends BlockBase {
   /** The text of a code note. Absent for the other styles. */
   code?: string;
   fill?: boolean;
+  /**
+   * An optional header row on a text box: its title, shown above the text with a fold arrow. Absent = no header; '' = a header with no title yet.
+   * Only on the 'text' style. Older app versions ignore it (they show the text without the header).
+   */
+  header?: string;
+  /** With a header: the box is folded down to just its header. */
+  folded?: boolean;
   /** Set on the text of a Workspace document. */
   doc?: DocMeta;
 }
 export interface ImageBlock extends BlockBase {
   type: 'image';
+  /** The stored file: a picture or GIF, or (with `video`) a video. */
   imageId: string;
+  /** The stored file is a video, not a picture (a card's cover can be one). Absent = a picture. Older app versions would show it as a broken picture. */
+  video?: boolean;
   aspect: number;
   alt?: string;
   /** Text read from the picture by the OCR add-on, so search can find it. Absent = none. Older app versions ignore it. */
@@ -242,6 +252,8 @@ export interface Page {
   cover?: string | null;
   /** One emoji or short mark shown beside the page's name (library, sidebar, switcher). Absent or null = none. Older app versions ignore it. */
   icon?: string | null;
+  /** Put in the Archive: kept (stored, synced, backed up, pictures and all) but out of the library, search and counts. Absent = not archived. Older app versions ignore it. */
+  archived?: boolean;
   created: number;
   updated: number;
   /** Revision stored on disk. 0 means never saved. Used to detect edits from another window. */
@@ -272,6 +284,8 @@ export type Filter =
   | { kind: 'cards' }
   | { kind: 'tag'; tag: string }
   | { kind: 'trash' }
+  /** Pages and cards put away with Archive. */
+  | { kind: 'archive' }
   | { kind: 'templates' }
   /** The Journal: the daily pages as a book. */
   | { kind: 'journal' }

@@ -1,3 +1,4 @@
+import { COARSE } from '../../lib/touch';
 import { useEffect, useRef } from 'react';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -38,7 +39,7 @@ export function TextBody({ block }: { block: NoteBlock }) {
             },
       ),
       ...(sticky ? [] : richExtensions),
-      Placeholder.configure({ placeholder: sticky ? 'Note… (/ for boxes)' : hasEmptyTextSpace() ? 'Type, / for boxes, or space for AI' : 'Type something, or / for boxes' }),
+      Placeholder.configure({ placeholder: COARSE ? (sticky ? 'Note…' : 'Type something…') : sticky ? 'Note… (/ for boxes)' : hasEmptyTextSpace() ? 'Type, / for boxes, or space for AI' : 'Type something, or / for boxes' }),
     ],
     content: block.html,
     immediatelyRender: true,

@@ -1,3 +1,4 @@
+import { COARSE } from '../../lib/touch';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, type IconName } from './Icon';
 import { chooseDailyTemplate, getStorage, refreshFromDisk, useNotes } from '../../store/notes';
@@ -590,6 +591,7 @@ function AboutTab() {
           ))}
         </ul>
       </Section>
+      {!COARSE && (
       <Section title="Keyboard shortcuts">
         <p className="muted">Press <kbd>?</kbd> on a page to see this list there.</p>
         <QuickKeys />
@@ -605,6 +607,7 @@ function AboutTab() {
           </div>
         ))}
       </Section>
+      )}
     </>
   );
 }

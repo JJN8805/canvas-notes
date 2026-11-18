@@ -70,9 +70,9 @@ describe('telling files apart', () => {
 });
 
 describe('what the file store accepts', () => {
-  it('takes audio and PDFs from a peer, still refuses anything else', () => {
-    for (const mime of ['application/pdf', 'audio/mpeg', 'audio/webm', 'audio/wav', 'image/png']) expect(() => assertSafeFile({ id: 'ok1', mime }), mime).not.toThrow();
-    for (const mime of ['text/html', 'application/javascript', 'audio/webm;codecs=opus', 'video/mp4']) expect(() => assertSafeFile({ id: 'ok1', mime }), mime).toThrow();
+  it('takes audio, PDFs and videos from a peer, still refuses anything else', () => {
+    for (const mime of ['application/pdf', 'audio/mpeg', 'audio/webm', 'audio/wav', 'image/png', 'video/mp4', 'video/webm']) expect(() => assertSafeFile({ id: 'ok1', mime }), mime).not.toThrow();
+    for (const mime of ['text/html', 'application/javascript', 'audio/webm;codecs=opus', 'video/x-matroska', 'video/mpeg']) expect(() => assertSafeFile({ id: 'ok1', mime }), mime).toThrow();
     expect(() => assertSafeFile({ id: '../x', mime: 'application/pdf' })).toThrow();
   });
 

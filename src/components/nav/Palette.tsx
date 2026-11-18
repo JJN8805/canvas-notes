@@ -1,3 +1,4 @@
+import { COARSE } from '../../lib/touch';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { closeNav, useNav } from '../../store/nav';
 import { useNotes } from '../../store/notes';
@@ -13,6 +14,7 @@ interface Row {
   key: string;
   label: string;
   hint?: string;
+  keys?: string;
   icon?: IconName;
   run: () => void;
 }
@@ -36,7 +38,7 @@ function PaletteBody({ mode }: { mode: 'commands' | 'switcher' }) {
 
   const rows = useMemo<Row[]>(() => {
     if (mode === 'commands') {
-      const all = buildCommands().map((c) => ({ key: c.id, label: c.title, hint: c.keys, icon: c.icon, run: c.run }));
+      const all = buildCommands().map((c) => ({ key: c.id, label: c.title, keys: c.keys, icon: c.icon, run: c.run }));
       return fuzzyFilter(all, query, (r) => r.label);
     }
     // With nothing typed, starred pages come first and then the latest edited (Notion's and Linear's switchers do the same).
@@ -98,6 +100,7 @@ function PaletteBody({ mode }: { mode: 'commands' | 'switcher' }) {
               {r.icon && <span className="palette-ico"><Icon name={r.icon} size={16} /></span>}
               <span className="palette-label">{r.label}</span>
               {r.hint && <span className="palette-hint">{r.hint}</span>}
+              {r.keys && !COARSE && <span className="palette-hint">{r.keys}</span>}
             </li>
           ))}
           {rows.length === 0 && <li className="palette-empty">{mode === 'commands' ? 'No matching command' : 'No matching page'}</li>}

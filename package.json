@@ -30,7 +30,8 @@
     "audit:deps": "node scripts/audit-check.mjs",
     "phone": "bash scripts/phone.sh",
     "phone:live": "bash scripts/phone.sh live",
-    "phone:build": "bash scripts/phone.sh build"
+    "phone:build": "bash scripts/phone.sh build",
+    "desktop:app": "tauri build --debug --no-bundle && ./src-tauri/target/debug/canvas-notes"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",

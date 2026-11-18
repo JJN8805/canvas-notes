@@ -46,3 +46,18 @@ describe('feature switches', () => {
     expect(buildProfile('nonsense').id).toBe('everything');
   });
 });
+
+describe('the Archive feature', () => {
+  it('is a switchable feature in the Pages section: on for everything and notes, off in the Word and Excel only sets', () => {
+    const f = FEATURES.find((x) => x.id === 'archive');
+    expect(f).toBeDefined();
+    expect(f!.section).toBe('Pages');
+    const by = (id: string) => PROFILES.find((p) => p.id === id)!;
+    for (const id of ['everything', 'notes']) expect(by(id).off).not.toContain('archive');
+    for (const id of ['office', 'documents']) expect(by(id).off).toContain('archive');
+  });
+  it('can be switched off', () => {
+    expect(isFeatureOn(['archive'], 'archive')).toBe(false);
+    expect(isFeatureOn([], 'archive')).toBe(true);
+  });
+});

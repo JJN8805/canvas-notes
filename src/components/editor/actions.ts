@@ -1,3 +1,4 @@
+import { COARSE } from '../../lib/touch';
 import { flushSync } from 'react-dom';
 import type { AddKind, Block } from '../../types';
 import { addBlock, deleteBlocks, duplicateBlocks, getStorage, setLocked, undo, useNotes } from '../../store/notes';
@@ -102,6 +103,6 @@ export function canvasMenu(pageId: string, at: Point, focus: (id: string) => voi
     { label: `Zoom to fit  (${MOD_LABEL}+1)`, action: () => api?.fit() },
     { label: `Hand tool  (${usePrefs.getState().keymap.hand})`, check: useCanvas.getState().hand, action: () => setHand(!useCanvas.getState().hand) },
     { label: `Show the map  (${usePrefs.getState().keymap.minimap})`, check: usePrefs.getState().minimap, action: () => setMinimap(!usePrefs.getState().minimap, getStorage()) },
-    { label: 'Keyboard shortcuts  (?)', action: openShortcuts },
+    ...(COARSE ? [] : [{ label: 'Keyboard shortcuts  (?)', action: openShortcuts } as MenuItem]),
   ];
 }
