@@ -21,6 +21,7 @@ import { useDraw } from './store/draw';
 import { useUi } from './store/ui';
 import { initSync } from './sync/controller';
 import { setupDesktopWidgets } from './widgets';
+import { startAutoArchive } from './store/autoArchive';
 
 export function App() {
   const status = useNotes((s) => s.status);
@@ -66,6 +67,11 @@ export function App() {
   useEffect(() => {
     if (status === 'ready' && syncOn) void initSync().catch((e) => console.error('Sync setup failed', e));
   }, [status, syncOn]);
+
+  // The automatic archive file (laptop app only, and only when switched on in Settings → Data).
+  useEffect(() => {
+    if (status === 'ready') startAutoArchive();
+  }, [status]);
 
   // Bring back the desktop widgets (laptop app only).
   useEffect(() => {

@@ -43,6 +43,11 @@ export function parseBackup(text: string): Backup {
   } catch {
     throw new Error('That file isn’t a Canvas Notes backup.');
   }
+  return cleanBackup(raw);
+}
+
+/** A backup object (from a .json file or an unpacked archive), checked and repaired: anything that is not safe or not known is left out. */
+export function cleanBackup(raw: Partial<Backup>): Backup {
   if (!raw || raw.format !== FORMAT || !Array.isArray(raw.pages)) throw new Error('That file isn’t a Canvas Notes backup.');
   if (raw.version !== 1) throw new Error('That backup was made by a newer version of Canvas Notes. Update the app and try again.');
   const str = (v: unknown) => typeof v === 'string' && v !== '';

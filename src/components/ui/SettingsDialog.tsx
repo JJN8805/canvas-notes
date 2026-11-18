@@ -18,6 +18,9 @@ import { closeSettings, useSettingsUi } from '../../store/settingsUi';
 import { resolveDailyTemplate, templatesOf } from '../../lib/pages';
 import { MAX_NAME, PROFILE_COLORS, TRASH_CHOICES, type Theme } from '../../lib/settings';
 import { buildBackup, parseBackup, restoreBackup } from '../../lib/backup';
+import { backupToZip, isZip, zipToBackup } from '../../lib/archiveZip';
+import { archiveFolder, autoArchiveAvailable, loadAutoState, runAutoArchive, saveAutoConfig, type AutoState } from '../../store/autoArchive';
+import type { AutoArchive } from '../../lib/autoArchive';
 import { decryptBackupText, encryptBackupText, isEncryptedBackup } from '../../lib/backupCrypto';
 import { saveBytes } from '../../export/export';
 import { openSyncPanel, useSync } from '../../sync/controller';
@@ -327,6 +330,62 @@ function SyncTab() {
 
 /* ---------------- Data ---------------- */
 
+/** The automatic archive file: a dated .zip made for you, daily or weekly, the newest few kept in the app's folder. */
+function AutoArchiveSection() {
+  const [state, setState] = useState<AutoState | null>(null);
+  const [folder, setFolder] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    void loadAutoState().then(setState);
+    void archiveFolder().then(setFolder).catch(() => {});
+  }, []);
+  if (!state) return null;
+  const change = async (cfg: AutoArchive) => {
+    await saveAutoConfig(cfg);
+    setState({ ...state, cfg });
+  };
+  const when = state.last ? new Date(state.last).toLocaleString() : 'never';
+  return (
+    <Section title="Automatic archive">
+      <p>Keeps a dated archive file of everything (pages, pictures, GIFs, videos, audio and PDFs) in a folder on this computer, so there is always a recent copy to go back to. The newest few are kept; older ones are removed. Last one: {when}.</p>
+      <label className="set-row">
+        <span>Make an archive</span>
+        <select className="field" value={state.cfg.mode} onChange={(e) => void change({ ...state.cfg, mode: e.target.value as AutoArchive['mode'] })}>
+          <option value="off">Never</option>
+          <option value="daily">Every day</option>
+          <option value="weekly">Every week</option>
+        </select>
+      </label>
+      <label className="set-row">
+        <span>Keep the newest</span>
+        <select className="field" value={state.cfg.keep} onChange={(e) => void change({ ...state.cfg, keep: Number(e.target.value) })}>
+          {[1, 2, 4, 7, 14, 30].map((n) => (
+            <option key={n} value={n}>{n} archive{n === 1 ? '' : 's'}</option>
+          ))}
+        </select>
+      </label>
+      <div className="row start">
+        <button
+          className="btn"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            const name = await runAutoArchive(true);
+            setBusy(false);
+            if (name) {
+              toast(`Saved ${name}`);
+              setState(await loadAutoState());
+            }
+          }}
+        >
+          Make one now
+        </button>
+      </div>
+      {folder && <p className="muted">Folder: {folder}</p>}
+    </Section>
+  );
+}
+
 function DataTab() {
   const trashDays = usePrefs((s) => s.trashDays);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -367,16 +426,37 @@ function DataTab() {
     }
   }
 
+  /** One .zip with the pages and every picture, GIF, video, audio clip and PDF as normal files: for keeping, not for the app only. */
+  async function exportZip() {
+    setBusy(true);
+    try {
+      const backup = await buildBackup(getStorage());
+      const day = new Date().toISOString().slice(0, 10);
+      const saved = await saveBytes(`canvas-notes-archive-${day}`, 'zip', backupToZip(backup));
+      if (saved) toast(`Saved ${backup.pages.length} page${backup.pages.length === 1 ? '' : 's'} and ${backup.images.length} file${backup.images.length === 1 ? '' : 's'} to ${saved}`);
+    } catch (e) {
+      toast(`The archive couldn’t be saved: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function importFile(file: File) {
     setBusy(true);
     try {
-      let text = await file.text();
-      if (isEncryptedBackup(text)) {
-        const passphrase = await ask({ title: 'This backup is encrypted', text: 'Enter the passphrase you chose when you made it.', placeholder: 'Passphrase', okLabel: 'Open', secret: true });
-        if (passphrase === null) return;
-        text = await decryptBackupText(text, passphrase);
+      const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+      let backup;
+      if (isZip(head)) {
+        backup = zipToBackup(new Uint8Array(await file.arrayBuffer())); // an archive file
+      } else {
+        let text = await file.text();
+        if (isEncryptedBackup(text)) {
+          const passphrase = await ask({ title: 'This backup is encrypted', text: 'Enter the passphrase you chose when you made it.', placeholder: 'Passphrase', okLabel: 'Open', secret: true });
+          if (passphrase === null) return;
+          text = await decryptBackupText(text, passphrase);
+        }
+        backup = parseBackup(text);
       }
-      const backup = parseBackup(text);
       const ok = await confirmDanger(
         'Restore from backup?',
         `This adds ${backup.pages.length} page${backup.pages.length === 1 ? '' : 's'} from the backup. Pages you already have are left as they are.`,
@@ -409,12 +489,16 @@ function DataTab() {
           <button className="btn" disabled={busy} title="Locks the file with a passphrase you choose" onClick={() => void exportAll(true)}>
             Encrypted backup…
           </button>
-          <button className="btn" disabled={busy} onClick={() => fileRef.current?.click()}>
-            Restore from backup…
+          <button className="btn" disabled={busy} title="One .zip with your pages and every picture, video and audio clip as normal files" onClick={() => void exportZip()}>
+            Archive file (.zip)…
           </button>
-          <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={(e) => e.target.files?.[0] && void importFile(e.target.files[0])} />
+          <button className="btn" disabled={busy} onClick={() => fileRef.current?.click()}>
+            Restore from backup or archive…
+          </button>
+          <input ref={fileRef} type="file" accept=".json,.zip,application/json,application/zip" hidden onChange={(e) => e.target.files?.[0] && void importFile(e.target.files[0])} />
         </div>
       </Section>
+      {autoArchiveAvailable() && <AutoArchiveSection />}
       <StorageSection />
       <Section title="Trash">
         <label className="set-row">
