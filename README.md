@@ -211,7 +211,20 @@ Building for Android needs Android Studio, which brings the Android SDK, the NDK
 6. **Create the Android project** (once): `npm run android:init`
 7. **Run it on the phone:** `npm run android:dev`. The phone must be on the same Wi-Fi as the laptop, because it loads the app from the laptop while you develop.
 
-**To install the app permanently,** run `npm run android:apk`. The APK appears in `src-tauri/gen/android/app/build/outputs/apk/`. Copy it to the phone and open it, or run `adb install <file>.apk`.
+**The development app on your phone, kept in step with the project.** Once the setup above is done, one command puts the current code on the phone:
+
+```bash
+npm run phone          # build the current code, install it over the old copy, open it
+npm run phone:live     # live reload: edits show on the phone as you save (same Wi-Fi as the laptop)
+npm run phone:build    # only build the APK
+scripts/phone.sh connect 192.168.1.20:37000   # use the phone over Wi-Fi instead of a cable (Developer options → Wireless debugging)
+```
+
+`npm run phone` installs with `adb install -r`, which **keeps the app's data**: the notes on the phone and its sync pairing survive every update, and the app upgrades its own database the first time it opens. Run it again whenever the project changes. With several phones plugged in, set `ANDROID_SERIAL=<serial>` (`scripts/phone.sh devices` lists them). If the install says the copy on the phone was signed with a different key, sync first, uninstall the app on the phone (its notes come back from the laptop on the next sync) and run the command again. Uninstalling wipes the phone's copy; the laptop keeps its own.
+
+Then pair it once (section 3 below). From then on whatever you write on either device reaches the other, and an update to the project reaches the phone with `npm run phone`. Keep the laptop and phone on the same version: a phone older than the laptop is refused by sync until it is updated.
+
+**To install the app permanently without the laptop script,** run `npm run android:apk`. The APK appears in `src-tauri/gen/android/app/build/outputs/apk/`. Copy it to the phone and open it, or run `adb install <file>.apk`.
 
 This is a debug build, which is fine for your own phone. A Play Store release needs a signing key; see https://v2.tauri.app/distribute/sign/android/.
 

@@ -27,7 +27,10 @@
     "android:dev": "tauri android dev",
     "android:apk": "tauri android build --apk --debug",
     "visual": "node scripts/visual-check.mjs",
-    "audit:deps": "node scripts/audit-check.mjs"
+    "audit:deps": "node scripts/audit-check.mjs",
+    "phone": "bash scripts/phone.sh",
+    "phone:live": "bash scripts/phone.sh live",
+    "phone:build": "bash scripts/phone.sh build"
   },
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",
