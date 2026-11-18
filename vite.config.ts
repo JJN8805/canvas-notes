@@ -51,7 +51,7 @@ export default defineConfig(({ command }) => ({
       '@tauri-apps/plugin-sql',
       'html-to-image',
       // Everything the app imports at run time, so none of it is found late (which re-bundles and breaks the open window).
-      'idb', 'dompurify', 'fflate', 'immer', 'turndown', 'zustand', 'zustand/middleware/immer', 'react', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-dom', 'react-dom/client',
+      'idb', 'dompurify', 'fflate', 'immer', 'turndown', 'zustand', 'zustand/middleware/immer', 'qrcode-generator', 'react', 'react/jsx-runtime', 'react/jsx-dev-runtime', 'react-dom', 'react-dom/client',
       '@tiptap/react', '@tiptap/starter-kit', '@tiptap/extensions',
       'pdfjs-dist/legacy/build/pdf.mjs', '@excalidraw/excalidraw',
     ],

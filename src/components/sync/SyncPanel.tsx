@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import qrcode from 'qrcode-generator';
+import { pairingLink, parsePairing } from '../../lib/pairing';
 import {
   closeSyncPanel,
   connect,
@@ -146,6 +148,7 @@ function LaptopSync() {
               </button>
             </div>
           </div>
+          {s.addresses[0] && <PairingLink address={s.addresses[0]} code={s.code} />}
           <p className="muted small-text">
             {s.lastPhoneSync ? `Last synced with a phone ${ago(s.lastPhoneSync)}.` : 'No phone has synced yet.'} The app needs to be open on
             this laptop for your phone to sync.
@@ -180,10 +183,43 @@ function LaptopSync() {
   );
 }
 
+/** The address and code as one link, and as a QR code: on the phone's camera app the QR shows the text to copy and paste into Canvas Notes. */
+function PairingLink({ address, code }: { address: string; code: string }) {
+  const link = pairingLink(address, code);
+  const qr = useMemo(() => {
+    try {
+      const q = qrcode(0, 'M');
+      q.addData(link);
+      q.make();
+      return q.createDataURL(5, 8);
+    } catch {
+      return '';
+    }
+  }, [link]);
+  return (
+    <div className="pair-link">
+      <div className="k">Pairing link (address and code in one)</div>
+      <div className="v">
+        <code className="code pair-text">{link}</code>
+        <button className="btn small" onClick={() => void copy(link, 'Pairing link')}>
+          Copy
+        </button>
+      </div>
+      {qr && (
+        <div className="pair-qr">
+          <img src={qr} alt="QR code of the pairing link" width={170} height={170} />
+          <p className="muted small-text">Point your phone’s camera at this, copy the text it shows, and paste it into <strong>Sync → Pairing link</strong> in Canvas Notes on the phone. It fills in the address and the code for you.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PhoneSync() {
   const s = useSync();
   const [address, setAddress] = useState(s.peerAddress);
   const [code, setCode] = useState('');
+  const [link, setLink] = useState('');
 
   if (!s.connected) {
     return (
@@ -198,6 +234,28 @@ function PhoneSync() {
           On the laptop, open Canvas Notes, choose Sync and turn on phone sync. It shows the address and pairing code to enter here.
           Both devices need to be on the same Wi-Fi.
         </p>
+        <label className="field-label" htmlFor="sync-link">
+          Pairing link (optional)
+        </label>
+        <input
+          id="sync-link"
+          className="field"
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          placeholder="Paste the link from the laptop: it fills in both boxes"
+          value={link}
+          onChange={(e) => {
+            setLink(e.target.value);
+            const p = parsePairing(e.target.value);
+            if (p) {
+              setAddress(p.address);
+              setCode(p.code);
+            }
+          }}
+        />
+        {link && !parsePairing(link) && <p className="sync-error">That doesn’t look like the laptop’s pairing link. You can still type the address and code below.</p>}
+        {link && parsePairing(link) && <p className="muted small-text">Link read: address and code filled in below.</p>}
         <label className="field-label" htmlFor="sync-address">
           Laptop address
         </label>

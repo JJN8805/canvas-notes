@@ -52,6 +52,7 @@
     "idb": "^8.0.3",
     "immer": "^11.1.18",
     "pdfjs-dist": "6.5.438",
+    "qrcode-generator": "^2.0.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "turndown": "^7.2.4",

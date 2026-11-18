@@ -1678,3 +1678,10 @@ span.note-title { display: flex; align-items: center; overflow: hidden; white-sp
 @media (max-width: 760px) {
   .select-bar { position: fixed; left: 8px; right: 8px; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); width: auto; z-index: 45; justify-content: center; }
 }
+
+/* The pairing link and its QR code (Sync, on the laptop). */
+.pair-link { margin-top: 14px; }
+.pair-text { overflow-wrap: anywhere; font-size: 12px; }
+.pair-qr { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.pair-qr img { image-rendering: pixelated; background: #fff; padding: 6px; border-radius: 8px; border: 1px solid var(--rule); }
+.pair-qr p { flex: 1 1 200px; margin: 0; }
