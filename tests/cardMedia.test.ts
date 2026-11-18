@@ -147,3 +147,15 @@ describe('a video in the desktop database, sync and a backup', () => {
     expect((await fresh.sync.readImage(id))?.mime).toBe('video/mp4');
   });
 });
+
+import { kindOfFile } from '../src/lib/media';
+describe('videos on ordinary pages', () => {
+  it('are recognised as their own kind of file (a typed video, not an audio .mp4)', () => {
+    expect(kindOfFile({ type: 'video/mp4', name: 'a.mp4' })).toBe('video');
+    expect(kindOfFile({ type: 'video/webm' })).toBe('video');
+    expect(kindOfFile({ type: 'audio/mp4', name: 'a.m4a' })).toBe('audio');
+    expect(kindOfFile({ type: '', name: 'song.mp4' })).toBe('audio'); // no type: stays what it always was
+    expect(kindOfFile({ type: 'image/gif' })).toBe('image');
+    expect(kindOfFile({ type: 'video/x-matroska', name: 'a.mkv' })).toBeNull();
+  });
+});

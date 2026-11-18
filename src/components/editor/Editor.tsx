@@ -678,7 +678,7 @@ function AddToolbar({ pageId }: { pageId: string }) {
       <input
         ref={fileRef}
         type="file"
-        accept="image/*"
+        accept="image/*,video/mp4,video/webm,video/quicktime,video/ogg"
         multiple
         className="sr"
         tabIndex={-1}

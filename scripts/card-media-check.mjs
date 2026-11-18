@@ -124,6 +124,28 @@ await page.click('.nav-item:has-text("Cards")');
 await page.waitForSelector('.ctile video', { timeout: 20000 });
 check('after a reload the card still shows its video', (await page.locator('.ctile-cover video').count()) === 1);
 
+/* ---- a picture box on an ordinary page: a GIF and a video ---- */
+await page.click('.nav-item:has-text("All pages")');
+await page.click('button:has-text("Open an example page")');
+await page.waitForSelector('.world');
+const imgInput = page.locator('.tools input[type=file]').first();
+check('the Image tool takes videos as well as pictures', /video\/mp4/.test(await imgInput.getAttribute('accept')));
+const blocksBefore = await page.locator('.world .block.b-image').count();
+await imgInput.setInputFiles([gifPath, webm]);
+await page.waitForFunction((n) => document.querySelectorAll('.world .block.b-image').length >= n + 2, blocksBefore, { timeout: 20000 });
+check('a GIF and a video each become a picture box', (await page.locator('.world .block.b-image img').count()) >= 1 && (await page.locator('.world .block.b-image video').count()) === 1);
+const vbox = page.locator('.world .block.b-image:has(video)');
+await vbox.click({ position: { x: 20, y: 20 }, force: true });
+await page.waitForTimeout(300);
+check('a video box has Play / Pause and Sound in its bar', (await vbox.locator('.bar button[aria-label="Play or pause the video"]').count()) === 1 && (await vbox.locator('.bar button[aria-label="Turn the sound on or off"]').count()) === 1);
+await vbox.locator('.bar button[aria-label="Play or pause the video"]').click({ force: true });
+await page.waitForTimeout(500);
+check('Play starts it', await vbox.locator('video').evaluate((v) => !v.paused));
+await vbox.locator('.bar button[aria-label="Play or pause the video"]').click({ force: true });
+await page.waitForTimeout(300);
+check('and Pause stops it', await vbox.locator('video').evaluate((v) => v.paused));
+await page.screenshot({ path: join(OUT, 'page-video.png') });
+
 /* ---- a card on a page ---- */
 check('no console errors', errors.length === 0, errors.join(' | '));
 console.log('screenshots in', OUT);

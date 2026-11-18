@@ -1,7 +1,7 @@
 /** Audio and PDF files: telling what a file is, limits, and how to show sizes and times. Pure, so it is tested without a browser. */
 import { FILE_EXT, MEDIA_EXT, VIDEO_EXT } from '../storage/validate';
 
-export type FileKind = 'image' | 'audio' | 'pdf';
+export type FileKind = 'image' | 'audio' | 'pdf' | 'video';
 
 /** The most one video may weigh: it is kept on every device and sent whole when syncing. */
 export const MAX_VIDEO_BYTES = 40 * 1024 * 1024;
@@ -64,6 +64,8 @@ export function mimeOf(file: { type: string; name?: string }): string {
 
 /** What the app does with a dropped or chosen file, or null when it can't be placed on a page. */
 export function kindOfFile(file: { type: string; name?: string }): FileKind | null {
+  // A file that says it is a video is one (an extension alone can't tell a .mp4 video from a .mp4 audio file).
+  if (file.type.split(';')[0].trim().toLowerCase().startsWith('video/') && isVideoFile(file)) return 'video';
   const m = mimeOf(file);
   if (m === 'application/pdf') return 'pdf';
   if (Object.prototype.hasOwnProperty.call(MEDIA_EXT, m)) return 'audio';

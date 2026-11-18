@@ -33,12 +33,13 @@ describe('telling files apart', () => {
     expect(mimeOf({ type: '', name: 'notes.txt' })).toBe('');
   });
 
-  it('sorts files into pictures, audio, PDFs, and nothing', () => {
+  it('sorts files into pictures, videos, audio, PDFs, and nothing', () => {
     expect(kindOfFile({ type: 'image/png' })).toBe('image');
     expect(kindOfFile({ type: 'audio/mpeg', name: 'a.mp3' })).toBe('audio');
     expect(kindOfFile({ type: 'application/pdf' })).toBe('pdf');
     expect(kindOfFile({ type: '', name: 'x.wav' })).toBe('audio');
-    for (const bad of [{ type: 'text/html' }, { type: 'video/mp4', name: 'v.mp4' }, { type: 'application/zip' }, { type: '' }]) expect(kindOfFile(bad), JSON.stringify(bad)).toBeNull();
+    expect(kindOfFile({ type: 'video/mp4', name: 'v.mp4' })).toBe('video');
+    for (const bad of [{ type: 'text/html' }, { type: 'video/x-matroska', name: 'v.mkv' }, { type: 'application/zip' }, { type: '' }]) expect(kindOfFile(bad), JSON.stringify(bad)).toBeNull();
   });
 
   it('refuses empty, oversized and wrong-kind files with a reason', () => {

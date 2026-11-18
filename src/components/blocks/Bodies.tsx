@@ -1,3 +1,4 @@
+import { COARSE } from '../../lib/touch';
 import { Fragment, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import type { Draft } from 'immer';
@@ -259,9 +260,25 @@ export function ImageBody({ block }: { block: ImageBlock }) {
   const { startMove } = useCanvasCtx();
   const url = useImageUrl(block.imageId);
   return (
-    <div className="body" onPointerDown={(e) => startMove(e, block.id)}>
+    <div
+      className="body"
+      onPointerDown={(e) => startMove(e, block.id)}
+      // The picture ignores the pointer (so the box can be dragged), so the hover that plays a video is on the box.
+      onMouseEnter={block.video && !COARSE ? (e) => void e.currentTarget.querySelector('video')?.play().catch(() => {}) : undefined}
+      onMouseLeave={
+        block.video && !COARSE
+          ? (e) => {
+              const v = e.currentTarget.querySelector('video');
+              if (v) {
+                v.pause();
+                v.currentTime = 0;
+              }
+            }
+          : undefined
+      }
+    >
       {url ? (
-        <Picture url={url} video={block.video} alt={block.alt ?? ''} play="controls" />
+        <Picture url={url} video={block.video} alt={block.alt ?? ''} play="never" />
       ) : (
         <div className="missing">{url === null ? (block.video ? 'Video not found' : 'Image not found') : ''}</div>
       )}

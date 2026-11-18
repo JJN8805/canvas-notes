@@ -172,6 +172,20 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
       );
     }
   }
+  if (block.type === 'image' && block.video) {
+    // A video on the page plays on hover with a mouse; these work with a finger too (and bring the sound).
+    const video = () => document.querySelector<HTMLVideoElement>(`[data-id="${CSS.escape(block.id)}"] video`);
+    extra.push(
+      btn('Play or pause the video', 'Play / Pause', () => {
+        const v = video();
+        if (v) void (v.paused ? v.play() : v.pause());
+      }),
+      btn('Turn the sound on or off', 'Sound', () => {
+        const v = video();
+        if (v) v.muted = !v.muted;
+      }),
+    );
+  }
   if (block.type === 'card') {
     extra.push(btn('Open card', 'Open', () => openCard(block.cardId)));
   }

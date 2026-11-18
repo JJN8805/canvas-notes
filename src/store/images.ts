@@ -1,5 +1,7 @@
 import { addBlock, getStorage } from './notes';
 import { toast } from './ui';
+import { readVideoInfo } from './video';
+import { coverProblem, isVideoFile, videoMimeOf } from '../lib/media';
 
 const MAX_SIDE = 4096;
 const KEEP_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml', 'image/avif'];
@@ -40,21 +42,26 @@ export async function prepareImage(file: Blob): Promise<{ blob: Blob; width: num
 }
 
 export function imageFiles(dt: DataTransfer | null): File[] {
-  return dt ? Array.from(dt.files).filter((f) => f.type.startsWith('image/')) : [];
+  return dt ? Array.from(dt.files).filter((f) => f.type.startsWith('image/') || isVideoFile(f)) : [];
 }
 
 /** Stores the files and places them on the page, cascading from `at`. Returns the new block ids. */
 export async function addImages(pageId: string, files: File[], at: { x: number; y: number }): Promise<string[]> {
-  const images = files.filter((f) => f.type.startsWith('image/'));
+  const images = files.filter((f) => f.type.startsWith('image/') || isVideoFile(f));
   if (!images.length) {
-    toast('Only image files can be placed on a page.');
+    toast('Only pictures, GIFs and videos can be placed here.');
     return [];
   }
   const ids: string[] = [];
   for (let i = 0; i < images.length; i++) {
     const f = images[i];
     try {
-      const { blob, width, height } = await prepareImage(f);
+      const problem = coverProblem(f);
+      if (problem) throw new Error(problem);
+      const video = isVideoFile(f);
+      // A video is kept as it is; a picture is resized when huge (a GIF is kept untouched, so it still moves).
+      const prepared = video ? { blob: new Blob([f], { type: videoMimeOf(f) }), ...(await readVideoInfo(new Blob([f], { type: videoMimeOf(f) }))) } : await prepareImage(f);
+      const { blob, width, height } = prepared;
       const imageId = await getStorage().putImage(blob);
       const s = Math.min(1, 440 / width, 360 / height);
       ids.push(
@@ -64,6 +71,7 @@ export async function addImages(pageId: string, files: File[], at: { x: number; 
           w: Math.max(48, Math.round(width * s)),
           h: Math.max(32, Math.round(height * s)),
           alt: f.name.replace(/\.[^.]+$/, ''),
+          ...(video ? { video: true } : {}),
         }),
       );
     } catch (e) {

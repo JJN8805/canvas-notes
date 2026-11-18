@@ -81,16 +81,16 @@ export async function addPdf(pageId: string, file: File, at: At): Promise<string
 /** Height of the bar under a PDF page (previous, next, page count). */
 export const PDF_BAR_H = 36;
 
-/** Places whatever mix of pictures, audio and PDFs was chosen or dropped, cascading from `at`. Returns the new block ids. */
+/** Places whatever mix of pictures, videos, audio and PDFs was chosen or dropped, cascading from `at`. Returns the new block ids. */
 export async function addMediaFiles(pageId: string, files: File[], at: At): Promise<string[]> {
-  const images = files.filter((f) => kindOfFile(f) === 'image');
+  const images = files.filter((f) => kindOfFile(f) === 'image' || kindOfFile(f) === 'video'); // pictures, GIFs and videos all become picture boxes
   const others = files.filter((f) => kindOfFile(f) === 'audio' || kindOfFile(f) === 'pdf');
   const skipped = files.length - images.length - others.length;
   if (skipped && !images.length && !others.length) {
-    toast('Only pictures, audio and PDF files can be placed on a page.');
+    toast('Only pictures, GIFs, videos, audio and PDF files can be placed on a page.');
     return [];
   }
-  if (skipped) toast(`${skipped} file${skipped === 1 ? ' was' : 's were'} skipped: only pictures, audio and PDFs can be placed on a page.`);
+  if (skipped) toast(`${skipped} file${skipped === 1 ? ' was' : 's were'} skipped: only pictures, GIFs, videos, audio and PDFs can be placed on a page.`);
   const ids: string[] = [];
   if (images.length) ids.push(...(await addImages(pageId, images, at)));
   for (let i = 0; i < others.length; i++) {
