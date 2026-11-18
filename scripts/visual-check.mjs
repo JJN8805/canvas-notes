@@ -130,7 +130,7 @@ if (!(await page.locator('.pdf-nav.next').isDisabled())) problems.push('pdf: Nex
 await shot('pdf-page-2');
 // Search by block type finds the page; a rejected file says why instead of failing silently
 await page.setInputFiles('input[accept^="audio"]', { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hi') });
-await page.waitForSelector('text=Only pictures, audio and PDF files');
+await page.waitForSelector('text=Only pictures, GIFs, videos, audio and PDF files');
 await shot('media-rejected');
 // Draw mode: opens, takes a stroke, closes and reopens without the window going blank; the page stays responsive throughout
 const alive = () => Promise.race([page.evaluate(() => document.body.innerText.length), new Promise((r) => setTimeout(() => r(-1), 4000))]);
