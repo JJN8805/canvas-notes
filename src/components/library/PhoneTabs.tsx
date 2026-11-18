@@ -7,6 +7,7 @@ import { Icon } from '../ui/Icon';
 import { Sidebar } from './Sidebar';
 import { openNewPage } from './shared';
 import { showsNewPage, tabOf } from '../../lib/phoneView';
+import { useSelect } from '../../store/librarySelect';
 
 /**
  * The library on a phone: five tabs at the bottom, where the thumb rests (Pages, Journal, Cards, Search, More), a round "new page" button
@@ -17,6 +18,7 @@ export function PhoneTabs({ pages, groups, filter, more, setMore }: { pages: Pag
   const cardsOn = useFeature('cards');
   const canvasOn = useFeature('canvas');
   const tab = more ? 'more' : tabOf(filter.kind);
+  const selecting = useSelect((s) => s.on);
 
   useEffect(() => {
     if (!more) return;
@@ -44,7 +46,7 @@ export function PhoneTabs({ pages, groups, filter, more, setMore }: { pages: Pag
           </div>
         </div>
       )}
-      {!more && showsNewPage(filter.kind) && (
+      {!more && !selecting && showsNewPage(filter.kind) && (
         <button className="fab" aria-label={canvasOn ? 'New page' : 'Start something'} onClick={openNewPage}>
           <Icon name="plus" size={26} />
         </button>

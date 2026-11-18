@@ -89,7 +89,7 @@ export async function loadTrash() {
 }
 
 /** Puts a trashed page back, the same way the delete toast's Undo does. */
-export function restoreFromTrash(id: string) {
+export function restoreFromTrash(id: string, opts: { quiet?: boolean } = {}) {
   const page = get().trash.find((p) => p.id === id);
   if (!page) return;
   set((s) => {
@@ -98,7 +98,7 @@ export function restoreFromTrash(id: string) {
   });
   markDirty(id);
   resolveDailyDuplicates(); // a restored daily page may clash with one made since
-  toast(`Restored “${page.title || 'Untitled'}”`);
+  if (!opts.quiet) toast(`Restored “${page.title || 'Untitled'}”`);
 }
 
 /** Empties a trashed page for good. */

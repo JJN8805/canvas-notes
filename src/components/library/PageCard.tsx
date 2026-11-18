@@ -16,6 +16,7 @@ import { chooseCover } from './chooseCover';
 import { removePageCover } from '../../store/pageCover';
 import { choosePageIcon } from '../../store/pageIcon';
 import { archivePage } from '../../store/archive';
+import { startSelect, toggleSelected, useSelect } from '../../store/librarySelect';
 import { canArchive } from '../../lib/pages';
 import { useImageUrl } from '../../lib/useImageUrl';
 import { COARSE, PAGE_MIME } from './shared';
@@ -28,9 +29,16 @@ export const PageCard = memo(function PageCard({ page, group }: { page: Page; gr
   const [dragging, setDragging] = useState(false);
   const pressMenuShown = useRef(false);
   const cancelPress = useRef<(() => void) | null>(null);
-  const open = () => {
+  const selecting = useSelect((s) => s.on);
+  const picked = useSelect((s) => s.ids.includes(page.id));
+  const open = (e?: React.MouseEvent) => {
     if (pressMenuShown.current) {
       pressMenuShown.current = false;
+      return;
+    }
+    // Picking several pages: a tap toggles, and Ctrl/Cmd+click starts it on a laptop.
+    if (selecting || (e && (e.ctrlKey || e.metaKey))) {
+      toggleSelected(page.id);
       return;
     }
     navigate({ name: 'page', id: page.id });
@@ -41,7 +49,8 @@ export const PageCard = memo(function PageCard({ page, group }: { page: Page; gr
   const showMenu = () => {
     if (!menuRef.current) return;
     openMenu(menuRef.current, [
-      { label: 'Open', action: open },
+      { label: 'Open', action: () => navigate({ name: 'page', id: page.id }) },
+      { label: 'Select', action: () => startSelect(page.id) },
       { label: page.icon ? 'Change icon…' : 'Add icon…', action: () => void choosePageIcon(page.id, page.icon) },
       ...(featureOn('archive') && canArchive(page as Page) ? [{ label: 'Archive', action: () => void archivePage(page.id) }] : []),
       {
@@ -88,11 +97,12 @@ export const PageCard = memo(function PageCard({ page, group }: { page: Page; gr
 
   return (
     <article
-      className={'card' + (group ? ' grouped' : '') + (cardColor ? ' colored' : '') + (dragging ? ' dragging' : '')}
+      className={'card' + (group ? ' grouped' : '') + (cardColor ? ' colored' : '') + (dragging ? ' dragging' : '') + (picked ? ' picked' : '')}
       style={{ ...(group ? { '--gc': colorVar(group.color) } : {}), ...(cardColor ? { '--pc': noteVar(cardColor) } : {}) } as React.CSSProperties}
       tabIndex={0}
-      draggable={!COARSE}
-      aria-label={`Open ${page.title || 'Untitled'}`}
+      draggable={!COARSE && !selecting}
+      aria-label={selecting ? `${picked ? 'Unpick' : 'Pick'} ${page.title || 'Untitled'}` : `Open ${page.title || 'Untitled'}`}
+      aria-pressed={selecting ? picked : undefined}
       onClick={open}
       onPointerDown={(e) => {
         if (e.pointerType !== 'touch') return;
@@ -137,6 +147,7 @@ export const PageCard = memo(function PageCard({ page, group }: { page: Page; gr
       onDragEnd={() => setDragging(false)}
     >
       {group && <div className="tab">{group.name}</div>}
+      {selecting && <span className={'card-check' + (picked ? ' on' : '')} aria-hidden="true">{picked ? '✓' : ''}</span>}
       {page.cover ? <CoverPicture id={page.cover} /> : <Thumbnail blocks={page.blocks} arrows={page.arrows} drawing={page.drawing} sheet={page.sheet} />}
       <button
         ref={menuRef}

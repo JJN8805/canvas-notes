@@ -11,6 +11,8 @@ import { SyncButton } from '../sync/SyncPanel';
 import { openNewPage } from './shared';
 import { EmptyState } from './EmptyState';
 import { PhoneTabs } from './PhoneTabs';
+import { SelectionBar } from './SelectionBar';
+import { cancelSelect, startSelect, useSelect } from '../../store/librarySelect';
 import { usePhone } from '../ui/usePhone';
 import { TemplatesView } from './TemplatesView';
 import { TrashView } from './TrashView';
@@ -136,6 +138,8 @@ export function Library() {
   }, [all, filter, query, sort, groupIds, inGroup, groups]);
 
   const phone = usePhone();
+  const selecting = useSelect((s) => s.on);
+  useEffect(() => cancelSelect(), [filter.kind, filter.kind === 'group' ? filter.id : '', filter.kind === 'tag' ? filter.tag : '']); // leaving the screen ends picking
   const [moreOpen, setMoreOpen] = useState(false);
   const groupById = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups]);
   const summaries = useMemo(() => groupSummaries(groups, all), [groups, all]);
@@ -201,6 +205,12 @@ export function Library() {
               <option value="title">Title A–Z</option>
             </select>
             {syncOn && <SyncButton />}
+            {list.length > 0 && (
+              <button className={'btn' + (selecting ? ' on' : '')} aria-pressed={selecting} title="Pick several pages to archive, move or delete together" onClick={() => (selecting ? cancelSelect() : startSelect())}>
+                <Icon name="check" size={16} />
+                {selecting ? 'Done' : 'Select'}
+              </button>
+            )}
             <button className="btn primary new-page-btn" onClick={openNewPage}>
               <Icon name="plus" size={16} />
               {canvasOn ? 'New page' : 'New…'}
@@ -228,6 +238,7 @@ export function Library() {
         ) : (
           <EmptyState total={all.length} filter={filter} query={query} />
         )}
+        <SelectionBar shown={list.map((p) => p.id)} groups={groups} />
           </>
         )}
       </main>

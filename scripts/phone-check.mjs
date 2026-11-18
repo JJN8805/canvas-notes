@@ -112,6 +112,14 @@ check('and no sideways-scrolling chip bar', (await page.locator('.library > .sid
 check('a round new-page button floats over the list', (await page.locator('.fab:visible').count()) === 1);
 check('the tabs are at least 44 px tall', (await page.locator('.phone-tab').evaluateAll((els) => els.every((e) => e.getBoundingClientRect().height >= 48))));
 await page.screenshot({ path: join(OUT, 'library.png') });
+await page.locator('.card [aria-label^="Options for"]').first().click();
+await page.click('.menu-item:has-text("Select")');
+await page.waitForTimeout(300);
+check('Select (from a card\'s menu) starts picking: a bar above the tabs, the + button steps aside', (await page.locator('.select-bar').count()) === 1 && (await page.locator('.fab').count()) === 0 && (await page.locator('.select-bar').evaluate((el) => { const r = el.getBoundingClientRect(); return r.bottom <= innerHeight - 50 && r.left >= 0 && r.right <= innerWidth; })));
+check('and its buttons are finger-sized', (await page.locator('.select-bar button').evaluateAll((els) => els.every((e) => e.getBoundingClientRect().height >= 40))));
+await page.screenshot({ path: join(OUT, 'picking.png') });
+await page.click('.select-bar button:has-text("Cancel")');
+await page.waitForTimeout(200);
 await page.click('.fab');
 await page.waitForSelector('.picker, .dialog');
 check('the floating button starts a new page', (await page.locator('.dialog.picker').count()) === 1);

@@ -175,7 +175,7 @@ export function duplicatePage(id: string): Page | null {
 }
 
 /** Deletes a page and offers an undo toast. */
-export async function deletePage(id: string) {
+export async function deletePage(id: string, opts: { quiet?: boolean } = {}) {
   const page = get().pages[id];
   if (!page) return;
   const snapshot = deepClone(page);
@@ -194,6 +194,7 @@ export async function deletePage(id: string) {
   } catch (e) {
     console.error(e);
   }
+  if (opts.quiet) return; // a bulk delete says it once
   toast(`Deleted “${snapshot.title || 'Untitled'}”`, {
     label: 'Undo',
     run: () => {
