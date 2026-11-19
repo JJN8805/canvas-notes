@@ -570,9 +570,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .frame-title::placeholder { color: currentColor; opacity: 0.7; }
 .frame-title-static { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; display: block; }
-.frame-color-btn {
-  width: 13px; height: 13px; border-radius: 50%; border: 1.5px solid currentColor; padding: 0; flex: none; cursor: pointer;
+/* The colour button of a frame: a ring in the header's own text colour with a tinted centre, so it shows on any frame colour (it used to
+   take the header's colour and vanish, because the general `.frame-head button` rule beat it). The button itself is the usual 22 px target. */
+.frame-head .frame-color-btn { padding: 0; flex: none; cursor: pointer; border-radius: 50%; }
+.frame-head .frame-color-btn::before {
+  content: ''; width: 15px; height: 15px; box-sizing: border-box; border-radius: 50%; border: 2px solid currentColor;
+  background: color-mix(in srgb, currentColor 30%, transparent); transition: transform 0.12s ease;
 }
+.frame-head .frame-color-btn:hover::before, .frame-head .frame-color-btn:focus-visible::before { transform: scale(1.15); }
 
 /* ------------------------------------------------------------------
    Menus, dialogs, toasts
