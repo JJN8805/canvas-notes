@@ -133,7 +133,7 @@ export const isFixedHeight = (b: Block) => b.type === 'image' || (b.type === 'no
 
 export function blockHeight(b: Block): number {
   if (b.type === 'frame') return b.collapsed ? FRAME_HEAD_H : b.h;
-  if (b.type === 'note' && b.style === 'text' && !b.doc && typeof b.header === 'string' && b.folded === true) return NOTE_HEAD_H; // folded to its header
+  if (b.type === 'note' && (b.style === 'text' || b.style === 'sticky') && !b.doc && typeof b.header === 'string' && b.folded === true) return NOTE_HEAD_H; // folded to its header
   return isFixedHeight(b) ? b.h : Math.max(b.h, b.ah ?? 0);
 }
 

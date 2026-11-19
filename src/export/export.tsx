@@ -342,9 +342,10 @@ function blocksToMarkdown(blocks: Block[], all: Block[], imagePath: (b: ImageBlo
           if (md) out.push(md);
           break;
         }
-        // A sticky: a blockquote line, with its colour kept in a comment so it survives a round trip.
-        if (!md) break;
-        const lines = md.split('\n').map((l, i) => (i === 0 ? `> 📝 ${l}` : `> ${l}`));
+        // A sticky: a blockquote line, with its colour kept in a comment so it survives a round trip. Its header is the bold first line.
+        const head = b.header ? `**${b.header.replace(/\*/g, '\\*')}**` : '';
+        if (!md && !head) break;
+        const lines = [head, ...(md ? md.split('\n') : [])].filter((l, i) => i > 0 || l).map((l, i) => (i === 0 ? `> 📝 ${l}` : `> ${l}`));
         out.push((b.tint ? `<!-- sticky color: ${b.tint} -->\n` : '') + lines.join('\n'));
         break;
       }

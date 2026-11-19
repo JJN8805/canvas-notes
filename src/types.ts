@@ -102,7 +102,7 @@ export interface NoteBlock extends BlockBase {
   fill?: boolean;
   /**
    * An optional header row on a text box: its title, shown above the text with a fold arrow. Absent = no header; '' = a header with no title yet.
-   * Only on the 'text' style. Older app versions ignore it (they show the text without the header).
+   * On the 'text' and 'sticky' styles. Older app versions ignore it (they show the text without the header).
    */
   header?: string;
   /** With a header: the box is folded down to just its header. */

@@ -56,8 +56,8 @@ export function cleanBlock(raw: unknown): Block | null {
         out.html = text(b.html);
         delete out.code;
       }
-      // A header (and its fold) only on a plain text box that is not a document's text; anything else is dropped.
-      if (out.style === 'text' && !b.doc && typeof b.header === 'string') {
+      // A header (and its fold) only on a text box or a sticky that is not a document's text; anything else is dropped.
+      if ((out.style === 'text' || out.style === 'sticky') && !b.doc && typeof b.header === 'string') {
         out.header = cleanHeader(b.header) ?? '';
         if (b.folded !== true) delete out.folded;
         else out.folded = true;

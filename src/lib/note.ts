@@ -42,8 +42,8 @@ export const noteText = (b: NoteBlock): string => {
 /** The header of a text box, as stored: one line of at most 200 characters, or null when the box has none. */
 export const cleanHeader = (v: unknown): string | null => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, 200) : null);
 
-/** Whether this note shows a header: only a plain text box (not a sticky, code or a document's text) can have one. */
-export const hasHeader = (b: { type?: string; style?: string; header?: string; doc?: unknown }): boolean => b.type === 'note' && b.style === 'text' && typeof b.header === 'string' && !b.doc;
+/** Whether this note shows a header: a text box or a sticky can have one (not code, and not a document's text). */
+export const hasHeader = (b: { type?: string; style?: string; header?: string; doc?: unknown }): boolean => b.type === 'note' && (b.style === 'text' || b.style === 'sticky') && typeof b.header === 'string' && !b.doc;
 
 /** A header box folded down to its header. */
 export const isFolded = (b: { type?: string; style?: string; header?: string; folded?: boolean; doc?: unknown }): boolean => hasHeader(b) && b.folded === true;
@@ -54,12 +54,9 @@ export const isFolded = (b: { type?: string; style?: string; header?: string; fo
  */
 export function setNoteStyle(b: NoteBlock, style: NoteStyle): void {
   if (b.style === style) return;
-  // Only a text box has a header: leaving that style keeps its words by putting the header at the top of the text.
-  if (typeof b.header === 'string') {
-    if (b.header) {
-      if (style === 'code') b.html = `<p>${escapeHtml(b.header)}</p>${b.html}`;
-      else if (style === 'sticky') b.html = `<p><strong>${escapeHtml(b.header)}</strong></p>${b.html}`;
-    }
+  // A header goes with the box between text and sticky. Code has none: going there keeps the title as the first line of the code.
+  if (typeof b.header === 'string' && style === 'code') {
+    if (b.header) b.html = `<p>${escapeHtml(b.header)}</p>${b.html}`;
     delete b.header;
     delete b.folded;
   }

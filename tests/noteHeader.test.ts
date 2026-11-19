@@ -10,11 +10,12 @@ const geo = { x: 0, y: 0, w: 200, h: 120, z: 1 };
 const note = (o: Partial<NoteBlock> = {}): NoteBlock => ({ id: 'n', type: 'note', style: 'text', ...geo, html: '<p>Body</p>', ...o });
 
 describe('the optional header of a text box', () => {
-  it('only a plain text box has one', () => {
+  it('a text box or a sticky can have one, code and a document cannot', () => {
     expect(hasHeader(note({ header: 'Plan' }))).toBe(true);
     expect(hasHeader(note({ header: '' }))).toBe(true); // a header with no title yet
     expect(hasHeader(note())).toBe(false);
-    expect(hasHeader(note({ style: 'sticky', header: 'x' }))).toBe(false);
+    expect(hasHeader(note({ style: 'sticky', header: 'x' }))).toBe(true);
+    expect(hasHeader(note({ style: 'sticky', header: 'x', doc: { kind: 'doc' } as never }))).toBe(false);
     expect(hasHeader(note({ style: 'code', header: 'x' }))).toBe(false);
     expect(hasHeader(note({ header: 'x', doc: { kind: 'doc' } as never }))).toBe(false);
   });
@@ -24,8 +25,11 @@ describe('the optional header of a text box', () => {
     expect((cleanBlock(note({ header: 'x'.repeat(500) })) as NoteBlock).header).toHaveLength(200);
     expect(cleanBlock(note({ header: '', folded: true }))).toMatchObject({ header: '', folded: true });
   });
+  it('is kept on a sticky too', () => {
+    expect(cleanBlock(note({ style: 'sticky', header: ' Idea ', folded: true }))).toMatchObject({ header: 'Idea', folded: true });
+  });
   it('is dropped where it makes no sense, and a fold without a header is dropped', () => {
-    for (const bad of [note({ style: 'sticky', header: 'x', folded: true }), note({ style: 'code', header: 'x' }), note({ folded: true })]) {
+    for (const bad of [note({ style: 'sticky', folded: true }), note({ style: 'code', header: 'x' }), note({ folded: true })]) {
       const out = cleanBlock(bad) as NoteBlock;
       expect(out).not.toHaveProperty('header');
       expect(out).not.toHaveProperty('folded');
@@ -43,6 +47,8 @@ describe('folding', () => {
   it('a folded box is just its header high, an open one is as tall as it was', () => {
     expect(isFolded(note({ header: 'x', folded: true }))).toBe(true);
     expect(isFolded(note({ folded: true }))).toBe(false); // no header: nothing to fold to
+    expect(blockHeight(note({ style: 'sticky', header: 'x', folded: true }) as Block)).toBe(NOTE_HEAD_H); // a sticky folds to its header too
+    expect(blockHeight(note({ style: 'sticky', header: 'x' }) as Block)).toBe(120);
     expect(blockHeight(note({ header: 'x', folded: true }) as Block)).toBe(NOTE_HEAD_H);
     expect(blockHeight(note({ header: 'x' }) as Block)).toBe(120);
   });
@@ -59,24 +65,28 @@ describe('the words of a box include its header', () => {
 });
 
 describe('changing the style of a box with a header', () => {
-  it('keeps the header words: bold first line in a sticky, first line of code', () => {
+  it('keeps the header between text and sticky (and its fold)', () => {
     const s = note({ header: 'Plan', folded: true });
     setNoteStyle(s, 'sticky');
-    expect(s).not.toHaveProperty('header');
-    expect(s).not.toHaveProperty('folded');
-    expect(s.html).toBe('<p><strong>Plan</strong></p><p>Body</p>');
-    const c = note({ header: 'Plan' });
+    expect(s).toMatchObject({ style: 'sticky', header: 'Plan', folded: true, html: '<p>Body</p>' });
+    setNoteStyle(s, 'text');
+    expect(s).toMatchObject({ style: 'text', header: 'Plan', folded: true });
+  });
+  it('keeps the words when going to code, which has no header: the title becomes the first line', () => {
+    const c = note({ header: 'Plan', folded: true });
     setNoteStyle(c, 'code');
     expect(c.code).toBe('Plan\nBody');
     expect(c).not.toHaveProperty('header');
+    expect(c).not.toHaveProperty('folded');
   });
   it('escapes the header, and an empty header adds nothing', () => {
     const s = note({ header: '<b>&' });
-    setNoteStyle(s, 'sticky');
-    expect(s.html).toContain('&lt;b&gt;&amp;');
+    setNoteStyle(s, 'code');
+    expect(s.code).toContain('<b>&'); // plain text in code, not markup
     const e = note({ header: '' });
-    setNoteStyle(e, 'sticky');
-    expect(e.html).toBe('<p>Body</p>');
+    setNoteStyle(e, 'code');
+    expect(e.code).toBe('Body');
+    expect(e).not.toHaveProperty('header');
   });
 });
 
@@ -85,6 +95,12 @@ describe('Markdown export', () => {
   it('writes the header as a bold line above the text', () => {
     const md = pageToMarkdown(page(note({ header: 'Shopping', html: '<p>Milk</p>' })), () => '');
     expect(md).toContain('**Shopping**\n\nMilk');
+  });
+  it('writes a sticky\'s header as the bold first line of its quote, and keeps a header-only sticky', () => {
+    const md = pageToMarkdown(page(note({ style: 'sticky', tint: 'blue', header: 'Idea', html: '<p>Try it</p>' })), () => '');
+    expect(md).toContain('> 📝 **Idea**\n> Try it');
+    const only = pageToMarkdown(page(note({ style: 'sticky', header: 'Just a title', html: '' })), () => '');
+    expect(only).toContain('> 📝 **Just a title**');
   });
   it('leaves a box without a header as it was', () => {
     const md = pageToMarkdown(page(note({ html: '<p>Milk</p>' })), () => '');

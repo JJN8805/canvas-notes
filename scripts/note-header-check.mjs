@@ -118,6 +118,33 @@ await t2.locator('.bar button[aria-label="Remove the header"]').click({ force: t
 await page.waitForTimeout(300);
 check('"Header ✓" removes the header again', (await page.locator('.world .block.b-text .note-head').count()) === 0);
 
+/* ---- a sticky can have a header too ---- */
+const sticky = page.locator('.world .block.b-sticky:has-text("Idea two")');
+const sBefore = await sticky.boundingBox();
+await sticky.click({ position: { x: 30, y: 60 } });
+await page.keyboard.press('Escape');
+await sticky.locator('.bar button[aria-label="Add a header"]').click({ force: true });
+await page.waitForTimeout(300);
+check('a sticky\'s bar has Header too, and it adds the row at the top', (await sticky.locator('.note-head').count()) === 1 && (await page.evaluate(() => document.activeElement?.classList.contains('note-title'))));
+await page.keyboard.type('Next step');
+const sOpen = await sticky.boundingBox();
+check('the sticky keeps its size (a sticky is fixed)', Math.abs(sOpen.height - sBefore.height) < 2 && Math.abs(sOpen.width - sBefore.width) < 2);
+const inside = await sticky.evaluate((el) => {
+  const box = el.getBoundingClientRect();
+  const head = el.querySelector('.note-head').getBoundingClientRect();
+  const body = el.querySelector('.text-editor').getBoundingClientRect();
+  return { headTop: Math.round(head.top - box.top), bodyTop: Math.round(body.top - box.top), bodyBottom: Math.round(box.bottom - body.bottom), text: el.innerText.includes('Idea two') };
+});
+check('the header is at the top, the text below it and inside the box', inside.headTop <= 1 && inside.bodyTop >= 38 && inside.bodyBottom >= 0 && inside.text, JSON.stringify(inside));
+await page.screenshot({ path: join(OUT, 'sticky-header.png') });
+await sticky.locator('.note-fold').click();
+await page.waitForTimeout(300);
+check('folding a sticky shrinks it to its header', (await sticky.boundingBox()).height <= 44 && (await sticky.locator('.text-editor:visible').count()) === 0);
+await sticky.locator('.note-fold').click();
+await page.waitForTimeout(300);
+check('and unfolding gives it back its size', Math.abs((await sticky.boundingBox()).height - sBefore.height) < 2);
+await page.screenshot({ path: join(OUT, 'sticky-header2.png') });
+
 check('no console errors', errors.length === 0, errors.join(' | '));
 console.log('screenshots in', OUT);
 await browser.close();

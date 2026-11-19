@@ -65,6 +65,7 @@ export const BlockFrame = memo(function BlockFrame({
   if (block.locked) cls.push('locked');
   if (block.type === 'note' && block.style === 'text' && block.fill) cls.push('fill');
   if (isFolded(block)) cls.push('folded');
+  if (hasHeader(block)) cls.push('has-head');
 
   return (
     <div ref={ref} className={cls.join(' ')} data-id={block.id} style={style} onPointerDownCapture={(e) => ctx.pointerDownBlock(e, block.id)}
@@ -146,7 +147,7 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
       // Tab on a keyboard; a button for a finger: a new sticky beside this one, joined to it by an arrow (a mind map grows from here).
       extra.push(btn('Add a linked note', '+ Linked', () => void branchFrom(pageId, block.id, (id) => canvasApi.current?.focusBlock(id))));
     }
-    if (block.style === 'text' && !block.doc) {
+    if ((block.style === 'text' || block.style === 'sticky') && !block.doc) {
       // An optional header row above the text, with a fold arrow (tap it to tuck the box away).
       extra.push(
         btn(hasHeader(block) ? 'Remove the header' : 'Add a header', hasHeader(block) ? 'Header ✓' : 'Header', () => {
