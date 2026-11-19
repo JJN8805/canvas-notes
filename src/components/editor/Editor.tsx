@@ -9,7 +9,7 @@ import { pageApp } from '../../lib/office/app';
 import { useFeature, useFeatures } from '../../store/features';
 import { isFeatureOn, type FeatureId } from '../../lib/features';
 import type { AddOnId } from '../../addons/types';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { backlinksOf } from '../../lib/links';
 import { flushSync } from 'react-dom';
 import { useEditorState, type Editor as TipTapEditor } from '@tiptap/react';
@@ -187,7 +187,7 @@ function TemplateBanner() {
 
 /** Pages that mention this one as [[its title]]. Hidden when there are none. Worked out from the pages themselves, so it is always current. */
 function Backlinks({ pageId }: { pageId: string }) {
-  const pages = useNotes((s) => s.pages);
+  const pages = useDeferredValue(useNotes((s) => s.pages)); // worked out after typing settles, so a keystroke never waits for it
   const links = useMemo(() => backlinksOf(pageId, pages), [pageId, pages]);
   if (!links.length) return null;
   return (
@@ -468,7 +468,7 @@ function SaveStatus() {
 
 function TagEditor({ pageId }: { pageId: string }) {
   const tags = useNotes((s) => s.pages[pageId]?.tags ?? []);
-  const pages = useNotes((s) => s.pages);
+  const pages = useDeferredValue(useNotes((s) => s.pages));
   const [draft, setDraft] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const known = useMemo(() => {

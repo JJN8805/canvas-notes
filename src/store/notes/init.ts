@@ -50,11 +50,14 @@ export async function doInit() {
     // Data written by earlier versions is brought into the shared form (same picture twice becomes one file, old history becomes shared
     // boxes) in the background, a little at a time, before pictures nothing uses any more are cleared out.
     // Images deleted from pages are kept until the next launch so undo can bring them back.
-    void storage
-      .tidy()
-      .catch((e) => console.warn('Tidying storage failed', e))
-      .then(() => storage.pruneImages(usedImageIds(pages)))
-      .catch((e) => console.warn('Image cleanup failed', e));
+    // It waits until the window has been quiet for a while, so opening the app and the first edits are never held up by it.
+    window.setTimeout(() => {
+      void storage
+        .tidy()
+        .catch((e) => console.warn('Tidying storage failed', e))
+        .then(() => storage.pruneImages(usedImageIds(Object.values(get().pages)))) // the pages as they are now, not at start-up
+        .catch((e) => console.warn('Image cleanup failed', e));
+    }, 20_000);
 
     window.addEventListener('focus', () => void refreshFromDisk());
     document.addEventListener('visibilitychange', () => {

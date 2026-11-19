@@ -359,6 +359,15 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
       return { pages, groups };
     },
 
+    async loadChanged(known) {
+      const all = (await db.getAll('pages')).filter((p) => !p.deleted);
+      const groups = (await db.getAll('groups'))
+        .filter((g) => !g.deleted)
+        .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name))
+        .map((g): Group => ({ id: g.id, name: g.name, color: g.color as GroupColor, parentId: g.parentId ?? null, ...(g.scope === 'cards' ? { scope: 'cards' as const } : {}), ...(g.description ? { description: g.description } : {}) }));
+      return { pages: all.filter((p) => known[p.id] !== p.rev).map(rowToPage), ids: all.map((p) => p.id), groups };
+    },
+
     async loadPage(id) {
       const p = await db.get('pages', id);
       return p && !p.deleted ? rowToPage(p) : null;

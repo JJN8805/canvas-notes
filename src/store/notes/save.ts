@@ -107,8 +107,11 @@ export async function resolveConflict(id: string) {
 export async function refreshFromDisk() {
   const storage = peekStorage();
   if (!storage || get().status !== 'ready') return;
-  const { pages, groups } = await storage.loadAll();
-  const onDisk = new Map(pages.map((p) => [p.id, p]));
+  // Only pages that changed on disk are read in full: this runs on every window focus and after every sync.
+  const known: Record<string, number> = {};
+  for (const [id, p] of Object.entries(get().pages)) known[id] = p.rev;
+  const { pages, ids, groups } = await storage.loadChanged(known);
+  const onDisk = new Set(ids);
   const busy = (id: string) => dirty.has(id) || running.has(id) || timers.has(id);
   const replaced: string[] = [];
   set((s) => {

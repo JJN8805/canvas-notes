@@ -624,6 +624,14 @@ export async function createTauriStorage(): Promise<NotesStorage> {
       };
     },
 
+    async loadChanged(known) {
+      const revs = await db.select<{ id: string; rev: number }[]>('SELECT id, rev FROM pages WHERE deleted = 0');
+      const want = revs.filter((r) => known[r.id] !== r.rev).map((r) => r.id);
+      const rows = want.length ? await selectIn<PageRow>((ph) => `SELECT * FROM pages WHERE id IN (${ph}) AND deleted = 0`, want) : [];
+      const groupRows = await db.select<GroupRow[]>('SELECT * FROM page_groups WHERE deleted = 0 ORDER BY position, name');
+      return { pages: rows.map(rowToPage), ids: revs.map((r) => r.id), groups: groupRows.map(toGroup) };
+    },
+
     async loadPage(id) {
       const rows = await db.select<PageRow[]>('SELECT * FROM pages WHERE id = $1 AND deleted = 0', [id]);
       return rows[0] ? rowToPage(rows[0]) : null;

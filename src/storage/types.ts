@@ -190,6 +190,11 @@ export interface NotesStorage {
   /** Human-readable location of the data, shown in the sidebar. */
   location(): Promise<string>;
   loadAll(): Promise<{ pages: Page[]; groups: Group[] }>;
+  /**
+   * The cheap way to look again: only the pages that are new or whose `rev` differs from `known` (id → rev) are read in full;
+   * `ids` lists every live page, so the caller can tell which ones were deleted elsewhere.
+   */
+  loadChanged(known: Record<string, number>): Promise<{ pages: Page[]; ids: string[]; groups: Group[] }>;
   loadPage(id: string): Promise<Page | null>;
   /**
    * Saves a page if the copy on disk still has `page.rev`.
