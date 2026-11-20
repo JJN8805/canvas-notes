@@ -4,6 +4,7 @@ import { cleanColor } from '../lib/colors';
 import { cleanDate, kindOf } from '../lib/pages';
 import { cleanSheet, sheetCovering } from '../lib/sheet';
 import { isSafeId } from './validate';
+import { workspaceOf, type PageStub } from '../lib/workspaces';
 import type { Arrow, Block, Group, GroupColor, NoteColor, Page, PageDrawing, PageKind, Sheet } from '../types';
 
 export type SaveResult = { ok: true; rev: number } | { ok: false; reason: 'conflict' };
@@ -49,6 +50,8 @@ export interface PageRecord {
   icon?: string | null;
   /** True for a page in the Archive; absent in records from app versions before the Archive. */
   archived?: boolean;
+  /** The workspace the page belongs to; absent in records from app versions before workspaces (= Main). */
+  workspace?: string;
   /** Absent in records from app versions before page colours. */
   color?: NoteColor | null;
   created: number;
@@ -65,7 +68,9 @@ export interface GroupRecord {
   /** Absent in records from app versions before subgroups; treated as top level. */
   parentId?: string | null;
   /** 'cards' for a card folder; absent for a page group (and in records from app versions before card folders). */
-  scope?: 'cards';
+  scope?: 'cards' | 'workspaces';
+  /** The workspace a page group or card folder belongs to; absent = Main (and in records from older app versions). */
+  workspace?: string;
   /** The description of a card folder; absent when it has none (and in records from older app versions). */
   description?: string;
 }
@@ -191,10 +196,12 @@ export interface NotesStorage {
   location(): Promise<string>;
   loadAll(): Promise<{ pages: Page[]; groups: Group[] }>;
   /**
-   * The cheap way to look again: only the pages that are new or whose `rev` differs from `known` (id → rev) are read in full;
-   * `ids` lists every live page, so the caller can tell which ones were deleted elsewhere.
+   * The cheap way to look again: only the pages of workspace `scope` (null = every workspace) that are new or whose `rev` differs from
+   * `known` (id → rev) are read in full; `ids` lists every live page of that scope, so the caller can tell which ones were deleted elsewhere.
    */
-  loadChanged(known: Record<string, number>): Promise<{ pages: Page[]; ids: string[]; groups: Group[] }>;
+  loadChanged(known: Record<string, number>, scope: string | null): Promise<{ pages: Page[]; ids: string[]; groups: Group[] }>;
+  /** A short line per live page (title, kind, workspace), without its boxes: how pages of other workspaces are listed and linked. */
+  outline(): Promise<PageStub[]>;
   loadPage(id: string): Promise<Page | null>;
   /**
    * Saves a page if the copy on disk still has `page.rev`.
@@ -255,6 +262,7 @@ export function normalizePage(p: Partial<Page> & { id: string }): Page {
     cover: typeof p.cover === 'string' && isSafeId(p.cover) ? p.cover : null,
     icon: cleanIcon(p.icon),
     ...(p.archived === true ? { archived: true } : {}),
+    ...(workspaceOf(p) ? { workspace: workspaceOf(p) } : {}),
     created: p.created ?? Date.now(),
     updated: p.updated ?? p.created ?? Date.now(),
     rev: p.rev ?? 0,

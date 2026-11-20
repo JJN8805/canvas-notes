@@ -9,6 +9,7 @@ import { cardLabel, cardParts } from './cards';
 import { noteStyleLabel } from './note';
 import { blockPlainText } from './pageText';
 import { kindOf } from './pages';
+import type { PageStub } from './workspaces';
 
 export const MAX_LINKS = 40;
 
@@ -61,11 +62,23 @@ export interface Resolved {
   /** What is missing: the whole page/card, or only the box on it. null = the link works. */
   broken: 'page' | 'block' | null;
   label: string;
+  /** Set when the link leads to a page that is in another workspace (it is not loaded, so `page` is null but the link is not broken). */
+  elsewhere?: PageStub;
 }
 
-export function resolveLink(link: BoxLink, pages: Record<string, Page>): Resolved {
+/** Pages of the workspaces that are not open, and their names: what a link can lead to besides the pages on screen. */
+export interface Others {
+  stubs: readonly PageStub[];
+  nameOf: (workspace: string) => string;
+}
+
+export function resolveLink(link: BoxLink, pages: Record<string, Page>, others?: Others): Resolved {
   const page = pages[link.page] ?? null;
-  if (!page) return { page: null, block: null, broken: 'page', label: 'Missing page' };
+  if (!page) {
+    const stub = others?.stubs.find((s) => s.id === link.page);
+    if (stub) return { page: null, block: null, broken: null, label: `${stub.title.trim() || 'Untitled'} · ${others!.nameOf(stub.workspace)}`, elsewhere: stub };
+    return { page: null, block: null, broken: 'page', label: 'Missing page' };
+  }
   if (!link.block) return { page, block: null, broken: null, label: pageLabel(page) };
   const block = page.blocks.find((b) => b.id === link.block) ?? null;
   if (!block) return { page, block: null, broken: 'block', label: `${pageLabel(page)} › missing box` };

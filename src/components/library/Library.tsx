@@ -11,6 +11,7 @@ import { SyncButton } from '../sync/SyncPanel';
 import { openNewPage } from './shared';
 import { EmptyState } from './EmptyState';
 import { PhoneTabs } from './PhoneTabs';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { SelectionBar } from './SelectionBar';
 import { cancelSelect, startSelect, useSelect } from '../../store/librarySelect';
 import { usePhone } from '../ui/usePhone';
@@ -181,6 +182,7 @@ export function Library() {
         <div className="main-head">
           <div className="main-title">
             <h1>{filterTitle(filter, groups)}</h1>
+            {phone && <WorkspaceSwitcher variant="toolbar" />}
             <p>
               {list.length} page{list.length === 1 ? '' : 's'}
               {query ? ` matching “${query}”` : ''}

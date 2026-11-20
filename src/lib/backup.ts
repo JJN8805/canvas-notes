@@ -108,6 +108,7 @@ export async function restoreBackup(storage: NotesStorage, backup: Backup): Prom
       cover: p.cover,
       icon: p.icon,
       archived: p.archived,
+      workspace: p.workspace,
       created: p.created,
       updated: p.updated,
     });

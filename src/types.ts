@@ -254,6 +254,8 @@ export interface Page {
   icon?: string | null;
   /** Put in the Archive: kept (stored, synced, backed up, pictures and all) but out of the library, search and counts. Absent = not archived. Older app versions ignore it. */
   archived?: boolean;
+  /** The workspace this page belongs to (see lib/workspaces.ts). Absent = Main. Older app versions ignore it. */
+  workspace?: string;
   created: number;
   updated: number;
   /** Revision stored on disk. 0 means never saved. Used to detect edits from another window. */
@@ -270,7 +272,9 @@ export interface Group {
   /** The group this one is inside; null = top level. */
   parentId: string | null;
   /** 'cards' = a folder or section of the Cards screen. Absent = an ordinary page group. Card folders are kept apart from page groups. */
-  scope?: 'cards';
+  scope?: 'cards' | 'workspaces';
+  /** The workspace a page group or card folder belongs to (absent = Main). Not used by workspace rows themselves. */
+  workspace?: string;
   /** A few words about what this folder or section is for (card folders only). Absent = none. */
   description?: string;
 }

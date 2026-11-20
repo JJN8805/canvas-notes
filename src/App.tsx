@@ -22,6 +22,7 @@ import { useUi } from './store/ui';
 import { initSync } from './sync/controller';
 import { setupDesktopWidgets } from './widgets';
 import { startAutoArchive } from './store/autoArchive';
+import { switchWorkspace } from './store/workspaces';
 
 export function App() {
   const status = useNotes((s) => s.status);
@@ -67,6 +68,20 @@ export function App() {
   useEffect(() => {
     if (status === 'ready' && syncOn) void initSync().catch((e) => console.error('Sync setup failed', e));
   }, [status, syncOn]);
+
+  // Workspaces: the open one was deleted on another device, or the address names a page that lives in another workspace.
+  const openWorkspace = useNotes((s) => s.workspace);
+  const workspaceRows = useNotes((s) => s.workspaces);
+  const elsewhere = useNotes((s) => s.elsewhere);
+  const pageHere = useNotes((s) => (route.name === 'page' ? !!s.pages[route.id] : true));
+  useEffect(() => {
+    if (status !== 'ready') return;
+    if (openWorkspace && !workspaceRows.some((w) => w.id === openWorkspace)) void switchWorkspace('');
+    else if (route.name === 'page' && !pageHere) {
+      const stub = elsewhere.find((e) => e.id === route.id);
+      if (stub) void switchWorkspace(stub.workspace, { go: false });
+    }
+  }, [status, openWorkspace, workspaceRows, route, pageHere, elsewhere]);
 
   // The automatic archive file (laptop app only, and only when switched on in Settings → Data).
   useEffect(() => {

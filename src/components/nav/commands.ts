@@ -25,6 +25,20 @@ import { archivePage, restorePage } from '../../store/archive';
 import { canArchive, isArchived } from '../../lib/pages';
 import { openNewPage } from '../library/shared';
 import { pageApp } from '../../lib/office/app';
+import { listWorkspaces } from '../../lib/workspaces';
+import { switchWorkspace } from '../../store/workspaces';
+import { newWorkspaceFlow } from '../library/workspaceMenu';
+
+/** "Switch to X" for each other workspace, and a way to make one. */
+function workspaceCommands(): Command[] {
+  const st = useNotes.getState();
+  const open = st.workspace ?? '';
+  const others = listWorkspaces(st.workspaces, st.mainName).filter((w) => w.id !== open);
+  return [
+    ...others.map((w): Command => ({ id: `workspace-${w.id || 'main'}`, feature: 'workspaces', icon: 'pages', title: `Switch to workspace: ${w.name}`, run: () => void switchWorkspace(w.id) })),
+    { id: 'workspace-new', feature: 'workspaces', icon: 'plus', title: 'New workspace…', run: () => void newWorkspaceFlow() },
+  ];
+}
 
 export interface Command {
   id: string;
@@ -49,6 +63,7 @@ export function buildCommands(): Command[] {
     ...(COARSE ? [] : [{ id: 'shortcuts', icon: 'keyboard' as const, title: 'Keyboard shortcuts', keys: '?', run: openShortcuts }]),
     { id: 'switcher', icon: 'search', title: 'Open quick switcher', keys: `${MOD_LABEL}+O`, run: () => openNav('switcher') },
     { id: 'archive', feature: 'archive', icon: 'archive', title: 'Open the archive', run: () => { setFilter({ kind: 'archive' }); navigate({ name: 'library' }); } },
+    ...workspaceCommands(),
     { id: 'graph', feature: 'graph', icon: 'graph', title: 'Open graph view', run: () => openNav('graph') },
     {
       id: 'library',

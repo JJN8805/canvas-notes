@@ -6,7 +6,7 @@
  * pages, cards and links stay in the database and sync, so a feature can be switched back on and everything is there.
  */
 export type FeatureId =
-  | 'canvas' | 'journal' | 'cards' | 'groups' | 'tags' | 'templates' | 'archive' | 'links' | 'graph' | 'space' | 'media' | 'drawing' | 'widgets' | 'sync'
+  | 'canvas' | 'journal' | 'cards' | 'groups' | 'tags' | 'templates' | 'archive' | 'workspaces' | 'links' | 'graph' | 'space' | 'media' | 'drawing' | 'widgets' | 'sync'
   | 'doc' | 'sheet' | 'slides';
 
 export interface FeatureInfo {
@@ -29,6 +29,7 @@ export const FEATURES: readonly FeatureInfo[] = [
   { id: 'tags', section: 'Pages', label: 'Tags', description: 'Labelling pages with tags.' },
   { id: 'templates', section: 'Pages', label: 'Templates', description: 'Starting pages from templates and saving your own.' },
   { id: 'archive', section: 'Pages', label: 'Archive', description: 'Putting pages and cards away in the Archive, out of the library but kept.' },
+  { id: 'workspaces', section: 'Pages', label: 'Workspaces', description: 'Separate desks in one app (for example Student and Content creator), each with its own pages, groups, cards and journal, linked and moved between.' },
   { id: 'links', section: 'Tools', label: 'Links', description: 'Links between boxes, pages and cards, and [[page]] links in text.' },
   { id: 'graph', section: 'Tools', label: 'Graph view', description: 'A map of how pages and cards link.', needs: 'links' },
   { id: 'space', section: 'Tools', label: '3D page view', description: 'Seeing a page’s boxes in 3D, placing them nearer or further away, and writing notes there.', needs: 'canvas' },
@@ -53,7 +54,7 @@ export interface Profile {
   workspace: boolean;
 }
 
-const ALL_BUT_WORKSPACE: FeatureId[] = ['canvas', 'journal', 'cards', 'groups', 'tags', 'templates', 'archive', 'links', 'graph', 'space', 'media', 'drawing', 'widgets', 'sync'];
+const ALL_BUT_WORKSPACE: FeatureId[] = ['canvas', 'journal', 'cards', 'groups', 'tags', 'templates', 'archive', 'workspaces', 'links', 'graph', 'space', 'media', 'drawing', 'widgets', 'sync'];
 
 export const PROFILES: readonly Profile[] = [
   { id: 'everything', label: 'Everything', description: 'Every feature: canvas pages, cards, journal, links, documents, spreadsheets and presentations.', off: [], workspace: true },

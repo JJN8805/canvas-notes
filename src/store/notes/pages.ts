@@ -21,6 +21,7 @@ import { mutatePage } from './mutate';
 export function createPage(partial: Partial<Page> = {}): Page {
   const f = get().filter;
   const now = Date.now();
+  const ws = get().workspace ?? ''; // a new page belongs to the workspace that is open
   const page: Page = {
     id: newId(),
     title: '',
@@ -31,6 +32,7 @@ export function createPage(partial: Partial<Page> = {}): Page {
     created: now,
     updated: now,
     rev: 0,
+    ...(ws ? { workspace: ws } : {}),
     ...partial,
   };
   // Every new page is finite (a sheet, grown to hold whatever it starts with). Pass `sheet: null` for an infinite one.

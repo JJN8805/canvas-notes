@@ -13,6 +13,7 @@ import { assembleBlocks, sha256Hex, shareBlocks, packRefs, unpackRefs } from '..
 import { assertSafeFile, FILE_EXT, isSafeId } from './validate';
 import { fileIdsOf } from '../lib/files';
 import { cleanIcon } from '../lib/pageIcon';
+import { workspaceOf } from '../lib/workspaces';
 import {
   base64ToBytes,
   bytesToBase64,
@@ -52,6 +53,7 @@ type PageRow = {
   cover: string;
   icon?: string;
   archived?: number;
+  workspace?: string;
   created: number;
   updated: number;
   rev: number;
@@ -59,7 +61,7 @@ type PageRow = {
   synced: string | null;
   deleted: number;
 };
-type GroupRow = { id: string; name: string; color: string; position: number; etag: string; synced: string | null; deleted: number; parent_id: string | null; scope: string | null; description: string | null };
+type GroupRow = { id: string; name: string; color: string; position: number; etag: string; synced: string | null; deleted: number; parent_id: string | null; scope: string | null; description: string | null; workspace?: string };
 type SnapshotRow = { id: string; page_id: string; taken: number; title: string; blocks: string; arrows: string };
 type ImageRow = { id: string; file: string; mime: string; created: number; sha256: string | null; size: number | null };
 
@@ -166,6 +168,8 @@ const MIGRATIONS: string[][] = [
   [`ALTER TABLE pages ADD COLUMN icon TEXT NOT NULL DEFAULT ''`],
   // v19: a page or card put in the Archive (1) stays stored, synced and backed up but leaves the library and search (0 = not archived)
   [`ALTER TABLE pages ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`],
+  // v20: the workspace a page or group belongs to ('' = Main). Workspaces themselves are rows of page_groups with scope 'workspaces'.
+  [`ALTER TABLE pages ADD COLUMN workspace TEXT NOT NULL DEFAULT ''`, `ALTER TABLE page_groups ADD COLUMN workspace TEXT NOT NULL DEFAULT ''`],
 ];
 
 async function migrate(db: Database) {
@@ -209,6 +213,7 @@ function rowToPage(r: PageRow): Page {
     cover: r.cover || null,
     ...(r.icon ? { icon: r.icon } : {}),
     ...(r.archived ? { archived: true } : {}),
+    ...(r.workspace ? { workspace: r.workspace } : {}),
     created: r.created,
     updated: r.updated,
     rev: r.rev,
@@ -217,6 +222,8 @@ function rowToPage(r: PageRow): Page {
 
 /** A cover as stored: the picture's id, or '' for none (an unsafe id is treated as none). */
 const coverId = (c: unknown) => (typeof c === 'string' && isSafeId(c) ? c : '');
+/** A group's scope as stored: 'cards', 'workspaces' or '' (an ordinary page group). */
+const groupScope = (v: unknown) => (v === 'cards' || v === 'workspaces' ? v : '');
 /** An icon as stored: a short plain mark (an emoji), or '' for none. */
 const iconOf = (c: unknown) => cleanIcon(c) ?? '';
 /** The archive flag as stored: 1 only for an explicit `true`. */
@@ -246,13 +253,14 @@ function rowToPageRecord(r: PageRow): PageRecord {
     ...(r.cover ? { cover: r.cover } : {}),
     ...(r.icon ? { icon: r.icon } : {}),
     ...(r.archived ? { archived: true } : {}),
+    ...(r.workspace ? { workspace: r.workspace } : {}),
     created: r.created,
     updated: r.updated,
   };
 }
 
 function rowToGroupRecord(r: GroupRow): GroupRecord {
-  return { id: r.id, etag: r.etag, deleted: !!r.deleted, name: r.name, color: r.color as GroupColor, position: r.position, parentId: r.parent_id ?? null, ...(r.scope === 'cards' ? { scope: 'cards' as const } : {}), ...(r.description ? { description: r.description } : {}) };
+  return { id: r.id, etag: r.etag, deleted: !!r.deleted, name: r.name, color: r.color as GroupColor, position: r.position, parentId: r.parent_id ?? null, ...(r.scope === 'cards' || r.scope === 'workspaces' ? { scope: r.scope } : {}), ...(r.workspace ? { workspace: r.workspace } : {}), ...(r.description ? { description: r.description } : {}) };
 }
 
 const EXT = FILE_EXT;
@@ -367,7 +375,7 @@ export async function createTauriStorage(): Promise<NotesStorage> {
 
   async function purgePage(id: string) {
     await db.execute(
-      `UPDATE pages SET title = '', tags = '[]', blocks = '[]', arrows = '[]', drawing = '', color = NULL, daily_date = NULL, sheet = '', cover = '', icon = '', archived = 0, etag = $2, rev = rev + 1 WHERE id = $1 AND deleted = 1`,
+      `UPDATE pages SET title = '', tags = '[]', blocks = '[]', arrows = '[]', drawing = '', color = NULL, daily_date = NULL, sheet = '', cover = '', icon = '', archived = 0, workspace = '', etag = $2, rev = rev + 1 WHERE id = $1 AND deleted = 1`,
       [id, newEtag()],
     );
     await db.execute('DELETE FROM page_snapshots WHERE page_id = $1', [id]);
@@ -378,11 +386,11 @@ export async function createTauriStorage(): Promise<NotesStorage> {
   const pageValues = (r: PageRecord) => [
     r.id, r.title, r.groupId, JSON.stringify(r.tags), JSON.stringify(r.blocks), JSON.stringify(r.arrows ?? []),
     r.created, r.updated, r.etag, r.deleted ? 1 : 0, r.drawing ? JSON.stringify(r.drawing) : '', r.color ?? null,
-    kindOf(r), cleanDate(r.dailyDate), sheetJson(r.sheet), coverId(r.cover), iconOf(r.icon), archivedOf(r.archived),
+    kindOf(r), cleanDate(r.dailyDate), sheetJson(r.sheet), coverId(r.cover), iconOf(r.icon), archivedOf(r.archived), workspaceOf(r),
   ];
-  const groupValues = (r: GroupRecord) => [r.id, r.name, r.color, r.position, r.etag, r.deleted ? 1 : 0, r.parentId ?? null, r.scope === 'cards' ? 'cards' : '', r.description ?? ''];
+  const groupValues = (r: GroupRecord) => [r.id, r.name, r.color, r.position, r.etag, r.deleted ? 1 : 0, r.parentId ?? null, groupScope(r.scope), r.description ?? '', workspaceOf(r)];
 
-  const toGroup = (g: GroupRow): Group => ({ id: g.id, name: g.name, color: g.color as GroupColor, parentId: g.parent_id ?? null, ...(g.scope === 'cards' ? { scope: 'cards' as const } : {}), ...(g.description ? { description: g.description } : {}) });
+  const toGroup = (g: GroupRow): Group => ({ id: g.id, name: g.name, color: g.color as GroupColor, parentId: g.parent_id ?? null, ...(g.scope === 'cards' || g.scope === 'workspaces' ? { scope: g.scope } : {}), ...(g.workspace ? { workspace: g.workspace } : {}), ...(g.description ? { description: g.description } : {}) });
 
   const sync: SyncStore = {
     async listMeta(kind) {
@@ -405,21 +413,21 @@ export async function createTauriStorage(): Promise<NotesStorage> {
       if (kind === 'page') {
         await snapshotIfReplacing(rec as PageRecord);
         await db.execute(
-          `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, etag, deleted, drawing, color, kind, daily_date, sheet, cover, rev, synced, icon, archived)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 1, $9, $17, $18)
+          `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, etag, deleted, drawing, color, kind, daily_date, sheet, cover, rev, synced, icon, archived, workspace)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 1, $9, $17, $18, $19)
            ON CONFLICT(id) DO UPDATE SET
-             title = excluded.title, group_id = excluded.group_id, tags = excluded.tags, blocks = excluded.blocks, arrows = excluded.arrows, drawing = excluded.drawing, color = excluded.color, kind = excluded.kind, daily_date = excluded.daily_date, sheet = excluded.sheet, cover = excluded.cover, icon = excluded.icon, archived = excluded.archived,
+             title = excluded.title, group_id = excluded.group_id, tags = excluded.tags, blocks = excluded.blocks, arrows = excluded.arrows, drawing = excluded.drawing, color = excluded.color, kind = excluded.kind, daily_date = excluded.daily_date, sheet = excluded.sheet, cover = excluded.cover, icon = excluded.icon, archived = excluded.archived, workspace = excluded.workspace,
              created = excluded.created, updated = excluded.updated, etag = excluded.etag, deleted = excluded.deleted,
              synced = excluded.etag, rev = pages.rev + 1`,
           pageValues(rec as PageRecord),
         );
       } else {
         await db.execute(
-          `INSERT INTO page_groups (id, name, color, position, etag, deleted, parent_id, synced, scope, description)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $5, $8, $9)
+          `INSERT INTO page_groups (id, name, color, position, etag, deleted, parent_id, synced, scope, description, workspace)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $5, $8, $9, $10)
            ON CONFLICT(id) DO UPDATE SET
              name = excluded.name, color = excluded.color, position = excluded.position,
-             etag = excluded.etag, deleted = excluded.deleted, parent_id = excluded.parent_id, scope = excluded.scope, description = excluded.description, synced = excluded.etag`,
+             etag = excluded.etag, deleted = excluded.deleted, parent_id = excluded.parent_id, scope = excluded.scope, description = excluded.description, workspace = excluded.workspace, synced = excluded.etag`,
           groupValues(rec as GroupRecord),
         );
       }
@@ -432,16 +440,16 @@ export async function createTauriStorage(): Promise<NotesStorage> {
         if (kind === 'page') {
           affected = (
             await db.execute(
-              `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, etag, deleted, drawing, color, kind, daily_date, sheet, cover, rev, synced, icon, archived)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 1, $9, $17, $18) ON CONFLICT(id) DO NOTHING`,
+              `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, etag, deleted, drawing, color, kind, daily_date, sheet, cover, rev, synced, icon, archived, workspace)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 1, $9, $17, $18, $19) ON CONFLICT(id) DO NOTHING`,
               pageValues(rec as PageRecord),
             )
           ).rowsAffected;
         } else {
           affected = (
             await db.execute(
-              `INSERT INTO page_groups (id, name, color, position, etag, deleted, parent_id, synced, scope, description)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $5, $8, $9) ON CONFLICT(id) DO NOTHING`,
+              `INSERT INTO page_groups (id, name, color, position, etag, deleted, parent_id, synced, scope, description, workspace)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $5, $8, $9, $10) ON CONFLICT(id) DO NOTHING`,
               groupValues(rec as GroupRecord),
             )
           ).rowsAffected;
@@ -450,16 +458,16 @@ export async function createTauriStorage(): Promise<NotesStorage> {
         affected = (
           await db.execute(
             `UPDATE pages SET title = $2, group_id = $3, tags = $4, blocks = $5, arrows = $6, created = $7, updated = $8,
-               etag = $9, deleted = $10, drawing = $11, color = $12, kind = $13, daily_date = $14, sheet = $15, cover = $16, icon = $17, archived = $18, synced = $9, rev = rev + 1
-             WHERE id = $1 AND etag = $19`,
+               etag = $9, deleted = $10, drawing = $11, color = $12, kind = $13, daily_date = $14, sheet = $15, cover = $16, icon = $17, archived = $18, workspace = $19, synced = $9, rev = rev + 1
+             WHERE id = $1 AND etag = $20`,
             [...pageValues(rec as PageRecord), base],
           )
         ).rowsAffected;
       } else {
         affected = (
           await db.execute(
-            `UPDATE page_groups SET name = $2, color = $3, position = $4, etag = $5, deleted = $6, parent_id = $7, scope = $8, description = $9, synced = $5
-             WHERE id = $1 AND etag = $10`,
+            `UPDATE page_groups SET name = $2, color = $3, position = $4, etag = $5, deleted = $6, parent_id = $7, scope = $8, description = $9, workspace = $10, synced = $5
+             WHERE id = $1 AND etag = $11`,
             [...groupValues(rec as GroupRecord), base],
           )
         ).rowsAffected;
@@ -475,9 +483,9 @@ export async function createTauriStorage(): Promise<NotesStorage> {
 
     async insertLocalPage(r) {
       await db.execute(
-        `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, etag, deleted, drawing, color, kind, daily_date, sheet, cover, rev, synced, icon, archived)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $10, $11, $12, $13, $14, $15, 1, NULL, $16, $17)`,
-        [r.id, r.title, r.groupId, JSON.stringify(r.tags), JSON.stringify(r.blocks), JSON.stringify(r.arrows ?? []), r.created, r.updated, newEtag(), r.drawing ? JSON.stringify(r.drawing) : '', r.color ?? null, kindOf(r), cleanDate(r.dailyDate), sheetJson(r.sheet), coverId(r.cover), iconOf(r.icon), archivedOf(r.archived)],
+        `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, etag, deleted, drawing, color, kind, daily_date, sheet, cover, rev, synced, icon, archived, workspace)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $10, $11, $12, $13, $14, $15, 1, NULL, $16, $17, $18)`,
+        [r.id, r.title, r.groupId, JSON.stringify(r.tags), JSON.stringify(r.blocks), JSON.stringify(r.arrows ?? []), r.created, r.updated, newEtag(), r.drawing ? JSON.stringify(r.drawing) : '', r.color ?? null, kindOf(r), cleanDate(r.dailyDate), sheetJson(r.sheet), coverId(r.cover), iconOf(r.icon), archivedOf(r.archived), workspaceOf(r)],
       );
     },
 
@@ -624,8 +632,17 @@ export async function createTauriStorage(): Promise<NotesStorage> {
       };
     },
 
-    async loadChanged(known) {
-      const revs = await db.select<{ id: string; rev: number }[]>('SELECT id, rev FROM pages WHERE deleted = 0');
+    async outline() {
+      const rows = await db.select<{ id: string; title: string; kind: string | null; workspace: string; icon: string; archived: number }[]>(
+        'SELECT id, title, kind, workspace, icon, archived FROM pages WHERE deleted = 0',
+      );
+      return rows.map((r) => ({ id: r.id, title: r.title, kind: kindOf({ kind: r.kind }), workspace: workspaceOf(r), ...(r.icon ? { icon: r.icon } : {}), ...(r.archived ? { archived: true } : {}) }));
+    },
+
+    async loadChanged(known, scope) {
+      const revs = scope === null
+        ? await db.select<{ id: string; rev: number }[]>('SELECT id, rev FROM pages WHERE deleted = 0')
+        : await db.select<{ id: string; rev: number }[]>("SELECT id, rev FROM pages WHERE deleted = 0 AND (workspace = $1 OR kind = 'template')", [scope]);
       const want = revs.filter((r) => known[r.id] !== r.rev).map((r) => r.id);
       const rows = want.length ? await selectIn<PageRow>((ph) => `SELECT * FROM pages WHERE id IN (${ph}) AND deleted = 0`, want) : [];
       const groupRows = await db.select<GroupRow[]>('SELECT * FROM page_groups WHERE deleted = 0 ORDER BY position, name');
@@ -649,12 +666,13 @@ export async function createTauriStorage(): Promise<NotesStorage> {
       const cover = coverId(page.cover);
       const icon = iconOf(page.icon);
       const archived = archivedOf(page.archived);
+      const workspace = workspaceOf(page);
       const etag = newEtag();
       await safeSnapshot(page.id, false); // the page as it was before this save
       const upd = await db.execute(
-        `UPDATE pages SET title = $1, group_id = $2, tags = $3, blocks = $4, arrows = $5, updated = $6, etag = $9, drawing = $10, color = $11, kind = $12, daily_date = $13, sheet = $14, cover = $15, icon = $16, archived = $17, rev = rev + 1
+        `UPDATE pages SET title = $1, group_id = $2, tags = $3, blocks = $4, arrows = $5, updated = $6, etag = $9, drawing = $10, color = $11, kind = $12, daily_date = $13, sheet = $14, cover = $15, icon = $16, archived = $17, workspace = $18, rev = rev + 1
          WHERE id = $7 AND rev = $8 AND deleted = 0`,
-        [page.title, page.groupId, tags, blocks, arrows, page.updated, page.id, page.rev, etag, drawing, color, kind, dailyDate, sheet, cover, icon, archived],
+        [page.title, page.groupId, tags, blocks, arrows, page.updated, page.id, page.rev, etag, drawing, color, kind, dailyDate, sheet, cover, icon, archived, workspace],
       );
       if (upd.rowsAffected > 0) {
         return { ok: true, rev: page.rev + 1 };
@@ -665,17 +683,17 @@ export async function createTauriStorage(): Promise<NotesStorage> {
       if (existing.length) {
         // Deleted here or on the other device, but edited again: the edit brings the page back.
         await db.execute(
-          `UPDATE pages SET title = $1, group_id = $2, tags = $3, blocks = $4, arrows = $5, updated = $6, etag = $7, deleted = 0, drawing = $9, color = $10, kind = $11, daily_date = $12, sheet = $13, cover = $14, icon = $15, archived = $16, rev = rev + 1
+          `UPDATE pages SET title = $1, group_id = $2, tags = $3, blocks = $4, arrows = $5, updated = $6, etag = $7, deleted = 0, drawing = $9, color = $10, kind = $11, daily_date = $12, sheet = $13, cover = $14, icon = $15, archived = $16, workspace = $17, rev = rev + 1
            WHERE id = $8`,
-          [page.title, page.groupId, tags, blocks, arrows, page.updated, etag, page.id, drawing, color, kind, dailyDate, sheet, cover, icon, archived],
+          [page.title, page.groupId, tags, blocks, arrows, page.updated, etag, page.id, drawing, color, kind, dailyDate, sheet, cover, icon, archived, workspace],
         );
         const r = await db.select<{ rev: number }[]>('SELECT rev FROM pages WHERE id = $1', [page.id]);
         return { ok: true, rev: r[0]?.rev ?? existing[0].rev + 1 };
       }
       await db.execute(
-        `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, rev, etag, synced, deleted, drawing, color, kind, daily_date, sheet, cover, icon, archived)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, NULL, 0, $10, $11, $12, $13, $14, $15, $16, $17)`,
-        [page.id, page.title, page.groupId, tags, blocks, arrows, page.created, page.updated, etag, drawing, color, kind, dailyDate, sheet, cover, icon, archived],
+        `INSERT INTO pages (id, title, group_id, tags, blocks, arrows, created, updated, rev, etag, synced, deleted, drawing, color, kind, daily_date, sheet, cover, icon, archived, workspace)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, NULL, 0, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+        [page.id, page.title, page.groupId, tags, blocks, arrows, page.created, page.updated, etag, drawing, color, kind, dailyDate, sheet, cover, icon, archived, workspace],
       );
       return { ok: true, rev: 1 };
     },
@@ -724,19 +742,20 @@ export async function createTauriStorage(): Promise<NotesStorage> {
     async saveGroups(groups: Group[]) {
       for (let i = 0; i < groups.length; i++) {
         const g = groups[i];
-        const scope = g.scope === 'cards' ? 'cards' : '';
+        const scope = groupScope(g.scope);
+        const workspace = workspaceOf(g);
         const description = scope === 'cards' ? (g.description ?? '') : '';
         // Only rows that really changed get a new etag, so sync sends just those.
         const upd = await db.execute(
-          `UPDATE page_groups SET name = $2, color = $3, position = $4, parent_id = $6, scope = $7, description = $8, deleted = 0, etag = $5
-           WHERE id = $1 AND (name IS NOT $2 OR color IS NOT $3 OR position IS NOT $4 OR parent_id IS NOT $6 OR scope IS NOT $7 OR description IS NOT $8 OR deleted = 1)`,
-          [g.id, g.name, g.color, i, newEtag(), g.parentId ?? null, scope, description],
+          `UPDATE page_groups SET name = $2, color = $3, position = $4, parent_id = $6, scope = $7, description = $8, workspace = $9, deleted = 0, etag = $5
+           WHERE id = $1 AND (name IS NOT $2 OR color IS NOT $3 OR position IS NOT $4 OR parent_id IS NOT $6 OR scope IS NOT $7 OR description IS NOT $8 OR workspace IS NOT $9 OR deleted = 1)`,
+          [g.id, g.name, g.color, i, newEtag(), g.parentId ?? null, scope, description, workspace],
         );
         if (upd.rowsAffected === 0) {
           await db.execute(
-            `INSERT INTO page_groups (id, name, color, position, etag, parent_id, synced, deleted, scope, description)
-             VALUES ($1, $2, $3, $4, $5, $6, NULL, 0, $7, $8) ON CONFLICT(id) DO NOTHING`,
-            [g.id, g.name, g.color, i, newEtag(), g.parentId ?? null, scope, description],
+            `INSERT INTO page_groups (id, name, color, position, etag, parent_id, synced, deleted, scope, description, workspace)
+             VALUES ($1, $2, $3, $4, $5, $6, NULL, 0, $7, $8, $9) ON CONFLICT(id) DO NOTHING`,
+            [g.id, g.name, g.color, i, newEtag(), g.parentId ?? null, scope, description, workspace],
           );
         }
       }

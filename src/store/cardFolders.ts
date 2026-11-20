@@ -10,7 +10,8 @@ import { get, scheduleGroupsSave, set, setPageGroup } from './notes';
 export function createCardFolder(name: string, parentId: string | null = null): Group | null {
   const folders = get().cardFolders;
   if (parentId && !folders.some((f) => f.id === parentId)) return null;
-  const g: Group = { id: newId(), name: uniqueName(folders, parentId, name), color: startColor(folders, parentId), parentId, scope: 'cards' };
+  const ws = get().workspace ?? '';
+  const g: Group = { id: newId(), name: uniqueName(folders, parentId, name), color: startColor(folders, parentId), parentId, scope: 'cards', ...(ws ? { workspace: ws } : {}) };
   set((s) => {
     s.cardFolders.push(g);
   });
@@ -115,7 +116,8 @@ export function moveLegacyCards(): { folders: number; cards: number } {
   const plan = planLegacyMove(cardsOf(get().pages), get().groups, get().cardFolders, newId);
   if (!plan.assign.size) return { folders: 0, cards: 0 };
   set((s) => {
-    s.cardFolders.push(...plan.create);
+    const ws = get().workspace ?? '';
+    s.cardFolders.push(...plan.create.map((f) => (ws ? { ...f, workspace: ws } : f)));
   });
   scheduleGroupsSave();
   for (const [cardId, folderId] of plan.assign) setPageGroup(cardId, folderId);

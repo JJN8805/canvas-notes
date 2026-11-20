@@ -13,6 +13,9 @@ import { get, getStorage, set, setStorage } from './state';
 import { flushAll, flushPage, markDirty, refreshFromDisk } from './save';
 import { mutatePage } from './mutate';
 import { resolveDailyDuplicates } from './pages';
+import { parseRoute } from '../../lib/routeParse';
+import { cleanWorkspaceName, isInScope, listWorkspaces, resolveActive, scopeTo, splitGroups } from '../../lib/workspaces';
+import { MAIN_NAME_KEY, savedWorkspace, stubOf } from './workspaceMemory';
 
 /* ------------------------------------------------------------------ */
 /* Startup                                                             */
@@ -31,15 +34,27 @@ export async function doInit() {
     setStorage(storage);
     // The starter templates are added once, before anything is read.
     await seedBuiltinTemplates(storage).catch((e) => console.warn('Starter templates failed', e));
-    const { pages, groups } = await storage.loadAll();
+    const { pages: everyPage, groups: everyGroup } = await storage.loadAll();
+    // Workspaces: only the open one is held in memory (a widget window holds all, since it can pin a box from any of them).
+    const mainName = cleanWorkspaceName(await storage.getSetting(MAIN_NAME_KEY).catch(() => null));
+    const list = listWorkspaces(splitGroups(everyGroup, null).workspaces, mainName);
+    const active = parseRoute(window.location.search, window.location.hash).name === 'widget' ? null : resolveActive(savedWorkspace(), list);
+    const pages = scopeTo(everyPage, active);
+    const split = splitGroups(everyGroup, active);
     const location = await storage.location().catch(() => '');
     await loadPrefs(storage);
     await loadFeatures(storage); // before the first screen, so nothing switched off flashes up
     void loadAddons(storage); // add-ons that are switched on start in the background; the app does not wait for them
     set((s) => {
       s.pages = Object.fromEntries(pages.map((p) => [p.id, p]));
-      s.groups = groups.filter((g) => g.scope !== 'cards');
-      s.cardFolders = groups.filter((g) => g.scope === 'cards');
+      s.groups = split.groups;
+      s.cardFolders = split.cardFolders;
+      s.workspaces = split.workspaces;
+      s.hiddenGroups = split.hiddenGroups;
+      s.hiddenCardFolders = split.hiddenCardFolders;
+      s.workspace = active;
+      s.mainName = mainName;
+      s.elsewhere = everyPage.filter((p) => !isInScope(p, active)).map(stubOf);
       s.storageKind = storage.kind;
       s.storageLocation = location;
       s.status = 'ready';
@@ -55,7 +70,8 @@ export async function doInit() {
       void storage
         .tidy()
         .catch((e) => console.warn('Tidying storage failed', e))
-        .then(() => storage.pruneImages(usedImageIds(Object.values(get().pages)))) // the pages as they are now, not at start-up
+        // Every workspace's pages count, not only the open one's: a file used by a page of another workspace must stay.
+        .then(async () => storage.pruneImages(usedImageIds([...(await storage.loadAll()).pages, ...Object.values(get().pages)])))
         .catch((e) => console.warn('Image cleanup failed', e));
     }, 20_000);
 
@@ -82,7 +98,7 @@ export async function doInit() {
 /** Re-reads the Trash list from storage. */
 export async function loadTrash() {
   try {
-    const trash = await getStorage().listTrash();
+    const trash = scopeTo(await getStorage().listTrash(), get().workspace);
     set((s) => {
       s.trash = trash;
     });

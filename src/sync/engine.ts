@@ -214,6 +214,7 @@ async function syncRound(store: SyncStore, send: Send, report: SyncReport): Prom
           cover: r.cover ?? null,
           icon: r.icon ?? null,
           ...(r.archived ? { archived: true } : {}),
+          ...(r.workspace ? { workspace: r.workspace } : {}),
           // A conflicted copy of a template stays a template; it never keeps a daily page's date.
           kind: r.kind ?? 'page',
           dailyDate: null,

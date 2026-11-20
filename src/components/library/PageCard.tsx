@@ -20,6 +20,7 @@ import { startSelect, toggleSelected, useSelect } from '../../store/librarySelec
 import { canArchive } from '../../lib/pages';
 import { useImageUrl } from '../../lib/useImageUrl';
 import { COARSE, PAGE_MIME } from './shared';
+import { workspaceMoveItems } from './workspaceMenu';
 
 /* ---------------- Card ---------------- */
 
@@ -80,6 +81,7 @@ export const PageCard = memo(function PageCard({ page, group }: { page: Page; gr
       { heading: 'Export as' },
       ...EXPORT_ITEMS(page.id),
       { separator: true },
+      ...workspaceMoveItems(canArchive(page as Page) ? [page.id] : []),
       { heading: 'Move to group' },
       { label: 'Ungrouped', check: !group, action: () => setPageGroup(page.id, null) },
       ...groupChoices(groups, group?.id ?? null, (id) => setPageGroup(page.id, id)),

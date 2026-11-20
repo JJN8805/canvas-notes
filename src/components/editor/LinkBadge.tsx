@@ -3,6 +3,7 @@ import { linksOf, resolveLink } from '../../lib/boxLinks';
 import { followLink, openLinkDialog } from '../../store/boxLinks';
 import { useNotes } from '../../store/notes';
 import { useFeature } from '../../store/features';
+import { useOthers } from '../../store/others';
 import { openMenu } from '../../store/ui';
 import { Icon } from '../ui/Icon';
 
@@ -11,19 +12,20 @@ export function LinkBadge({ block, pageId }: { block: Block; pageId: string }) {
   const links = linksOf(block);
   const linksOn = useFeature('links');
   const pages = useNotes((s) => (links.length ? s.pages : null));
+  const others = useOthers();
   if (!linksOn || !links.length || !pages) return null;
   return (
     <button
       className="link-badge"
       aria-label={`${links.length} link${links.length === 1 ? '' : 's'}`}
-      title={links.map((l) => resolveLink(l, pages).label).join('\n')}
+      title={links.map((l) => resolveLink(l, pages, others).label).join('\n')}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();
         openMenu(e.currentTarget, [
           { heading: 'Go to' },
           ...links.map((l) => {
-            const r = resolveLink(l, pages);
+            const r = resolveLink(l, pages, others);
             return { label: r.broken === 'page' ? 'Missing page' : r.label + (r.broken ? ' (missing box)' : ''), action: () => followLink(l) };
           }),
           { separator: true },

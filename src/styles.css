@@ -1699,3 +1699,11 @@ span.note-title { display: flex; align-items: center; overflow: hidden; white-sp
 .b-sticky .note-title:focus { box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--tint-ink, var(--ink)) 60%, transparent); }
 .block.b-sticky.folded { border: 0; border-radius: 3px 3px 10px 3px; }
 .block.b-sticky.folded .note-head { border-radius: 3px 3px 10px 3px; }
+
+/* Workspaces: the switcher under the app name (sidebar) and the chip in the library header (phones) */
+.ws-switch { display: flex; align-items: center; gap: 8px; min-width: 0; border: 0; background: transparent; color: var(--ink); cursor: pointer; font: inherit; font-size: 14px; font-weight: 600; text-align: left; border-radius: 6px; }
+.ws-switch:hover { background: var(--hover); }
+.ws-switch .ws-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.ws-switch .ws-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.ws-side { margin: 0 10px 8px; padding: 6px 10px; width: calc(100% - 20px); }
+.ws-toolbar { padding: 6px 10px; margin: 6px 0 0; align-self: flex-start; border: 1px solid var(--rule); max-width: 55%; }

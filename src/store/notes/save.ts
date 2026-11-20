@@ -4,6 +4,7 @@ import { history } from '../history';
 import { toast } from '../ui';
 import { SaveState, get, getStorage, peekStorage, set } from './state';
 import { bumpHistory } from './mutate';
+import { isInScope, splitGroups } from '../../lib/workspaces';
 
 /* ------------------------------------------------------------------ */
 /* Saving                                                              */
@@ -110,7 +111,8 @@ export async function refreshFromDisk() {
   // Only pages that changed on disk are read in full: this runs on every window focus and after every sync.
   const known: Record<string, number> = {};
   for (const [id, p] of Object.entries(get().pages)) known[id] = p.rev;
-  const { pages, ids, groups } = await storage.loadChanged(known);
+  const scope = get().workspace;
+  const [{ pages, ids, groups }, elsewhere] = await Promise.all([storage.loadChanged(known, scope), storage.outline().catch(() => null)]);
   const onDisk = new Set(ids);
   const busy = (id: string) => dirty.has(id) || running.has(id) || timers.has(id);
   const replaced: string[] = [];
@@ -127,9 +129,14 @@ export async function refreshFromDisk() {
       if (!onDisk.has(id) && !busy(id) && s.pages[id].rev > 0) delete s.pages[id];
     }
     if (groupsTimer === null && groupsRunning === null) {
-      s.groups = groups.filter((g) => g.scope !== 'cards');
-      s.cardFolders = groups.filter((g) => g.scope === 'cards');
+      const split = splitGroups(groups, scope);
+      s.groups = split.groups;
+      s.cardFolders = split.cardFolders;
+      s.workspaces = split.workspaces;
+      s.hiddenGroups = split.hiddenGroups;
+      s.hiddenCardFolders = split.hiddenCardFolders;
     }
+    if (elsewhere) s.elsewhere = elsewhere.filter((x) => !isInScope(x, scope));
   });
   if (replaced.length) {
     replaced.forEach((id) => history.clear(id));
@@ -151,7 +158,8 @@ export async function flushGroups() {
   groupsRunning = (async () => {
     try {
       // Page groups and card folders are stored together (one table, told apart by `scope`), so both go in every save.
-      await getStorage().saveGroups(deepClone([...get().groups, ...get().cardFolders]));
+      const st = get();
+      await getStorage().saveGroups(deepClone([...st.workspaces, ...st.hiddenGroups, ...st.hiddenCardFolders, ...st.groups, ...st.cardFolders]));
     } catch (e) {
       console.error(e);
       lastError = 'Couldn’t save groups.';

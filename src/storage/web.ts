@@ -23,6 +23,7 @@ import {
 } from './types';
 import { cleanSheet } from '../lib/sheet';
 import { cleanIcon } from '../lib/pageIcon';
+import { workspaceOf } from '../lib/workspaces';
 
 type PageRow = PageRecord & { rev: number; synced: string | null };
 type GroupRow = GroupRecord & { synced: string | null };
@@ -60,11 +61,12 @@ const vecId = (model: string, k: VectorKey) => `${model}|${k.pageId}|${k.blockId
 const rowToPage = (r: PageRow): Page => normalizePage({ ...r });
 const pageRecord = (r: PageRow): PageRecord => ({
   id: r.id, etag: r.etag, deleted: r.deleted, title: r.title, groupId: r.groupId,
-  tags: r.tags, blocks: r.blocks, arrows: r.arrows, drawing: r.drawing ?? null, color: r.color ?? null, kind: kindOf(r), dailyDate: cleanDate(r.dailyDate), sheet: cleanSheet(r.sheet), ...(r.cover ? { cover: r.cover } : {}), ...(r.icon ? { icon: r.icon } : {}), ...(r.archived ? { archived: true } : {}), created: r.created, updated: r.updated,
+  tags: r.tags, blocks: r.blocks, arrows: r.arrows, drawing: r.drawing ?? null, color: r.color ?? null, kind: kindOf(r), dailyDate: cleanDate(r.dailyDate), sheet: cleanSheet(r.sheet), ...(r.cover ? { cover: r.cover } : {}), ...(r.icon ? { icon: r.icon } : {}), ...(r.archived ? { archived: true } : {}), ...(r.workspace ? { workspace: r.workspace } : {}), created: r.created, updated: r.updated,
 });
 const groupRecord = (r: GroupRow): GroupRecord => ({
   id: r.id, etag: r.etag, deleted: r.deleted, name: r.name, color: r.color, position: r.position, parentId: r.parentId ?? null,
-  ...(r.scope === 'cards' ? { scope: 'cards' as const } : {}),
+  ...(r.scope === 'cards' || r.scope === 'workspaces' ? { scope: r.scope } : {}),
+  ...(r.workspace ? { workspace: r.workspace } : {}),
   ...(r.description ? { description: r.description } : {}),
 });
 
@@ -166,7 +168,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
   async function purgePage(id: string) {
     const tx = db.transaction('pages', 'readwrite');
     const p = await tx.store.get(id);
-    if (p?.deleted) await tx.store.put({ ...p, title: '', tags: [], blocks: [], arrows: [], drawing: null, color: null, dailyDate: null, sheet: null, cover: null, icon: null, archived: false, etag: newEtag(), rev: p.rev + 1 });
+    if (p?.deleted) await tx.store.put({ ...p, title: '', tags: [], blocks: [], arrows: [], drawing: null, color: null, dailyDate: null, sheet: null, cover: null, icon: null, archived: false, workspace: undefined, etag: newEtag(), rev: p.rev + 1 });
     await tx.done;
     for (const s of await db.getAllFromIndex('snapshots', 'pageId', id)) await db.delete('snapshots', s.id);
     await sweepHistory();
@@ -355,16 +357,22 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
       const groups = (await db.getAll('groups'))
         .filter((g) => !g.deleted)
         .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name))
-        .map((g): Group => ({ id: g.id, name: g.name, color: g.color as GroupColor, parentId: g.parentId ?? null, ...(g.scope === 'cards' ? { scope: 'cards' as const } : {}), ...(g.description ? { description: g.description } : {}) }));
+        .map((g): Group => ({ id: g.id, name: g.name, color: g.color as GroupColor, parentId: g.parentId ?? null, ...(g.scope === 'cards' || g.scope === 'workspaces' ? { scope: g.scope } : {}), ...(g.workspace ? { workspace: g.workspace } : {}), ...(g.description ? { description: g.description } : {}) }));
       return { pages, groups };
     },
 
-    async loadChanged(known) {
-      const all = (await db.getAll('pages')).filter((p) => !p.deleted);
+    async outline() {
+      return (await db.getAll('pages'))
+        .filter((p) => !p.deleted)
+        .map((p) => ({ id: p.id, title: p.title, kind: kindOf(p), workspace: workspaceOf(p), ...(p.icon ? { icon: p.icon } : {}), ...(p.archived ? { archived: true } : {}) }));
+    },
+
+    async loadChanged(known, scope) {
+      const all = (await db.getAll('pages')).filter((p) => !p.deleted && (scope === null || kindOf(p) === 'template' || workspaceOf(p) === scope));
       const groups = (await db.getAll('groups'))
         .filter((g) => !g.deleted)
         .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name))
-        .map((g): Group => ({ id: g.id, name: g.name, color: g.color as GroupColor, parentId: g.parentId ?? null, ...(g.scope === 'cards' ? { scope: 'cards' as const } : {}), ...(g.description ? { description: g.description } : {}) }));
+        .map((g): Group => ({ id: g.id, name: g.name, color: g.color as GroupColor, parentId: g.parentId ?? null, ...(g.scope === 'cards' || g.scope === 'workspaces' ? { scope: g.scope } : {}), ...(g.workspace ? { workspace: g.workspace } : {}), ...(g.description ? { description: g.description } : {}) }));
       return { pages: all.filter((p) => known[p.id] !== p.rev).map(rowToPage), ids: all.map((p) => p.id), groups };
     },
 
@@ -384,7 +392,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
       // A deleted page that is edited again comes back.
       const rev = existing ? existing.rev + 1 : 1;
       await tx.store.put({
-        id: page.id, title: page.title, groupId: page.groupId, tags: page.tags, blocks: page.blocks, arrows: page.arrows, drawing: page.drawing ?? null, color: page.color ?? null, kind: kindOf(page), dailyDate: cleanDate(page.dailyDate), sheet: cleanSheet(page.sheet), ...(page.cover ? { cover: page.cover } : {}), ...(cleanIcon(page.icon) ? { icon: cleanIcon(page.icon)! } : {}), ...(page.archived === true ? { archived: true } : {}),
+        id: page.id, title: page.title, groupId: page.groupId, tags: page.tags, blocks: page.blocks, arrows: page.arrows, drawing: page.drawing ?? null, color: page.color ?? null, kind: kindOf(page), dailyDate: cleanDate(page.dailyDate), sheet: cleanSheet(page.sheet), ...(page.cover ? { cover: page.cover } : {}), ...(cleanIcon(page.icon) ? { icon: cleanIcon(page.icon)! } : {}), ...(page.archived === true ? { archived: true } : {}), ...(workspaceOf(page) ? { workspace: workspaceOf(page) } : {}),
         created: page.created, updated: page.updated, rev, etag: newEtag(), synced: existing?.synced ?? null, deleted: false,
       });
       await tx.done;
@@ -432,10 +440,11 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
         const g = groups[i];
         const cur = await tx.store.get(g.id);
         const parentId = g.parentId ?? null;
-        const scope = g.scope === 'cards' ? ('cards' as const) : undefined;
+        const scope = g.scope === 'cards' || g.scope === 'workspaces' ? g.scope : undefined;
+        const workspace = workspaceOf(g) || undefined;
         const description = scope && g.description ? g.description : undefined;
-        if (cur && !cur.deleted && cur.name === g.name && cur.color === g.color && cur.position === i && (cur.parentId ?? null) === parentId && cur.scope === scope && (cur.description || undefined) === description) continue;
-        await tx.store.put({ id: g.id, name: g.name, color: g.color, position: i, parentId, ...(scope ? { scope } : {}), ...(description ? { description } : {}), etag: newEtag(), synced: cur?.synced ?? null, deleted: false });
+        if (cur && !cur.deleted && cur.name === g.name && cur.color === g.color && cur.position === i && (cur.parentId ?? null) === parentId && cur.scope === scope && (cur.workspace || undefined) === workspace && (cur.description || undefined) === description) continue;
+        await tx.store.put({ id: g.id, name: g.name, color: g.color, position: i, parentId, ...(scope ? { scope } : {}), ...(workspace ? { workspace } : {}), ...(description ? { description } : {}), etag: newEtag(), synced: cur?.synced ?? null, deleted: false });
       }
       for (const r of await tx.store.getAll()) {
         if (!keep.has(r.id) && !r.deleted) await tx.store.put({ ...r, deleted: true, etag: newEtag() });

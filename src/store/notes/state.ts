@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { Filter, Group, Page, SortKey } from '../../types';
+import type { PageStub } from '../../lib/workspaces';
 import { type NotesStorage } from '../../storage';
 
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -16,6 +17,20 @@ export interface NotesState {
   groups: Group[];
   /** The folders and sections of the Cards screen (a tree of its own, kept apart from `groups`). */
   cardFolders: Group[];
+  /**
+   * Workspaces (see lib/workspaces.ts). `pages`, `groups`, `cardFolders` and `trash` above hold only the OPEN workspace, so every screen
+   * is scoped without knowing about it. `null` = no scoping (a widget window, which can pin a box from any workspace).
+   */
+  workspace: string | null;
+  /** The workspaces that have been made (Main is not a row). */
+  workspaces: Group[];
+  /** What Main is called on this device. */
+  mainName: string;
+  /** Page groups and card folders of the workspaces that are not open: kept so saving the groups never drops them. */
+  hiddenGroups: Group[];
+  hiddenCardFolders: Group[];
+  /** The pages of the other workspaces, as short lines (for linking to them and for counts). */
+  elsewhere: PageStub[];
   save: { state: SaveState; message: string };
   filter: Filter;
   query: string;
@@ -34,6 +49,12 @@ export const useNotes = create<NotesState>()(
     trash: [],
     groups: [],
     cardFolders: [],
+    workspace: '' as string | null,
+    workspaces: [],
+    mainName: 'Main',
+    hiddenGroups: [],
+    hiddenCardFolders: [],
+    elsewhere: [],
     save: { state: 'idle' as SaveState, message: '' },
     filter: { kind: 'all' } as Filter,
     query: '',

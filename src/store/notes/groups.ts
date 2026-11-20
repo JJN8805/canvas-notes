@@ -17,7 +17,8 @@ export function createGroup(name: string, parentId: string | null = null): Group
   const used = groups.map((g) => g.color);
   const color: GroupColor =
     parent?.color ?? GROUP_COLORS.find((c) => !used.includes(c)) ?? GROUP_COLORS[groups.length % GROUP_COLORS.length];
-  const g: Group = { id: newId(), name: name.trim().slice(0, 60), color, parentId: parent ? parent.id : null };
+  const ws = get().workspace ?? '';
+  const g: Group = { id: newId(), name: name.trim().slice(0, 60), color, parentId: parent ? parent.id : null, ...(ws ? { workspace: ws } : {}) };
   set((s) => {
     s.groups.push(g);
   });

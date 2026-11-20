@@ -4,6 +4,8 @@ import { boxLabel, linkableBoxes, linksOf, linkTargets, pageLabel, resolveLink }
 import { isCard } from '../../lib/pages';
 import { addBoxLink, closeLinkDialog, followLink, removeBoxLink, replaceBoxLink, useLinkDialog } from '../../store/boxLinks';
 import { useNotes } from '../../store/notes';
+import { useOthers } from '../../store/others';
+import { stubsByWorkspace } from '../../lib/workspaces';
 import { confirmsOnEnter, enterKey } from '../../lib/enterConfirm';
 import { Icon } from '../ui/Icon';
 
@@ -15,6 +17,7 @@ export function LinkDialog() {
 
 function Inner({ pageId, blockId }: { pageId: string; blockId: string }) {
   const pages = useNotes((s) => s.pages);
+  const others = useOthers();
   const block = pages[pageId]?.blocks.find((b) => b.id === blockId);
   const [query, setQuery] = useState('');
   const [replacing, setReplacing] = useState<BoxLink | null>(null); // a missing link being pointed somewhere else
@@ -43,6 +46,14 @@ function Inner({ pageId, blockId }: { pageId: string; blockId: string }) {
 
   const existing = block ? linksOf(block) : [];
   const results = useMemo(() => linkTargets(pages, query).slice(0, 60), [pages, query]);
+  // Pages of the other workspaces that match: a link to the whole page (its boxes are not loaded here).
+  const abroad = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return [...stubsByWorkspace(others.stubs, null)].map(([ws, list]) => ({
+      ws,
+      list: list.filter((s) => !q || (s.title || 'Untitled').toLowerCase().includes(q)).slice(0, 30),
+    })).filter((g) => g.list.length);
+  }, [others, query]);
   const intoPage = into ? pages[into] : null;
   const owner = pages[pageId];
   if (!block || !owner) return null;
@@ -75,7 +86,7 @@ function Inner({ pageId, blockId }: { pageId: string; blockId: string }) {
         {existing.length > 0 && (
           <ul className="ld-list" aria-label="Current links">
             {existing.map((l) => {
-              const r = resolveLink(l, pages);
+              const r = resolveLink(l, pages, others);
               return (
                 <li key={l.page + (l.block ?? '')} className={r.broken ? 'broken' : ''}>
                   <Icon name="link" size={14} />
@@ -145,7 +156,7 @@ function Inner({ pageId, blockId }: { pageId: string; blockId: string }) {
               }}
             />
             <ul className="ld-list" aria-label="Pages and cards">
-              {results.length === 0 && <li className="ld-empty">Nothing matches.</li>}
+              {results.length === 0 && abroad.length === 0 && <li className="ld-empty">Nothing matches.</li>}
               {results.map((p) => (
                 <li key={p.id}>
                   <button className="ld-name" disabled={has(p.id)} onClick={() => pick({ page: p.id })} title="Link to the whole page">
@@ -158,6 +169,19 @@ function Inner({ pageId, blockId }: { pageId: string; blockId: string }) {
                 </li>
               ))}
             </ul>
+            {abroad.map((g) => (
+              <ul key={g.ws} className="ld-list" aria-label={`In ${others.nameOf(g.ws)}`}>
+                <li className="ld-empty">In {others.nameOf(g.ws)} (another workspace; opening it switches there)</li>
+                {g.list.map((s) => (
+                  <li key={s.id}>
+                    <button className="ld-name" disabled={has(s.id)} onClick={() => pick({ page: s.id })} title="Link to the whole page">
+                      {s.title.trim() || 'Untitled'}{has(s.id) ? ' (linked)' : ''}
+                    </button>
+                    <span className="ld-chip">{s.kind === 'card' ? 'card' : 'page'}</span>
+                  </li>
+                ))}
+              </ul>
+            ))}
           </>
         )}
         <div className="row">

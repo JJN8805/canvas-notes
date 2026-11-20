@@ -7,12 +7,14 @@ import { useFeature } from '../../store/features';
 import { pagesWord, pickedIn } from '../../lib/selection';
 import { Icon } from '../ui/Icon';
 import { groupChoices } from './shared';
+import { workspaceMoveItems } from './workspaceMenu';
 
 /** The bar that appears while pages are being picked in the library: what is picked, and what to do with them together. */
 export function SelectionBar({ shown, groups }: { shown: string[]; groups: Group[] }) {
   const { on, ids } = useSelect();
   const archiveOn = useFeature('archive');
   const groupsOn = useFeature('groups');
+  const wsOn = useFeature('workspaces');
   useEffect(() => {
     if (!on) return;
     const key = (e: KeyboardEvent) => e.key === 'Escape' && !document.querySelector('.scrim, .menu') && cancelSelect();
@@ -49,6 +51,12 @@ export function SelectionBar({ shown, groups }: { shown: string[]; groups: Group
         >
           <Icon name="folder" size={16} />
           Move to…
+        </button>
+      )}
+      {wsOn && workspaceMoveItems(shown).length > 0 && (
+        <button className="btn small" disabled={!picked.length} onClick={(e) => openMenu(e.currentTarget, workspaceMoveItems(picked, cancelSelect).slice(0, -1))}>
+          <Icon name="pages" size={16} />
+          Workspace…
         </button>
       )}
       <button className="btn small danger-text" disabled={!picked.length} onClick={() => void deletePages(picked).then(done)}>

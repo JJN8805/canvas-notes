@@ -6,6 +6,7 @@ import { setSelected } from './canvas';
 import { openCard } from './cardView';
 import { updateBlock, useNotes } from './notes';
 import { toast } from './ui';
+import { othersNow } from './others';
 import { create } from 'zustand';
 
 function setLinks(pageId: string, blockId: string, fn: (l: BoxLink[]) => BoxLink[]) {
@@ -24,7 +25,14 @@ export const removeBoxLink = (pageId: string, blockId: string, link: BoxLink) =>
 export async function followLink(link: BoxLink) {
   const { navigate, currentRoute } = await import('../lib/route'); // loaded when needed: it reads the window address
   const pages = useNotes.getState().pages;
-  const r = resolveLink(link, pages);
+  const r = resolveLink(link, pages, othersNow());
+  if (r.elsewhere) {
+    // Leads to a page in another workspace: open that workspace, then the page (a card opens as a card).
+    const { switchWorkspace } = await import('./workspaces');
+    await switchWorkspace(r.elsewhere.workspace, { go: false });
+    if (r.elsewhere.kind === 'card') return openCard(r.elsewhere.id);
+    return void navigate({ name: 'page', id: r.elsewhere.id });
+  }
   if (!r.page) return void toast('That page or card no longer exists.');
   if (r.broken === 'block') toast('That box is gone; opened the page instead.');
   if (isCard(r.page)) return openCard(r.page.id);

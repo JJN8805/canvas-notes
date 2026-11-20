@@ -26,15 +26,15 @@ describe.each([
     for (const id of ['a', 'b', 'c']) await s.savePage(page(id));
     const all = (await s.loadAll()).pages;
     const known = Object.fromEntries(all.map((p) => [p.id, p.rev]));
-    expect((await s.loadChanged(known)).pages).toEqual([]);
+    expect((await s.loadChanged(known, null)).pages).toEqual([]);
 
     const b = (await s.loadPage('b'))!;
     await s.savePage({ ...b, title: 'B2' });
-    const r = await s.loadChanged(known);
+    const r = await s.loadChanged(known, null);
     expect(r.pages.map((p) => p.id)).toEqual(['b']);
     expect(r.pages[0].title).toBe('B2');
     expect(r.ids.sort()).toEqual(['a', 'b', 'c']);
 
-    expect((await s.loadChanged({ a: known.a })).pages.map((p) => p.id).sort()).toEqual(['b', 'c']); // unknown ones come back in full
+    expect((await s.loadChanged({ a: known.a }, null)).pages.map((p) => p.id).sort()).toEqual(['b', 'c']); // unknown ones come back in full
   });
 });
