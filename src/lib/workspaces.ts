@@ -112,3 +112,25 @@ export function stubsByWorkspace(stubs: readonly PageStub[], active: string | nu
   for (const list of out.values()) list.sort((a, b) => (a.title || 'Untitled').localeCompare(b.title || 'Untitled'));
   return out;
 }
+
+/** Ctrl+Alt+1 … 9: the number of the workspace to open (1 = Main, 2 = the first one made …), or null for any other key. */
+export function workspaceShortcut(e: { code: string; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; metaKey: boolean; repeat?: boolean }): number | null {
+  const m = /^Digit([1-9])$/.exec(e.code);
+  return m && e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey && !e.repeat ? Number(m[1]) : null;
+}
+
+/** Ready-made groups to start a new workspace with (offered once, after it is made; none is the default). */
+export const STARTERS: readonly { id: string; label: string; groups: readonly string[] }[] = [
+  { id: 'student', label: 'Student: Courses, Assignments, Exams, Reading', groups: ['Courses', 'Assignments', 'Exams', 'Reading'] },
+  { id: 'creator', label: 'Content creator: Ideas, Scripts, Production, Published', groups: ['Ideas', 'Scripts', 'Production', 'Published'] },
+  { id: 'work', label: 'Work: Projects, Meetings, Reference', groups: ['Projects', 'Meetings', 'Reference'] },
+];
+
+/** Pages of other workspaces whose title has every word of the query (titles only: their boxes are not loaded). */
+export function searchStubs(stubs: readonly PageStub[], query: string, limit = 8): PageStub[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  return stubs
+    .filter((s) => s.kind !== 'template' && !s.archived && words.every((w) => (s.title || 'Untitled').toLowerCase().includes(w)))
+    .slice(0, limit);
+}

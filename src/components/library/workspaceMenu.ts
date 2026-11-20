@@ -4,8 +4,8 @@ import { ask, confirmDanger, openMenu } from '../../store/ui';
 import { GROUP_COLORS } from '../../types';
 import { featureOn } from '../../store/features';
 import { copyPagesToWorkspace, createWorkspace, deleteWorkspace, movePagesToWorkspace, renameWorkspace, setWorkspaceColor, switchWorkspace } from '../../store/workspaces';
-import { get } from '../../store/notes';
-import { listWorkspaces, MAIN } from '../../lib/workspaces';
+import { createGroup, get } from '../../store/notes';
+import { listWorkspaces, MAIN, STARTERS } from '../../lib/workspaces';
 
 const all = () => listWorkspaces(get().workspaces, get().mainName);
 const openId = () => get().workspace ?? MAIN;
@@ -20,6 +20,15 @@ export async function newWorkspaceFlow(): Promise<void> {
   });
   if (name === null || !name.trim()) return;
   await switchWorkspace(createWorkspace(name).id);
+  // Offered once, right away; closing the menu means an empty workspace.
+  const anchor = document.querySelector<HTMLElement>('.ws-switch');
+  if (anchor) {
+    openMenu(anchor, [
+      { heading: 'Start with some groups?' },
+      ...STARTERS.map((s): MenuItem => ({ label: s.label, action: () => s.groups.forEach((g) => createGroup(g)) })),
+      { label: 'No, start empty', action: () => {} },
+    ]);
+  }
 }
 
 /** The switcher's menu: every workspace (with how many pages), and the ways to make, rename, colour and delete. */

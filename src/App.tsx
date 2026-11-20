@@ -23,6 +23,9 @@ import { initSync } from './sync/controller';
 import { setupDesktopWidgets } from './widgets';
 import { startAutoArchive } from './store/autoArchive';
 import { switchWorkspace } from './store/workspaces';
+import { listWorkspaces, workspaceShortcut } from './lib/workspaces';
+import { colorVar } from './lib/util';
+import { startPerfLog } from './lib/perf';
 
 export function App() {
   const status = useNotes((s) => s.status);
@@ -82,6 +85,31 @@ export function App() {
       if (stub) void switchWorkspace(stub.workspace, { go: false });
     }
   }, [status, openWorkspace, workspaceRows, route, pageHere, elsewhere]);
+
+  // Ctrl+Alt+1 … 9 open the workspaces in order (1 is Main).
+  useEffect(() => {
+    if (status !== 'ready') return;
+    const onKey = (e: KeyboardEvent) => {
+      const n = workspaceShortcut(e);
+      if (n === null || !featureOn('workspaces')) return;
+      if (useUi.getState().dialog || useDraw.getState().open) return;
+      const st = useNotes.getState();
+      const target = listWorkspaces(st.workspaces, st.mainName)[n - 1];
+      if (!target) return;
+      e.preventDefault();
+      void switchWorkspace(target.id);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [status]);
+
+  // The open workspace's colour tints the sidebar's top edge (Main has none), so you can tell the desks apart at a glance.
+  const accentRows = useNotes((s) => s.workspaces);
+  useEffect(() => {
+    const color = accentRows.find((w) => w.id === openWorkspace)?.color;
+    document.documentElement.style.setProperty('--ws-accent', color ? colorVar(color) : 'transparent');
+  }, [accentRows, openWorkspace]);
+  useEffect(() => startPerfLog(), []);
 
   // The automatic archive file (laptop app only, and only when switched on in Settings → Data).
   useEffect(() => {

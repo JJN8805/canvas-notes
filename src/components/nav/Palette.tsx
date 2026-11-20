@@ -4,6 +4,8 @@ import { closeNav, useNav } from '../../store/nav';
 import { useNotes } from '../../store/notes';
 import { fuzzyFilter } from '../../lib/fuzzy';
 import { libraryPages } from '../../lib/pages';
+import { listWorkspaces, searchStubs } from '../../lib/workspaces';
+import { openPageAnywhere } from '../../store/workspaces';
 import { useFavorites } from '../../store/favorites';
 import { navigate } from '../../lib/route';
 import { buildCommands } from './commands';
@@ -33,6 +35,7 @@ function PaletteBody({ mode }: { mode: 'commands' | 'switcher' }) {
   const listRef = useRef<HTMLUListElement>(null);
   const prevFocus = useRef<Element | null>(document.activeElement);
 
+  const elsewhere = useNotes((s) => s.elsewhere);
   const loaded = useAddons((s) => s.loaded); // an add-on starting or stopping changes the rows
   const canAsk = mode === 'switcher' && !!askHandler();
 
@@ -47,11 +50,17 @@ function PaletteBody({ mode }: { mode: 'commands' | 'switcher' }) {
       .map((p) => ({ key: p.id, label: `${p.icon ? p.icon + ' ' : ''}${p.title || 'Untitled'}`, hint: stars.includes(p.id) ? 'Favorite' : p.dailyDate ? 'Journal' : p.tags.map((t) => '#' + t).join(' '), icon: (stars.includes(p.id) ? 'star' : 'pages') as IconName, run: () => navigate({ name: 'page', id: p.id }) }));
     const found: Row[] = fuzzyFilter(all, query, (r) => r.label).slice(0, 50);
     // "Search or ask": the last row asks the question instead of opening a page, so Enter still opens the best page match.
+    // Pages of the other workspaces, by title; opening one switches to its workspace.
+    const st = useNotes.getState();
+    const names = listWorkspaces(st.workspaces, st.mainName);
+    for (const s of searchStubs(st.elsewhere, query)) {
+      found.push({ key: 'ws-' + s.id, label: `${s.icon ? s.icon + ' ' : ''}${s.title || 'Untitled'}`, hint: names.find((w) => w.id === s.workspace)?.name ?? '', icon: 'pages', run: () => void openPageAnywhere(s.id) });
+    }
     const ask = askHandler();
     const q = query.trim();
     if (ask && q) found.push({ key: 'ask-ai', label: `Ask AI: “${q}”`, icon: 'sparkle', run: () => ask(q) });
     return found;
-  }, [mode, pages, query, loaded, stars]);
+  }, [mode, pages, query, loaded, stars, elsewhere]);
 
   useEffect(() => setSel(0), [query, mode]);
   useEffect(() => {

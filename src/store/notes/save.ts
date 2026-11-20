@@ -4,6 +4,7 @@ import { history } from '../history';
 import { toast } from '../ui';
 import { SaveState, get, getStorage, peekStorage, set } from './state';
 import { bumpHistory } from './mutate';
+import { timed } from '../../lib/perf';
 import { isInScope, splitGroups } from '../../lib/workspaces';
 
 /* ------------------------------------------------------------------ */
@@ -54,7 +55,7 @@ export async function flushPage(id: string): Promise<void> {
       dirty.delete(id);
       const page = get().pages[id];
       if (!page) break;
-      const res = await getStorage().savePage(page);
+      const res = await timed('savePage', () => getStorage().savePage(page));
       if (res.ok) {
         set((s) => {
           if (s.pages[id]) s.pages[id].rev = res.rev;
@@ -105,7 +106,10 @@ export async function resolveConflict(id: string) {
 }
 
 /** Pick up changes made in another window when this one regains focus. */
-export async function refreshFromDisk() {
+export function refreshFromDisk(): Promise<void> {
+  return timed('refreshFromDisk', refreshFromDiskNow);
+}
+async function refreshFromDiskNow() {
   const storage = peekStorage();
   if (!storage || get().status !== 'ready') return;
   // Only pages that changed on disk are read in full: this runs on every window focus and after every sync.

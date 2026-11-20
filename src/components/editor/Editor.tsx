@@ -66,6 +66,8 @@ import { choosePageIcon } from '../../store/pageIcon';
 import { toggleStar, useFavorites } from '../../store/favorites';
 import { setFocusMode, toggleFocusMode, useFocusMode } from '../../store/focusMode';
 import { TidyDialog } from './TidyDialog';
+import { useWorkspaceList } from '../../store/workspaces';
+import { workspaceMoveItems } from '../library/workspaceMenu';
 
 /**
  * A page. `variant: 'journal'` is the page of a day inside the Journal's book: the book supplies the date and the way back, so the
@@ -120,11 +122,13 @@ export function Editor({ pageId, variant = 'page' }: { pageId: string; variant?:
   const app = useNotes((s) => pageApp(s.pages[pageId]));
   useAddons((s) => s.loaded); // a Workspace page changes how it looks when the add-on starts or stops
   const view = pageAppView(app);
-  if (!exists || asCard || redirect) return null;
   const focusOn = useFocusMode((s) => s.on) && variant === 'page';
   const typing = useTyping(COARSE);
   const oneSelected = useCanvas((s) => s.selected.length === 1);
   useEffect(() => () => setFocusMode(false), [pageId]); // leaving a page leaves focus mode
+  // After every hook: the page can disappear while it is open (moved to another workspace, deleted elsewhere), and a hook below a
+  // return would then be skipped ("Rendered fewer hooks than expected").
+  if (!exists || asCard || redirect) return null;
   return (
     <div className={'editor' + (focusOn ? ' focus-mode' : '') + (typing ? ' typing' : '') + (COARSE && oneSelected ? ' has-sel' : '')}>
       {focusOn && (
@@ -230,6 +234,8 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
   const archiveOn = useFeature('archive');
   const canArch = useNotes((s) => !!s.pages[pageId] && canArchive(s.pages[pageId]));
   const archived = useNotes((s) => !!s.pages[pageId] && isArchived(s.pages[pageId]));
+  const wsOn = useFeature('workspaces');
+  const wsCount = useWorkspaceList().length;
   const addons = useAddons((s) => s.loaded);
   const openAddon = useAddons((s) => s.panel);
 
@@ -402,6 +408,17 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
             Commands
           </button>
         </>
+      )}
+      {wsOn && wsCount > 1 && canArch && !template && (
+        <button
+          className="btn ed-archive ed-ws"
+          aria-label="Move or copy this page to another workspace"
+          title="Move or copy this page to another workspace"
+          onClick={(e) => openMenu(e.currentTarget, workspaceMoveItems([pageId], () => navigate({ name: 'library' })).slice(0, -1))}
+        >
+          <Icon name="pages" size={16} />
+          <span className="ed-lbl">Workspace</span>
+        </button>
       )}
       {archiveOn && canArch && !template && (
         <button

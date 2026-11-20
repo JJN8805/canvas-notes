@@ -93,3 +93,34 @@ describe('a link to a page in another workspace', () => {
     expect(resolveLink({ page: 'far' }, {}).broken).toBe('page');
   });
 });
+
+import { searchStubs, STARTERS, workspaceShortcut } from '../src/lib/workspaces';
+
+describe('the extras', () => {
+  const key = (code: string, extra = {}) => ({ code, ctrlKey: true, altKey: true, shiftKey: false, metaKey: false, ...extra });
+  it('Ctrl+Alt+digit picks a workspace by number, nothing else does', () => {
+    expect(workspaceShortcut(key('Digit1'))).toBe(1);
+    expect(workspaceShortcut(key('Digit9'))).toBe(9);
+    expect(workspaceShortcut(key('Digit0'))).toBeNull();
+    expect(workspaceShortcut(key('KeyD'))).toBeNull();
+    expect(workspaceShortcut(key('Digit2', { altKey: false }))).toBeNull();
+    expect(workspaceShortcut(key('Digit2', { shiftKey: true }))).toBeNull();
+    expect(workspaceShortcut(key('Digit2', { repeat: true }))).toBeNull();
+  });
+  it('finds pages of other workspaces by every word of the title', () => {
+    const stubs = [
+      { id: 'a', title: 'Physics exam notes', kind: 'page', workspace: 'w1' },
+      { id: 'b', title: 'Exam schedule', kind: 'page', workspace: 'w1' },
+      { id: 'c', title: 'Exam template', kind: 'template', workspace: 'w1' },
+      { id: 'd', title: 'Exam old', kind: 'page', workspace: 'w1', archived: true },
+    ];
+    expect(searchStubs(stubs, 'exam notes').map((s) => s.id)).toEqual(['a']);
+    expect(searchStubs(stubs, 'EXAM').map((s) => s.id)).toEqual(['a', 'b']);
+    expect(searchStubs(stubs, '   ')).toEqual([]);
+    expect(searchStubs(stubs, 'exam', 1)).toHaveLength(1);
+  });
+  it('has starter groups, each with a few names', () => {
+    expect(STARTERS.length).toBeGreaterThan(1);
+    for (const s of STARTERS) expect(s.groups.length).toBeGreaterThan(1);
+  });
+});

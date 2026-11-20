@@ -112,11 +112,36 @@ check('deleting a workspace opens Main', /Main/.test(await page.locator('.ws-sid
 check('its page is in Main (nothing lost)', (await page.locator('.card:has-text("Essay plan")').count()) === 2);
 await page.screenshot({ path: join(OUT, '4-after-delete.png') });
 
-/* ---- palette ---- */
+/* ---- search across workspaces ---- */
 await page.keyboard.press('Control+k');
 await page.waitForSelector('.palette');
-await page.keyboard.press('Control+p').catch(() => {});
-await page.keyboard.press('Escape');
+await page.fill('.palette input', 'Video script');
+await page.waitForTimeout(300);
+const row = page.locator('.palette-row:has-text("Video script")');
+check('the quick switcher also finds a page of another workspace, naming it', (await row.count()) === 1 && /Content creator/.test(await row.innerText()));
+await page.keyboard.press('Enter');
+await page.waitForTimeout(800);
+check('choosing it opens that workspace and the page', (await page.locator('.world').count()) === 1 && /Video script/.test(await page.locator('.ed-head').innerText().catch(() => '') + (await page.locator('.ed-head input').first().inputValue().catch(() => ''))));
+await page.screenshot({ path: join(OUT, '5-across.png') });
+
+/* ---- keyboard: Ctrl+Alt+1 is Main ---- */
+await page.keyboard.press('Control+Alt+1');
+await page.waitForTimeout(700);
+check('Ctrl+Alt+1 opens Main', /Main/.test(await page.locator('.ws-side').innerText()));
+await page.keyboard.press('Control+Alt+2');
+await page.waitForTimeout(700);
+check('Ctrl+Alt+2 opens the next workspace', /Content creator/.test(await page.locator('.ws-side').innerText()));
+
+/* ---- the page header can move the page ---- */
+await page.click('.card:has-text("Video script")');
+await page.waitForSelector('.world');
+check('an open page has a Workspace button in its header', (await page.locator('.ed-ws').count()) === 1);
+await page.click('.ed-ws');
+check('it offers Move to Main', (await page.locator('.menu-item:has-text("Move to Main")').count()) === 1);
+await page.click('.menu-item:has-text("Move to Main")');
+await page.waitForSelector('.sidebar');
+await page.waitForTimeout(500);
+check('moving from the header goes back to the library, and the page has left', (await page.locator('.card:has-text("Video script")').count()) === 0);
 
 check('no console errors', errors.length === 0, errors.join(' | '));
 console.log('screenshots in', OUT);

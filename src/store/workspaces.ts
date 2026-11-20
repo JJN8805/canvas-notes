@@ -9,10 +9,11 @@ import { GROUP_COLORS } from '../types';
 import { cloneContent, canArchive } from '../lib/pages';
 import { cleanWorkspaceName, listWorkspaces, MAIN, scopeTo, splitGroups, uniqueName, workspaceOf, type WorkspaceInfo } from '../lib/workspaces';
 import { newId } from '../lib/util';
+import { timed } from '../lib/perf';
 import { history } from './history';
 import { flushAll, flushPage, flushGroups, get, getStorage, loadTrash, refreshFromDisk, scheduleGroupsSave, set, useNotes } from './notes';
 import { MAIN_NAME_KEY, rememberWorkspace, stubOf } from './notes/workspaceMemory';
-import { navigate } from '../lib/route';
+import { currentRoute, navigate } from '../lib/route';
 import { toast } from './ui';
 
 /** The workspaces in order, Main first. */
@@ -86,11 +87,15 @@ export function setWorkspaceColor(id: string, color: GroupColor): void {
 }
 
 /** Opens a workspace: pending saves are finished, then its pages and groups replace the ones on screen. Remembered on this device. */
-export async function switchWorkspace(id: string, opts: { go?: boolean } = {}): Promise<boolean> {
+export function switchWorkspace(id: string, opts: { go?: boolean } = {}): Promise<boolean> {
+  return timed('switchWorkspace', () => switchNow(id, opts));
+}
+async function switchNow(id: string, opts: { go?: boolean }): Promise<boolean> {
   const st = get();
   const wanted = listWorkspaces(st.workspaces, st.mainName).some((w) => w.id === id) ? id : MAIN;
   if (st.workspace === wanted) return false;
   await flushAll();
+  if (opts.go !== false) navigate({ name: 'library' }); // leave an open page before it goes away
   const storage = getStorage();
   const { pages, groups } = await storage.loadAll();
   const stubs = await storage.outline().catch(() => []);
@@ -109,7 +114,6 @@ export async function switchWorkspace(id: string, opts: { go?: boolean } = {}): 
   });
   rememberWorkspace(wanted);
   await loadTrash();
-  if (opts.go !== false) navigate({ name: 'library' });
   return true;
 }
 
@@ -125,6 +129,9 @@ export async function movePagesToWorkspace(ids: string[], target: string, opts: 
   if (!listWorkspaces(st.workspaces, st.mainName).some((w) => w.id === target)) return 0;
   const storage = getStorage();
   await Promise.all(ids.map((id) => flushPage(id)));
+  // A page that is open leaves the screen first, so nothing follows it to the other workspace.
+  const here = currentRoute();
+  if (here.name === 'page' && ids.includes(here.id)) navigate({ name: 'library' });
   const moved: { id: string; from: string; groupId: string | null; title: string }[] = [];
   for (const id of ids) {
     const p = await storage.loadPage(id);

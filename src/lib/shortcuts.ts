@@ -76,6 +76,7 @@ export function shortcutGroups(k: Keymap = DEFAULT_KEYMAP): ShortcutGroup[] {
       [`${M} + P`, 'Command palette'],
       [`${M} + O  /  ${M} + K`, 'Quick switcher: find a page, or ask'],
       [`${M} + ${ALT} + D`, 'Today’s page'],
+      [`${M} + ${ALT} + 1 … 9`, 'Open the 1st … 9th workspace (1 is Main)'],
       ['?', 'This list'],
     ],
   },
