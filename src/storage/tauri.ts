@@ -13,7 +13,7 @@ import { assembleBlocks, sha256Hex, shareBlocks, packRefs, unpackRefs } from '..
 import { assertSafeFile, FILE_EXT, isSafeId } from './validate';
 import { fileIdsOf } from '../lib/files';
 import { cleanIcon } from '../lib/pageIcon';
-import { workspaceOf } from '../lib/workspaces';
+import { adopt, workspaceOf } from '../lib/workspaces';
 import {
   base64ToBytes,
   bytesToBase64,
@@ -633,20 +633,25 @@ export async function createTauriStorage(): Promise<NotesStorage> {
     },
 
     async outline() {
-      const rows = await db.select<{ id: string; title: string; kind: string | null; workspace: string; icon: string; archived: number }[]>(
-        'SELECT id, title, kind, workspace, icon, archived FROM pages WHERE deleted = 0',
+      const rows = await db.select<{ id: string; title: string; kind: string | null; workspace: string; icon: string; archived: number; updated: number }[]>(
+        'SELECT id, title, kind, workspace, icon, archived, updated FROM pages WHERE deleted = 0',
       );
-      return rows.map((r) => ({ id: r.id, title: r.title, kind: kindOf({ kind: r.kind }), workspace: workspaceOf(r), ...(r.icon ? { icon: r.icon } : {}), ...(r.archived ? { archived: true } : {}) }));
+      const known = new Set((await db.select<{ id: string }[]>("SELECT id FROM page_groups WHERE scope = 'workspaces' AND deleted = 0")).map((g) => g.id));
+      return rows.map((r) => ({ id: r.id, title: r.title, kind: kindOf({ kind: r.kind }), workspace: known.has(r.workspace) ? workspaceOf(r) : '', updated: r.updated, ...(r.icon ? { icon: r.icon } : {}), ...(r.archived ? { archived: true } : {}) }));
     },
 
     async loadChanged(known, scope) {
       const revs = scope === null
         ? await db.select<{ id: string; rev: number }[]>('SELECT id, rev FROM pages WHERE deleted = 0')
-        : await db.select<{ id: string; rev: number }[]>("SELECT id, rev FROM pages WHERE deleted = 0 AND (workspace = $1 OR kind = 'template')", [scope]);
+        : scope === ''
+          // Main also holds pages whose workspace has no row (deleted on another device), so they are never hidden for good.
+          ? await db.select<{ id: string; rev: number }[]>("SELECT id, rev FROM pages WHERE deleted = 0 AND (workspace = '' OR kind = 'template' OR workspace NOT IN (SELECT id FROM page_groups WHERE scope = 'workspaces' AND deleted = 0))")
+          : await db.select<{ id: string; rev: number }[]>("SELECT id, rev FROM pages WHERE deleted = 0 AND (workspace = $1 OR kind = 'template')", [scope]);
       const want = revs.filter((r) => known[r.id] !== r.rev).map((r) => r.id);
       const rows = want.length ? await selectIn<PageRow>((ph) => `SELECT * FROM pages WHERE id IN (${ph}) AND deleted = 0`, want) : [];
       const groupRows = await db.select<GroupRow[]>('SELECT * FROM page_groups WHERE deleted = 0 ORDER BY position, name');
-      return { pages: rows.map(rowToPage), ids: revs.map((r) => r.id), groups: groupRows.map(toGroup) };
+      const groups = groupRows.map(toGroup);
+      return { pages: adopt(rows.map(rowToPage), groups.filter((g) => g.scope === 'workspaces')), ids: revs.map((r) => r.id), groups };
     },
 
     async loadPage(id) {

@@ -98,6 +98,8 @@ export interface PageStub {
   workspace: string;
   icon?: string;
   archived?: boolean;
+  /** When it was last edited (absent in stubs made before this was kept). */
+  updated?: number;
 }
 
 /** Every page of a workspace that is not open, grouped for a picker: the live (not archived) pages and cards of each other workspace. */
@@ -132,5 +134,28 @@ export function searchStubs(stubs: readonly PageStub[], query: string, limit = 8
   if (!words.length) return [];
   return stubs
     .filter((s) => s.kind !== 'template' && !s.archived && words.every((w) => (s.title || 'Untitled').toLowerCase().includes(w)))
+    .slice(0, limit);
+}
+
+/**
+ * Pages and groups whose workspace has no row (the workspace was deleted on another device while this one still edited in it, so sync
+ * brought back a page or conflicted copy that points at nothing) belong to Main, so they can never be hidden for good. Items are
+ * returned as they are when their workspace exists.
+ */
+export function adopt<T extends { workspace?: string | null; scope?: string }>(items: readonly T[], rows: readonly { id: string }[]): T[] {
+  const known = new Set(rows.map((r) => r.id));
+  return items.map((x) => {
+    const ws = workspaceOf(x);
+    if (!ws || known.has(ws) || x.scope === 'workspaces') return x;
+    const { workspace: _w, ...rest } = x;
+    return rest as T;
+  });
+}
+
+/** The pages of other workspaces edited most recently (the quick switcher offers them when nothing is typed). */
+export function recentStubs(stubs: readonly PageStub[], limit = 4): PageStub[] {
+  return stubs
+    .filter((s) => s.kind !== 'template' && !s.archived && s.updated !== undefined)
+    .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))
     .slice(0, limit);
 }

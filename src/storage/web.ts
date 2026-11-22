@@ -23,7 +23,7 @@ import {
 } from './types';
 import { cleanSheet } from '../lib/sheet';
 import { cleanIcon } from '../lib/pageIcon';
-import { workspaceOf } from '../lib/workspaces';
+import { adopt, workspaceOf } from '../lib/workspaces';
 
 type PageRow = PageRecord & { rev: number; synced: string | null };
 type GroupRow = GroupRecord & { synced: string | null };
@@ -362,18 +362,21 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
     },
 
     async outline() {
+      const known = new Set((await db.getAll('groups')).filter((g) => !g.deleted && g.scope === 'workspaces').map((g) => g.id));
       return (await db.getAll('pages'))
         .filter((p) => !p.deleted)
-        .map((p) => ({ id: p.id, title: p.title, kind: kindOf(p), workspace: workspaceOf(p), ...(p.icon ? { icon: p.icon } : {}), ...(p.archived ? { archived: true } : {}) }));
+        .map((p) => ({ id: p.id, title: p.title, kind: kindOf(p), workspace: known.has(workspaceOf(p)) ? workspaceOf(p) : '', updated: p.updated, ...(p.icon ? { icon: p.icon } : {}), ...(p.archived ? { archived: true } : {}) }));
     },
 
     async loadChanged(known, scope) {
-      const all = (await db.getAll('pages')).filter((p) => !p.deleted && (scope === null || kindOf(p) === 'template' || workspaceOf(p) === scope));
       const groups = (await db.getAll('groups'))
         .filter((g) => !g.deleted)
         .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name))
         .map((g): Group => ({ id: g.id, name: g.name, color: g.color as GroupColor, parentId: g.parentId ?? null, ...(g.scope === 'cards' || g.scope === 'workspaces' ? { scope: g.scope } : {}), ...(g.workspace ? { workspace: g.workspace } : {}), ...(g.description ? { description: g.description } : {}) }));
-      return { pages: all.filter((p) => known[p.id] !== p.rev).map(rowToPage), ids: all.map((p) => p.id), groups };
+      const rows = groups.filter((g) => g.scope === 'workspaces');
+      const live = (await db.getAll('pages')).filter((p) => !p.deleted);
+      const all = live.filter((p) => scope === null || kindOf(p) === 'template' || (scope === '' ? adopt([p], rows)[0].workspace === undefined : workspaceOf(p) === scope));
+      return { pages: adopt(all.filter((p) => known[p.id] !== p.rev).map(rowToPage), rows), ids: all.map((p) => p.id), groups };
     },
 
     async loadPage(id) {

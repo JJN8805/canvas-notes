@@ -7,14 +7,15 @@ import { useMemo } from 'react';
 import type { Group, GroupColor, Page } from '../types';
 import { GROUP_COLORS } from '../types';
 import { cloneContent, canArchive } from '../lib/pages';
-import { cleanWorkspaceName, listWorkspaces, MAIN, scopeTo, splitGroups, uniqueName, workspaceOf, type WorkspaceInfo } from '../lib/workspaces';
+import { adopt, cleanWorkspaceName, listWorkspaces, MAIN, scopeTo, splitGroups, uniqueName, workspaceOf, type WorkspaceInfo } from '../lib/workspaces';
 import { newId } from '../lib/util';
 import { timed } from '../lib/perf';
 import { history } from './history';
 import { flushAll, flushPage, flushGroups, get, getStorage, loadTrash, refreshFromDisk, scheduleGroupsSave, set, useNotes } from './notes';
-import { MAIN_NAME_KEY, rememberWorkspace, stubOf } from './notes/workspaceMemory';
+import { lastPageOf, MAIN_NAME_KEY, rememberLastPage, rememberWorkspace, stubOf } from './notes/workspaceMemory';
 import { currentRoute, navigate } from '../lib/route';
 import { toast } from './ui';
+import { selectDailyTemplate } from './prefs';
 
 /** The workspaces in order, Main first. */
 export function useWorkspaceList(): WorkspaceInfo[] {
@@ -95,9 +96,14 @@ async function switchNow(id: string, opts: { go?: boolean }): Promise<boolean> {
   const wanted = listWorkspaces(st.workspaces, st.mainName).some((w) => w.id === id) ? id : MAIN;
   if (st.workspace === wanted) return false;
   await flushAll();
+  const here = currentRoute();
+  rememberLastPage(st.workspace ?? MAIN, here.name === 'page' && st.pages[here.id] ? here.id : null); // where you were, for coming back
   if (opts.go !== false) navigate({ name: 'library' }); // leave an open page before it goes away
   const storage = getStorage();
-  const { pages, groups } = await storage.loadAll();
+  const loaded = await storage.loadAll();
+  const rows = splitGroups(loaded.groups, null).workspaces;
+  const pages = adopt(loaded.pages, rows);
+  const groups = adopt(loaded.groups, rows);
   const stubs = await storage.outline().catch(() => []);
   const split = splitGroups(groups, wanted);
   set((s) => {
@@ -113,7 +119,11 @@ async function switchNow(id: string, opts: { go?: boolean }): Promise<boolean> {
     s.query = '';
   });
   rememberWorkspace(wanted);
+  await selectDailyTemplate(wanted, storage);
   await loadTrash();
+  // Coming back to a workspace reopens the page you left open in it.
+  const back = opts.go !== false ? lastPageOf(wanted) : null;
+  if (back && get().pages[back]) navigate({ name: 'page', id: back });
   return true;
 }
 

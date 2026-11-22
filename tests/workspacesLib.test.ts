@@ -176,3 +176,24 @@ describe('find in every workspace', () => {
     expect(findEverywhere(pages, '  ')).toEqual([]);
   });
 });
+
+import { adopt, recentStubs } from '../src/lib/workspaces';
+
+describe('orphans and recents', () => {
+  it('sends the pages and groups of a workspace that no longer exists to Main, and leaves the rest alone', () => {
+    const out = adopt([{ id: 'a', workspace: 'gone' }, { id: 'b', workspace: 'w1' }, { id: 'c' }, { id: 'w1', scope: 'workspaces', workspace: 'gone' }], [{ id: 'w1' }]);
+    expect(out.map((x) => workspaceOf(x))).toEqual(['', 'w1', '', 'gone']); // a workspace row itself is never rewritten
+    expect('workspace' in out[0]).toBe(false);
+  });
+  it('lists the latest edited pages of other workspaces, newest first, without templates and archived pages', () => {
+    const stubs = [
+      { id: 'a', title: 'A', kind: 'page', workspace: 'w', updated: 5 },
+      { id: 'b', title: 'B', kind: 'page', workspace: 'w', updated: 9 },
+      { id: 'c', title: 'C', kind: 'template', workspace: 'w', updated: 99 },
+      { id: 'd', title: 'D', kind: 'page', workspace: 'w', updated: 50, archived: true },
+      { id: 'e', title: 'E', kind: 'page', workspace: 'w' },
+    ];
+    expect(recentStubs(stubs).map((s) => s.id)).toEqual(['b', 'a']);
+    expect(recentStubs(stubs, 1)).toHaveLength(1);
+  });
+});

@@ -22,6 +22,24 @@ export function rememberWorkspace(id: string): void {
   }
 }
 
+const LAST_KEY = 'ui.workspace.last.';
+/** The page that was open when you last left a workspace (per device), so coming back reopens it. */
+export function rememberLastPage(workspace: string, pageId: string | null): void {
+  try {
+    if (pageId) window.localStorage.setItem(LAST_KEY + (workspace || 'main'), pageId);
+    else window.localStorage.removeItem(LAST_KEY + (workspace || 'main'));
+  } catch {
+    /* not remembered */
+  }
+}
+export function lastPageOf(workspace: string): string | null {
+  try {
+    return window.localStorage.getItem(LAST_KEY + (workspace || 'main'));
+  } catch {
+    return null;
+  }
+}
+
 export const stubOf = (p: Page): PageStub => ({
   id: p.id,
   title: p.title,
@@ -29,4 +47,5 @@ export const stubOf = (p: Page): PageStub => ({
   workspace: workspaceOf(p),
   ...(p.icon ? { icon: p.icon } : {}),
   ...(p.archived ? { archived: true } : {}),
+  updated: p.updated,
 });

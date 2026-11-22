@@ -1,6 +1,6 @@
 import { Arrow, Block, Page } from '../../types';
 import { seedBuiltinTemplates } from '../../lib/builtinTemplates';
-import { loadPrefs, usePrefs } from '../prefs';
+import { loadPrefs, selectDailyTemplate, usePrefs } from '../prefs';
 import { loadAddons } from '../../addons/store';
 import { loadFeatures } from '../features';
 import { deepClone } from '../../lib/util';
@@ -14,7 +14,7 @@ import { flushAll, flushPage, markDirty, refreshFromDisk } from './save';
 import { mutatePage } from './mutate';
 import { resolveDailyDuplicates } from './pages';
 import { parseRoute } from '../../lib/routeParse';
-import { cleanWorkspaceName, isInScope, listWorkspaces, resolveActive, scopeTo, splitGroups } from '../../lib/workspaces';
+import { adopt, cleanWorkspaceName, isInScope, listWorkspaces, resolveActive, scopeTo, splitGroups } from '../../lib/workspaces';
 import { MAIN_NAME_KEY, savedWorkspace, stubOf } from './workspaceMemory';
 
 /* ------------------------------------------------------------------ */
@@ -34,11 +34,15 @@ export async function doInit() {
     setStorage(storage);
     // The starter templates are added once, before anything is read.
     await seedBuiltinTemplates(storage).catch((e) => console.warn('Starter templates failed', e));
-    const { pages: everyPage, groups: everyGroup } = await storage.loadAll();
+    const loaded = await storage.loadAll();
+    const rows = splitGroups(loaded.groups, null).workspaces;
+    const everyPage = adopt(loaded.pages, rows); // a page or group of a workspace that no longer exists belongs to Main
+    const everyGroup = adopt(loaded.groups, rows);
     // Workspaces: only the open one is held in memory (a widget window holds all, since it can pin a box from any of them).
     const mainName = cleanWorkspaceName(await storage.getSetting(MAIN_NAME_KEY).catch(() => null));
     const list = listWorkspaces(splitGroups(everyGroup, null).workspaces, mainName);
     const active = parseRoute(window.location.search, window.location.hash).name === 'widget' ? null : resolveActive(savedWorkspace(), list);
+    await selectDailyTemplate(active ?? '', storage); // each workspace has its own daily template
     const pages = scopeTo(everyPage, active);
     const split = splitGroups(everyGroup, active);
     const location = await storage.location().catch(() => '');

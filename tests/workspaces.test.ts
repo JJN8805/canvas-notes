@@ -50,6 +50,7 @@ describe.each([
 
   it('moves a page between workspaces on save, and the cheap reload sees only the open one (templates are in every one)', async () => {
     if (!s) return;
+    await s.saveGroups([{ id: 'w1', name: 'Student', color: 'teal', parentId: null, scope: 'workspaces' }]);
     await s.savePage(page('a', { workspace: 'w1' }));
     await s.savePage(page('b'));
     await s.savePage(page('t', { kind: 'template' }));

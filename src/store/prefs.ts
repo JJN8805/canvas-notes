@@ -109,10 +109,19 @@ export function rememberStickyColor(color: NoteColor, storage?: SettingsStore | 
   change({ stickyColor: color }, STICKY_KEY, color, storage);
 }
 
-/** Chooses which template new daily pages start from (see `Prefs.dailyTemplate`). */
+/** Where the daily template is kept: Main uses the original setting, every other workspace its own. */
+let dailyKey = DAILY_KEY;
+/** Makes the daily template that of this workspace ('' = Main): reads its saved choice, and later choices are saved for it. */
+export async function selectDailyTemplate(workspace: string, storage: SettingsStore): Promise<void> {
+  dailyKey = workspace ? `${DAILY_KEY}.${workspace}` : DAILY_KEY;
+  const v = await storage.getSetting(dailyKey).catch(() => null);
+  usePrefs.setState({ dailyTemplate: v || null });
+}
+
+/** Chooses which template new daily pages start from (see `Prefs.dailyTemplate`); each workspace has its own choice. */
 export function setDailyTemplate(value: string | null, storage?: SettingsStore | null) {
   if (usePrefs.getState().dailyTemplate === value) return;
-  change({ dailyTemplate: value }, DAILY_KEY, value, storage);
+  change({ dailyTemplate: value }, dailyKey, value, storage);
 }
 
 export function setTheme(theme: Theme, storage?: SettingsStore | null) {

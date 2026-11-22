@@ -129,7 +129,10 @@ await page.keyboard.press('Control+Alt+1');
 await page.waitForTimeout(700);
 check('Ctrl+Alt+1 opens Main', /Main/.test(await page.locator('.ws-side').innerText()));
 await page.keyboard.press('Control+Alt+2');
-await page.waitForTimeout(700);
+await page.waitForTimeout(900);
+check('coming back to a workspace reopens the page that was open in it', (await page.locator('.world').count()) === 1 && /Video script/.test(await page.locator('.ed-head input').first().inputValue().catch(() => '')));
+await page.evaluate(() => { location.hash = '#/'; });
+await page.waitForSelector('.ws-side');
 check('Ctrl+Alt+2 opens the next workspace', /Content creator/.test(await page.locator('.ws-side').innerText()));
 
 /* ---- the page header can move the page ---- */

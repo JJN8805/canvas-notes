@@ -1,5 +1,9 @@
 import { confirmsOnEnter, enterKey } from '../../lib/enterConfirm';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { Page } from '../../types';
+import { adopt, splitGroups } from '../../lib/workspaces';
+import { useFeature } from '../../store/features';
+import { useWorkspaceList } from '../../store/workspaces';
 import { askHandler, useAddons } from '../../addons/store';
 import { dailyTitle, dateKey } from '../../lib/daily';
 import { templateLines } from '../../lib/journal';
@@ -8,7 +12,7 @@ import { navigate } from '../../lib/route';
 import { buildWeekly } from '../../lib/weekly';
 import { closeWeekly, createWeeklyPage, useWeekly } from '../../store/weekly';
 import { usePrefs } from '../../store/prefs';
-import { useNotes } from '../../store/notes';
+import { getStorage, useNotes } from '../../store/notes';
 import { toast } from '../../store/ui';
 
 const REFLECT =
@@ -24,10 +28,21 @@ export function WeeklyReviewDialog() {
   const pages = useNotes((s) => s.pages);
   const setting = usePrefs((s) => s.dailyTemplate);
   useAddons((s) => s.loaded); // an add-on starting or stopping changes whether "ask AI" is offered
+  // "Include my other workspaces": the review is worked out from every workspace's pages (read from storage), and still made in this one.
+  const wsOn = useFeature('workspaces');
+  const manyDesks = useWorkspaceList().length > 1;
+  const [everywhere, setEverywhere] = useState<Record<string, Page> | null>(null);
+  useEffect(() => setEverywhere(null), [date]);
+  const source = everywhere ?? pages;
   const draft = useMemo(
-    () => (date ? buildWeekly(pages, date, dateKey(), templateLines(resolveDailyTemplate(pages, setting))) : null),
-    [date, pages, setting],
+    () => (date ? buildWeekly(source, date, dateKey(), templateLines(resolveDailyTemplate(pages, setting))) : null),
+    [date, source, pages, setting],
   );
+  const loadAllDesks = async (on: boolean) => {
+    if (!on) return setEverywhere(null);
+    const { pages: every, groups } = await getStorage().loadAll();
+    setEverywhere(Object.fromEntries(adopt(every, splitGroups(groups, null).workspaces).map((p) => [p.id, p])));
+  };
   const primary = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (date) primary.current?.focus();
@@ -53,6 +68,11 @@ export function WeeklyReviewDialog() {
         if (!draft.empty && confirmsOnEnter(enterKey(e))) (e.preventDefault(), create(false));
       }}>
         <h2>{draft.title}</h2>
+        {wsOn && manyDesks && (
+          <label className="weekly-all">
+            <input type="checkbox" checked={everywhere !== null} onChange={(e) => void loadAllDesks(e.target.checked)} /> Include my other workspaces
+          </label>
+        )}
         <p className="weekly-sub">
           {s.daysWritten} {s.daysWritten === 1 ? 'day' : 'days'} written · {s.tasksDone} done · {s.tasksOpen} still open · {s.pagesTouched} {s.pagesTouched === 1 ? 'page' : 'pages'} worked on
         </p>

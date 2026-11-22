@@ -4,7 +4,7 @@ import { closeNav, useNav } from '../../store/nav';
 import { useNotes } from '../../store/notes';
 import { fuzzyFilter } from '../../lib/fuzzy';
 import { libraryPages } from '../../lib/pages';
-import { listWorkspaces, searchStubs } from '../../lib/workspaces';
+import { listWorkspaces, recentStubs, searchStubs } from '../../lib/workspaces';
 import { openPageAnywhere } from '../../store/workspaces';
 import { openFindAll } from '../../store/findAll';
 import { featureOn } from '../../store/features';
@@ -52,10 +52,11 @@ function PaletteBody({ mode }: { mode: 'commands' | 'switcher' }) {
       .map((p) => ({ key: p.id, label: `${p.icon ? p.icon + ' ' : ''}${p.title || 'Untitled'}`, hint: stars.includes(p.id) ? 'Favorite' : p.dailyDate ? 'Journal' : p.tags.map((t) => '#' + t).join(' '), icon: (stars.includes(p.id) ? 'star' : 'pages') as IconName, run: () => navigate({ name: 'page', id: p.id }) }));
     const found: Row[] = fuzzyFilter(all, query, (r) => r.label).slice(0, 50);
     // "Search or ask": the last row asks the question instead of opening a page, so Enter still opens the best page match.
-    // Pages of the other workspaces, by title; opening one switches to its workspace.
+    // Pages of the other workspaces, by title (or, with nothing typed, the ones edited last); opening one switches to its workspace.
     const st = useNotes.getState();
     const names = listWorkspaces(st.workspaces, st.mainName);
-    for (const s of searchStubs(st.elsewhere, query)) {
+    const abroad = query.trim() ? searchStubs(st.elsewhere, query) : recentStubs(st.elsewhere);
+    for (const s of abroad) {
       found.push({ key: 'ws-' + s.id, label: `${s.icon ? s.icon + ' ' : ''}${s.title || 'Untitled'}`, hint: names.find((w) => w.id === s.workspace)?.name ?? '', icon: 'pages', run: () => void openPageAnywhere(s.id) });
     }
     const ask = askHandler();

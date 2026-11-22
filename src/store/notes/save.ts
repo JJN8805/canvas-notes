@@ -5,7 +5,7 @@ import { toast } from '../ui';
 import { SaveState, get, getStorage, peekStorage, set } from './state';
 import { bumpHistory } from './mutate';
 import { timed } from '../../lib/perf';
-import { isInScope, splitGroups } from '../../lib/workspaces';
+import { adopt, isInScope, splitGroups } from '../../lib/workspaces';
 
 /* ------------------------------------------------------------------ */
 /* Saving                                                              */
@@ -133,7 +133,7 @@ async function refreshFromDiskNow() {
       if (!onDisk.has(id) && !busy(id) && s.pages[id].rev > 0) delete s.pages[id];
     }
     if (groupsTimer === null && groupsRunning === null) {
-      const split = splitGroups(groups, scope);
+      const split = splitGroups(adopt(groups, groups.filter((g) => g.scope === 'workspaces')), scope);
       s.groups = split.groups;
       s.cardFolders = split.cardFolders;
       s.workspaces = split.workspaces;
