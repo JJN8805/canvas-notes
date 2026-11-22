@@ -5,7 +5,10 @@ const KEY = 'ui.graph';
 
 function load(): GraphPrefs {
   try {
-    return cleanGraphPrefs(JSON.parse(localStorage.getItem(KEY) ?? 'null'));
+    const saved = localStorage.getItem(KEY);
+    // On a phone the settings strip would cover the picture, so it starts closed (the Settings button opens it).
+    if (saved === null && typeof window !== 'undefined' && window.innerWidth <= 760) return { ...cleanGraphPrefs(null), panelOpen: false };
+    return cleanGraphPrefs(JSON.parse(saved ?? 'null'));
   } catch {
     return cleanGraphPrefs(null); // private window, blocked storage: the defaults
   }

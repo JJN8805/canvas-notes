@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { NoteColor } from '../../types';
 import { SLIDE_LAYOUTS, slideOfBlock, slidesOf } from '../../lib/office/app';
 import { noteVar } from '../../lib/colors';
@@ -8,10 +8,13 @@ import { startPresent } from '../../store/present';
 import { useNotes } from '../../store/notes';
 import { confirmDanger, openMenu } from '../../store/ui';
 import { Icon } from '../ui/Icon';
+import { usePhone } from '../ui/usePhone';
 import { SlideView } from './SlideView';
 
 /** Beside a presentation's canvas: the slides in order (click to go to one), add, move, copy and delete, the speaker notes, and Present. */
 export function SlidesPanel({ pageId }: { pageId: string }) {
+  const phone = usePhone(); // on a phone the panel is a small bar over the canvas that opens when asked (it took two thirds of the screen)
+  const [open, setOpen] = useState(false);
   const blocks = useNotes((s) => s.pages[pageId]?.blocks);
   const selected = useCanvas((s) => s.selected);
   const slides = useMemo(() => slidesOf(blocks ?? []), [blocks]);
@@ -37,7 +40,7 @@ export function SlidesPanel({ pageId }: { pageId: string }) {
   };
 
   return (
-    <aside className="slides-panel" aria-label="Slides">
+    <aside className={'slides-panel' + (phone ? ' phone' : '') + (phone && open ? ' open' : '')} aria-label="Slides">
       <div className="slides-head">
         <button className="btn primary small" onClick={() => startPresent(pageId, Math.max(0, index))} disabled={!slides.length}>
           Present
@@ -53,7 +56,14 @@ export function SlidesPanel({ pageId }: { pageId: string }) {
         >
           <Icon name="plus" size={14} /> Slide
         </button>
+        {phone && (
+          <button className="btn small slides-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+            {index >= 0 ? index + 1 : 0}/{slides.length} {open ? '▴' : '▾'}
+          </button>
+        )}
       </div>
+      {(!phone || open) && (
+      <>
       <ol className="slides-list">
         {slides.map((s, i) => (
           <li key={s.id} className={s.id === current?.id ? 'on' : ''}>
@@ -98,6 +108,8 @@ export function SlidesPanel({ pageId }: { pageId: string }) {
             />
           </label>
         </div>
+      )}
+      </>
       )}
     </aside>
   );

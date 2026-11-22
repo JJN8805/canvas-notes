@@ -1545,7 +1545,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .nav-ico .page-icon { margin-right: 0; font-size: 15px; line-height: 1; }
 .ed-icon { color: var(--graphite); }
 .ed-icon.has { font-size: 20px; line-height: 1; }
-.ed-icon.has span { font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
+.ed-icon.has span:not(.ed-lbl-more) { font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; }
 
 /* ------------------------------------------------------------------
    Phone layout (a narrow window). Research (thumb zone, bottom navigation, 44-48 px targets, Keep/Evernote's floating button):
@@ -1732,3 +1732,225 @@ span.note-title { display: flex; align-items: center; overflow: hidden; white-sp
 .folder-pic.banner { display: block; width: 100%; height: 130px; margin: 0 0 10px; border-radius: 8px; }
 .fe-pic { display: flex; align-items: center; gap: 8px; }
 .fe-pic .folder-pic.thumb { width: 40px; height: 40px; border-color: var(--rule); }
+
+/* ---------------------------------------------------------------------------------------------------------------------------------------
+   Phone polish (found by walking every screen of the real phone): lists that were only styled inside the link dialog, a template picker whose
+   rows collapsed, clipped dropdowns, crowded headers, and wide dialogs.
+   --------------------------------------------------------------------------------------------------------------------------------------- */
+/* The short lists (links, today, find) look the same wherever they are used. */
+:is(.today-all, .today-strip, .find-all) .ld-list { list-style: none; margin: 4px 0 10px; padding: 0; border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+:is(.today-all, .today-strip, .find-all) .ld-list li { display: flex; align-items: center; gap: 8px; padding: 2px 8px; border-bottom: 1px solid var(--rule); min-width: 0; }
+:is(.today-all, .today-strip, .find-all) .ld-list li:last-child { border-bottom: 0; }
+:is(.today-all, .today-strip, .find-all) .ld-name { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 8px 2px; color: inherit; font: inherit; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:is(.today-all, .today-strip, .find-all) > .ld-name, .today-all .ta-desk > .ld-name, .today-strip > .ld-name { display: block; width: 100%; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 8px; background: var(--sheet); }
+:is(.today-all, .today-strip, .find-all) .ld-name:hover { text-decoration: underline; }
+:is(.today-all, .today-strip, .find-all) .ld-chip { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--graphite); border: 1px solid var(--rule); border-radius: 8px; padding: 0 6px; }
+:is(.today-all, .today-strip, .find-all) .ld-empty { color: var(--graphite); padding: 8px; font-size: 13px; }
+.today-strip .ld-list { max-width: 640px; }
+.today-strip > .ld-name { max-width: 640px; }
+
+/* The template picker: rows keep their height (they collapsed to thin bars when the grid was one column), and two columns fit a phone. */
+.tpl-grid { grid-auto-rows: max-content; min-height: 0; flex: 1 1 auto; }
+@media (max-width: 760px) {
+  .tpl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .dialog.picker { max-height: 90vh; }
+}
+
+/* Rows in the quick switcher and command list: one line, the long title is cut with … and the hint never squeezes it. */
+.palette-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-hint { flex: none; max-width: 42%; overflow: hidden; text-overflow: ellipsis; }
+.palette-ico { flex: none; }
+.palette-row { align-items: center; }
+
+@media (max-width: 760px) {
+  /* Dropdowns are wide enough for their words, and the row of controls wraps instead of squeezing them. */
+  select.field { min-width: 118px; }
+  .main .controls select.field { flex: 1.5 1 128px; }
+  .main .controls > .btn { flex: 1 1 88px; }
+  /* The title, the workspace chip beside it, the count underneath. */
+  .main-title { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; }
+  .main-title h1 { flex: 0 1 auto; }
+  .main-title p { flex: 1 1 100%; }
+  .ws-toolbar { margin: 0; }
+  /* The command list's hint under the word Commands made it two cramped lines. */
+  .phone-sheet .sheet-cmd small { display: none; }
+  /* The pick bar: one row you can slide, never three rows over the cards. */
+  .select-bar { flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px; padding: 8px 10px; }
+  .select-bar .select-count { flex: 1 1 100%; padding: 0 2px; }
+  /* The actions are icons (the words stay for screen readers and in the tooltip), so they all fit on one row. */
+  .select-bar .sb-lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .select-bar .btn { min-width: 44px; min-height: 44px; justify-content: center; }
+  /* History: the picture on top, the words and button under it. */
+  .history-item { flex-direction: column; align-items: stretch; }
+  .history-thumb { width: 100%; }
+  .history-info { justify-items: stretch; }
+  .history-info .btn { justify-self: stretch; }
+  /* A card: the cover's words and button centred, the title may wrap, the folder under its label. */
+  .cd-cover.nocover { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 18px 10px; }
+  .cd-cover.nocover .cd-cover-actions { position: static; flex-wrap: wrap; justify-content: center; }
+  .cd-label { font-size: 20px; text-overflow: ellipsis; }
+  .cd-set { flex-direction: column; align-items: stretch; gap: 4px; }
+  /* Cards come two to a row. */
+  .cgrid, .section-cards.cgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .cf-main { padding: 14px 12px 88px; }
+}
+
+@media (max-width: 760px) {
+  /* The journal's day controls wrap onto a second row rather than sliding out of sight. */
+  .journal-bar .controls { flex-wrap: wrap; overflow: visible; }
+  /* The opened page header: the short buttons in two columns (not one long list that pushes the page off the screen). */
+  .ed-head.more :is(.ed-template, .ed-outline, .ed-space, .ed-size, .ed-history, .ed-export, .ed-archive, .ed-backlinks, .ed-phoneonly, .ed-addon) { order: 5; flex: 1 1 calc(50% - 4px); min-width: 0; justify-content: flex-start; gap: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ed-head.more .ed-icon { flex-direction: row; white-space: nowrap; gap: 8px; }
+  .ed-head.more .ed-icon .ed-lbl-more { white-space: nowrap; }
+  .ed-head.more .ed-lbl, .ed-head.more .ed-lbl-more { overflow: hidden; text-overflow: ellipsis; }
+  /* The multi-select bar: one row that fits the screen and slides if it has to. */
+  .multi-bar { left: 12px; right: 12px; transform: none; width: auto; max-width: none; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+  .multi-bar > * { flex: none; white-space: nowrap; }
+  /* The 3D view's header: the title and close on one row, the note box under them at full width. */
+  .spaceview .graph-head { flex-wrap: wrap; gap: 6px 8px; }
+  .spaceview .space-title { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .spaceview .space-write { flex: 1 1 100%; order: 3; display: flex; gap: 8px; }
+  .spaceview .space-write .field { flex: 1; min-width: 0; }
+}
+
+@media (max-width: 760px) {
+  /* The row of controls under the search box: the sort menu, Sync and Select fit on one row. */
+  .main .controls select.field { flex: 1.5 1 120px; }
+  .main .controls > .btn { flex: 1 1 74px; padding-left: 8px; padding-right: 8px; }
+  /* The ⋯ on a card is a smaller, see-through button so it does not hide the miniature. */
+  .card-menu, .card .card-menu { width: 36px; height: 36px; top: 4px; right: 4px; background: color-mix(in srgb, var(--sheet) 82%, transparent); backdrop-filter: blur(2px); }
+}
+
+@media (max-width: 760px) {
+  /* Journal: the day arrows and date on one row, the three buttons side by side under them. */
+  .journal-bar .controls { width: 100%; }
+  .journal-bar .controls > .btn { flex: 1 1 30%; min-width: 0; justify-content: center; padding-left: 6px; padding-right: 6px; font-size: 13px; }
+  .journal-bar .controls > .icon-btn { flex: none; }
+  .journal-bar .controls > :nth-child(2) { flex: 1 1 calc(100% - 112px); min-width: 0; }
+  .journal-bar .controls > :nth-child(2) .btn { width: 100%; justify-content: center; }
+  .journal-bar { padding-bottom: 8px; }
+  .book-heading { padding-top: 8px; padding-bottom: 6px; }
+  .ed-head.compact { padding: 0 6px; min-height: 0; }
+  .ed-head.compact .icon-btn { width: 40px; height: 40px; }
+}
+
+.cf-show-lbl { display: none; }
+@media (max-width: 760px) {
+  /* The folder tree, when shown, is a short list that scrolls, not a third of the screen; its button says what it is. */
+  .cf-tree { max-height: 34vh; padding: 8px 8px 8px 12px; }
+  .cf-root, .cf-row { min-height: 40px; }
+  .cf-show { width: auto; height: 36px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; margin: 0 8px 0 0; }
+  .cf-show .cf-show-lbl { display: inline; font-size: 13px; font-weight: 600; }
+}
+
+@media (max-width: 760px) {
+  /* The More sheet starts with what you opened it for: no second app name, no second search box (the Search tab is right there). */
+  .phone-sheet .brand, .phone-sheet .side-search { display: none; }
+  .phone-sheet .ws-side { margin: 4px 0 6px; width: 100%; }
+  .phone-sheet .profile-chip { margin: 0 0 6px; }
+  .phone-sheet .sheet-cmd { margin-bottom: 8px; }
+}
+
+@media (max-width: 760px) {
+  /* Settings fills the phone (it was a small card with half the room and Done on top of the content). */
+  .dialog.settings { position: fixed; inset: 0; width: 100%; height: 100%; max-height: none; border-radius: 0; border: 0; padding: calc(12px + env(safe-area-inset-top, 0px)) 14px calc(10px + env(safe-area-inset-bottom, 0px)); }
+  .dialog.settings .set-body { flex: 1 1 auto; height: auto; max-height: none; min-height: 0; overflow-y: auto; padding-bottom: 12px; }
+  .dialog.settings > .row { flex: none; padding-top: 8px; border-top: 1px solid var(--rule); background: var(--sheet); }
+  .dialog.settings > .row .btn { flex: 1; }
+  .dialog.settings .row.start { flex-wrap: wrap; }
+  .dialog.settings .row.start > .btn { flex: 1 1 100%; justify-content: center; }
+  /* A choice of two or three (Match my system / Light / Dark) shares one row. */
+  .seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); width: 100%; }
+  .seg-btn { justify-content: center; white-space: normal; text-align: center; padding: 8px 6px; }
+  .seg-btn + .seg-btn { border-left: 1px solid var(--rule); }
+}
+
+@media (max-width: 760px) {
+  .ed-head.more .ed-icon { display: inline-flex; flex-direction: row; align-items: center; height: 44px; }
+  .ed-head.more .ed-phoneonly { padding: 7px 8px; }
+}
+@media (max-width: 760px) {
+  .ed-head.more .ed-icon .ed-lbl-more { display: inline-block; text-align: left; word-spacing: normal; letter-spacing: normal; }
+}
+@media (max-width: 760px) {
+  .tree3d-tip { background: color-mix(in srgb, var(--sheet) 82%, transparent); border-radius: 8px; padding: 4px 8px; }
+}
+
+@media (pointer: coarse) {
+  /* The buttons of a selected box slide sideways; none of them squeezes the next, and a soft edge shows there is more to reach. */
+  .touch-dock .bar > * { flex: none; }
+  .touch-dock .bar { gap: 2px; scrollbar-width: none; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent); padding-right: 22px; }
+  .fmt > * { flex: none; }
+}
+
+/* The graph on a phone: tabs and buttons on one row, the search under them; the picture gets the room, the settings and the list are short strips. */
+@media (max-width: 760px) {
+  .dialog.graphview { width: 100%; height: 100%; max-height: none; border-radius: 0; }
+  .graphview .graph-head { flex-wrap: wrap; gap: 6px 8px; padding: 8px 10px; }
+  .graphview .graph-tabs { flex: 1 1 auto; }
+  .graphview .graph-tabs button { flex: 1; padding: 8px 10px; }
+  .graphview .graph-tools { flex: 1 1 100%; order: 3; }
+  .graphview .graph-tools .field { width: 100%; }
+  .graphview .graph-body { display: flex; flex-direction: column; position: relative; }
+  /* The settings open over the picture (not beside it), and close with the same button. */
+  .graphview .graph-panel { position: absolute; z-index: 6; left: 0; right: 0; top: 0; max-height: 62%; background: var(--sheet); border-bottom: 1px solid var(--rule); box-shadow: var(--lift); }
+  .graphview .graph-main { flex: 1 1 auto; min-height: 0; }
+  .graphview .tree3d { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+  .graphview .tree3d-stage { flex: 1 1 0; min-height: 220px; }
+  /* Network: the list of the same things stays for screen readers and sighted people tap the dots. Hierarchy: a short list under the picture. */
+  .graphview .is-network .tree-list { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .graphview .is-hier .tree-list { flex: none; max-height: 26vh; border-right: 0; border-top: 1px solid var(--rule); }
+  .graphview .graph-empty { top: 12px; bottom: auto; left: 12px; right: 12px; transform: none; max-width: none; background: color-mix(in srgb, var(--sheet) 85%, transparent); border-radius: 8px; padding: 6px 10px; }
+  .graphview .tree3d-help { position: static; padding: 4px 12px; }
+  .graphview .tree3d-btns { top: auto; bottom: 8px; right: 8px; }
+  .graphview .graph-key { font-size: 11px; padding: 4px 10px; max-height: 3.2em; overflow: hidden; }
+  .graphview .graph-edge-info { left: 8px; right: 8px; top: auto; bottom: 8px; max-width: none; }
+}
+
+@media (max-width: 760px) {
+  /* Messages sit above the tab bar, as wide as the screen allows, so they are readable and never cover the tabs. */
+  .toasts { left: 12px; right: 12px; transform: none; bottom: calc(68px + env(safe-area-inset-bottom, 0px)); max-width: none; align-items: stretch; }
+  .toast { width: 100%; justify-content: space-between; }
+  .main-title p { white-space: normal; overflow: visible; }
+}
+@media (max-width: 760px) {
+  .graphview .graph-head { align-items: stretch; }
+  .graphview .graph-tabs { flex: 1 1 0; min-width: 0; }
+  .graphview .graph-tabs button { flex: 1; padding: 8px 4px; }
+  .graphview .graph-head > .btn { padding: 8px 10px; }
+  .graphview .tree3d-help { display: none; }
+  .graphview .graph-empty { top: auto; bottom: 64px; }
+}
+
+@media (max-width: 760px) {
+  /* Menus open as a sheet from the bottom edge (long ones, like a page card's, were cut off by the screen and hard to reach with a thumb). */
+  .menu { left: 8px !important; right: 8px !important; top: auto !important; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); max-width: none; min-width: 0; max-height: 72vh; border-radius: 16px; padding: 8px 6px; z-index: 250; box-shadow: 0 -6px 28px rgba(0, 0, 0, 0.28); animation: sheet-up 0.16s ease-out; }
+  .menu-item { min-height: 48px; font-size: 15px; padding: 10px 12px; }
+  .menu-head { padding: 8px 12px 4px; }
+}
+@media (prefers-reduced-motion: reduce) { .menu { animation: none; } }
+@media (max-width: 760px) { .graphview .graph-empty { top: 8px; bottom: auto; font-size: 12px; } }
+
+/* Documents, spreadsheets and presentations on a phone. */
+@media (max-width: 760px) {
+  /* A document's paper is as wide as the screen (it was a fixed sheet cut off at the right edge). */
+  .doc-scroll { padding: 10px 8px 24px; }
+  .doc-paper { width: 100% !important; min-height: 70vh !important; padding: 18px 14px 40px; box-sizing: border-box; }
+  .doc-paper .text-editor .body { min-height: 60vh; }
+  .doc-status { flex-wrap: wrap; gap: 2px 12px; padding: 4px 12px; }
+  .doc-status .doc-spacer { display: none; }
+  /* A spreadsheet's tools slide sideways in one row instead of taking four. */
+  .sheet-tools { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 4px 8px; }
+  .sheet-tools > * { flex: none; }
+  .sheet-tools .sb { min-width: 40px; height: 40px; }
+  /* A presentation's slide list is a small bar over the picture that opens on request. */
+  .slides-panel.phone { top: 8px; left: 8px; right: 8px; bottom: auto; width: auto; max-height: calc(100% - 16px); border: 1px solid var(--rule); border-radius: 12px; box-shadow: var(--lift); padding: 8px; }
+  .slides-panel.phone .slides-head { align-items: center; }
+  .slides-panel.phone .slides-toggle { margin-left: auto; }
+  .slides-panel.phone:not(.open) { overflow: visible; }
+  .slides-panel.phone .slides-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  /* While drawing, the page's own tools get out of the way of the drawing tools. */
+  .ed-body:has(.draw-overlay) :is(.tools, .zoom, .fmt, .touch-dock, .multi-bar) { display: none; }
+}

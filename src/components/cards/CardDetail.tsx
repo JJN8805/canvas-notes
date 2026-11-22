@@ -99,7 +99,7 @@ export function CardDetail({ cardId, onClose: onCloseProp }: { cardId: string; o
           }
         }}
       >
-        <div className={'cd-cover' + (cover?.video ? ' has-video' : '')}>
+        <div className={'cd-cover' + (cover?.video ? ' has-video' : '') + (cover && url ? '' : ' nocover')}>
           {cover && url ? <Picture url={url} video={cover.video} play="controls" /> : <span className="cd-nocover">No picture yet</span>}
           <div className="cd-cover-actions">
             <button className="btn small" disabled={busy} onClick={() => fileRef.current?.click()}>

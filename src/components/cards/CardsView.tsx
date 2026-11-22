@@ -137,6 +137,7 @@ export function CardsView() {
           {!treeOpen && (
             <button className="icon-btn cf-show" onClick={toggleCardTree} aria-label="Show folders" title={`Show folders (${MOD_LABEL}+Shift+\\)`}>
               <Icon name="sidebar" size={16} />
+              <span className="cf-show-lbl">Folders</span>
             </button>
           )}
           <button className={rootDrop.over ? 'drop-ok' : ''} onClick={() => go(null)} {...rootDrop.props}>

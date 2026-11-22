@@ -5,7 +5,10 @@ const KEY = 'ui.layout';
 
 function read(): Layout {
   try {
-    return parseLayout(localStorage.getItem(KEY));
+    const saved = localStorage.getItem(KEY);
+    // On a phone the folder tree would take a third of the screen, so it starts rolled up (the Folders button in the breadcrumb row opens it).
+    if (saved === null && typeof window !== 'undefined' && window.innerWidth <= 760) return { ...parseLayout(null), cardTree: false };
+    return parseLayout(saved);
   } catch {
     return parseLayout(null);
   }

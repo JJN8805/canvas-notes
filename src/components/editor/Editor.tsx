@@ -381,7 +381,7 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
         }}
       >
         <Icon name="pages" size={16} />
-        <span className="ed-lbl">Page</span>
+        <span className="ed-lbl">Page size</span>
       </button>
       )}
       <button className="btn ed-history" aria-label="History" title="Earlier versions of this page" onClick={() => setShowHistory(true)}>
@@ -836,6 +836,8 @@ function FormatButtons({ editor, pageId, insert: canInsert }: { editor: TipTapEd
   // A sticky's editor only has some of these; buttons for missing ones are left out.
   const has = (name: string) => !!(editor.schema.marks[name] || editor.schema.nodes[name]);
   const sections = [
+    // On a touch screen, the way out of typing: the keyboard closes and the box's own buttons (colour, delete…) come back.
+    COARSE ? [b('Done typing: show this box’s buttons', 'Done', false, () => { editor.commands.blur(); }, { fontWeight: 650 })] : [],
     [
       has('bold') && b('Bold', 'B', st.bold, () => chain().toggleBold().run()),
       has('italic') && b('Italic', 'I', st.italic, () => chain().toggleItalic().run(), { fontStyle: 'italic' }),

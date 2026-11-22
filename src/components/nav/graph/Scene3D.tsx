@@ -599,7 +599,7 @@ export function Scene3D({ tree, edges, groups, prefs, here, query, onOpen, onEdg
   };
 
   return (
-    <div className="tree3d">
+    <div className={'tree3d' + (network ? ' is-network' : ' is-hier')}>
       <TreeList
         root={tree}
         closed={closed}

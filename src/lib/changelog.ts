@@ -9,6 +9,17 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.2.2',
+    date: '2026-11-22',
+    title: 'A tidier phone',
+    items: [
+      'Every screen of the phone layout was walked through and fixed: the folder tree on Cards starts rolled up, dropdowns and headers no longer clip, the journal, library and cards headers are compact, and cards come two to a row.',
+      'Menus open as a sheet from the bottom, messages sit above the tab bar, Settings fills the screen, and the pick bar, the box buttons and the 3D and graph views fit the screen.',
+      'Documents and presentations fit the phone, a presentation’s slide list opens on request, and a tap on Done in the text bar closes the keyboard and brings back the box’s own buttons.',
+      'The new Today strip, the Today and Find dialogs and the template picker are laid out properly (the picker showed blank rows).',
+    ],
+  },
+  {
     version: '0.2.1',
     date: '2026-11-22',
     title: 'Pictures for card folders and sections',

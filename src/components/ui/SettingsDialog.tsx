@@ -34,6 +34,7 @@ import { FeaturesTab } from './FeaturesTab';
 import { useFeature } from '../../store/features';
 import { useWorkspaceList, workspaceName } from '../../store/workspaces';
 import { CUSTOM_PALETTE, DEFAULT_CUSTOM, DEFAULT_PALETTE, isReadable, PRESETS, type ThemeColors } from '../../lib/themes';
+import { usePhone } from './usePhone';
 
 const TABS = ['General', 'Profile', 'Appearance', 'Editor', 'Features', 'Sync', 'Desktop', 'Add-ons', 'Data', 'About'] as const;
 type Tab = (typeof TABS)[number];
@@ -48,6 +49,7 @@ function Dialog() {
   const [tab, setTab] = useState<Tab>('General');
   const syncOn = useFeature('sync');
   const widgetsOn = useFeature('widgets');
+  const phone = usePhone(); // the Desktop tab is about the laptop's widgets: nothing to set on a phone
   const closeRef = useRef<HTMLButtonElement>(null);
   const prevFocus = useRef<Element | null>(document.activeElement);
 
@@ -73,7 +75,7 @@ function Dialog() {
       <div className="dialog settings" role="dialog" aria-modal="true" aria-label="Settings">
         <h2>Settings</h2>
         <div className="set-tabs" role="tablist" aria-label="Settings sections">
-          {TABS.filter((t) => (t !== 'Sync' || syncOn) && (t !== 'Desktop' || widgetsOn)).map((t) => (
+          {TABS.filter((t) => (t !== 'Sync' || syncOn) && (t !== 'Desktop' || (widgetsOn && !phone))).map((t) => (
             <button key={t} role="tab" aria-selected={tab === t} className={'set-tab' + (tab === t ? ' on' : '')} onClick={() => setTab(t)}>
               <Icon name={TAB_ICONS[t]} size={15} />
               {t}
@@ -269,7 +271,7 @@ function EditorTab() {
     <>
       <Section title="Canvas">
         <Switch label="Snap to other boxes and the grid" on={snap} onChange={(on) => setSnap(on, getStorage())} />
-        <p>While you drag or resize, edges line up with nearby boxes. Hold Alt to move freely for one drag, whatever this says.</p>
+        <p>While you drag or resize, edges line up with nearby boxes.{COARSE ? '' : ' Hold Alt to move freely for one drag, whatever this says.'}</p>
       </Section>
       <Section title="Journal">
         <label className="set-row">
