@@ -216,6 +216,96 @@ const PATHS = {
       <rect x="9" y="9" width="6" height="5" rx="1" />
     </>
   ),
+  header: (
+    <>
+      <rect x="3" y="4" width="14" height="12" rx="1.5" />
+      <path d="M3 8h14M6 6h4" />
+    </>
+  ),
+  fill: (
+    <>
+      <rect x="3.5" y="4" width="13" height="12" rx="1.5" />
+      <path d="M6 7h8M6 10h8M6 13h5" />
+    </>
+  ),
+  branch: (
+    <>
+      <rect x="2.5" y="3" width="7" height="6" rx="1.2" />
+      <rect x="11" y="11" width="6.5" height="6" rx="1.2" />
+      <path d="M6 9v5h5" />
+    </>
+  ),
+  rowplus: (
+    <>
+      <rect x="3" y="3.5" width="14" height="7" rx="1.2" />
+      <path d="M3 7h14M10 13v4M8 15h4" />
+    </>
+  ),
+  rowminus: (
+    <>
+      <rect x="3" y="3.5" width="14" height="7" rx="1.2" />
+      <path d="M3 7h14M8 15h4" />
+    </>
+  ),
+  colplus: (
+    <>
+      <rect x="3.5" y="3" width="7" height="14" rx="1.2" />
+      <path d="M7 3v14M13 10h4M15 8v4" />
+    </>
+  ),
+  colminus: (
+    <>
+      <rect x="3.5" y="3" width="7" height="14" rx="1.2" />
+      <path d="M7 3v14M13 10h4" />
+    </>
+  ),
+  play: <path d="M7 4.5l9 5.5-9 5.5z" />,
+  pause: <path d="M7 4.5v11M13 4.5v11" />,
+  sound: <path d="M4 8h2.5L10 5v10l-3.5-3H4zM13 7.5a3.5 3.5 0 010 5M15 5.5a6.5 6.5 0 010 9" />,
+  bullets: <path d="M8 5.5h9M8 10h9M8 14.5h9M3.6 5.5h.01M3.6 10h.01M3.6 14.5h.01" />,
+  numbers: <path d="M8 5.5h9M8 10h9M8 14.5h9M3.5 4.5l1-.7v3.4M3 9.2h2l-2 2.6h2.2M3 14.2h2l-1 1 1 1H3" />,
+  quote: <path d="M4 7.5c0-1.4 1-2.5 2.6-2.8M4 7.5v3.5h3.5V7.5H4zM11 7.5c0-1.4 1-2.5 2.6-2.8M11 7.5v3.5h3.5V7.5H11z" />,
+  eraser: <path d="M4 13l7-7 5 5-5 5H7zM9 8l5 5M11 16h6" />,
+  insert: (
+    <>
+      <rect x="3" y="3" width="14" height="14" rx="2" />
+      <path d="M10 6.5v7M6.5 10h7" />
+    </>
+  ),
+  done: <path d="M4 10.5l4 4 8-9" />,
+  move: <path d="M10 3v14M3 10h14M7.5 5.5L10 3l2.5 2.5M7.5 14.5L10 17l2.5-2.5M5.5 7.5L3 10l2.5 2.5M14.5 7.5L17 10l-2.5 2.5" />,
+  unlock: (
+    <>
+      <rect x="4.5" y="9" width="11" height="7.5" rx="1.5" />
+      <path d="M7 9V6.5a3 3 0 015.6-1.5" />
+    </>
+  ),
+  rename: <path d="M3 15.5h14M5 12l7.5-7.5 3 3L8 15H5z" />,
+  eye: (
+    <>
+      <path d="M2 10s3-5.5 8-5.5S18 10 18 10s-3 5.5-8 5.5S2 10 2 10z" />
+      <circle cx="10" cy="10" r="2.3" />
+    </>
+  ),
+  swap: <path d="M4 7h11M12 4l3 3-3 3M16 13H5M8 10l-3 3 3 3" />,
+  swatch: (
+    <>
+      <circle cx="10" cy="10" r="6.5" />
+      <path d="M10 3.5v13M3.5 10h13" />
+    </>
+  ),
+  focus: (
+    <>
+      <path d="M3.5 7V4.5H6M14 4.5h2.5V7M16.5 13v2.5H14M6 15.5H3.5V13" />
+    </>
+  ),
+  workspace: (
+    <>
+      <rect x="3" y="4" width="6.5" height="5.5" rx="1.2" />
+      <rect x="10.5" y="4" width="6.5" height="5.5" rx="1.2" />
+      <rect x="3" y="10.5" width="14" height="5.5" rx="1.2" />
+    </>
+  ),
 } as const;
 
 export type IconName = keyof typeof PATHS | 'more' | 'grip';

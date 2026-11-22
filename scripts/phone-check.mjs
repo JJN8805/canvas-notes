@@ -78,7 +78,7 @@ await page.touchscreen.tap(sticky.x + sticky.width / 2, sticky.y + sticky.height
 await page.waitForTimeout(500);
 check('tapping a box to type hides the add tools', (await page.locator('.editor.typing').count()) === 1 && (await page.locator('.tools:visible').count()) === 0);
 check('and puts the formatting bar at the bottom, above the keyboard', (await page.locator('.fmt').count()) === 1 && (await page.locator('.fmt').evaluate((el) => el.getBoundingClientRect().bottom > innerHeight - 40)));
-check('the formatting bar has an Insert button (the "/" menu without a key)', (await page.locator('.fmt button:has-text("Insert")').count()) === 1);
+check('the formatting bar has an Insert button (the "/" menu without a key)', (await page.locator('.fmt button[aria-label^="Insert"]').count()) === 1);
 check('and no placeholder talks about the "/" key', !(await page.evaluate(() => [...document.querySelectorAll('[data-placeholder]')].some((e) => /\//.test(e.getAttribute('data-placeholder') ?? '')))));
 await page.screenshot({ path: join(OUT, 'typing.png') });
 

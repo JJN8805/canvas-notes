@@ -46,11 +46,11 @@ export function SyncButton() {
   const label =
     platform === 'mobile' ? (busy ? 'Syncing…' : connected ? 'Synced' : 'Sync') : platform === 'desktop' && serverOn ? 'Phone sync on' : 'Sync';
   return (
-    <button className={`btn sync-btn sync-${state}`} onClick={openSyncPanel} title="Sync with your phone or laptop">
+    <button className={`btn sync-btn sync-${state}`} onClick={openSyncPanel} title="Sync with your phone or laptop" aria-label={label}>
       <span className={busy ? 'spin' : ''} style={{ display: 'inline-grid' }}>
         <Icon name="sync" size={16} />
       </span>
-      {label}
+      <span className="btn-lbl">{label}</span>
       {state !== 'busy' && <span className="sync-dot" aria-hidden="true" />}
     </button>
   );

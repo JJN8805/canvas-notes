@@ -258,7 +258,7 @@ await closeAny();
 await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
 await page.waitForTimeout(600);
 await audit('page: typing (format bar)');
-await page.locator('.fmt button:has-text("Insert")').first().tap().catch(() => {});
+await page.locator('.fmt button[aria-label^="Insert"]').first().tap().catch(() => {});
 await audit('page: insert menu');
 await closeAny();
 await page.touchscreen.tap(10, 700); await page.waitForTimeout(300);

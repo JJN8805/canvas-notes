@@ -3,6 +3,8 @@ import { closeDialog, closeMenu, dismissToast, useUi, type MenuItem } from '../.
 import { GROUP_COLORS, NOTE_COLORS } from '../../types';
 import { colorVar } from '../../lib/util';
 import { ShortcutsSheet } from './ShortcutsSheet';
+import { Icon } from './Icon';
+import { iconForLabel } from '../../lib/menuIcons';
 
 export function Overlays() {
   return (
@@ -139,6 +141,9 @@ function MenuHost() {
         return (
           <button key={i} role="menuitem" className={'menu-item' + (it.danger ? ' danger' : '')} onClick={() => run(it.action)}>
             {it.dot && <span className="dot" style={{ background: colorVar(it.dot) }} />}
+            {!it.dot && (it.icon !== undefined ? it.icon : iconForLabel(it.label)) && (
+              <span className="menu-ico" aria-hidden="true"><Icon name={(it.icon !== undefined ? it.icon : iconForLabel(it.label))!} size={17} /></span>
+            )}
             <span className="menu-label">{split.text}</span>
             {split.key && <kbd className="menu-key">{split.key}</kbd>}
             {it.check && <span className="check">✓</span>}

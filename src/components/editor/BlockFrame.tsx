@@ -18,6 +18,7 @@ import { canvasApi, setSelected } from '../../store/canvas';
 import { BLOCK_LABEL, NOTE_HEAD_H, isFixedHeight, newId } from '../../lib/util';
 import { hasHeader, isFolded } from '../../lib/note';
 import { Icon, type IconName } from '../ui/Icon';
+import { COARSE } from '../../lib/touch';
 import { BlockBody } from '../blocks/BlockBody';
 import { colorOf, noteVar, tintVars } from '../../lib/colors';
 import { confirmDanger, openMenu, toast } from '../../store/ui';
@@ -26,6 +27,9 @@ import { pinBlock } from '../../widgets';
 import { useWidgetsAvailable } from '../../widgets/useWidgetsAvailable';
 
 const LABEL = BLOCK_LABEL;
+
+/** The picture of a box's kind (for the grip of its buttons on a touch screen). */
+const TYPE_ICON = (b: NonFrameBlock): IconName => (b.type === 'note' ? (b.style === 'code' ? 'code' : b.style === 'sticky' ? 'sticky' : 'text') : b.type === 'checklist' ? 'checklist' : b.type === 'image' ? 'image' : b.type === 'table' ? 'table' : b.type === 'audio' ? 'audio' : b.type === 'pdf' ? 'pdf' : 'card');
 
 /** Every block type except frames, which render through FrameChrome instead. */
 import type { NonFrameBlock } from '../blocks/BlockBody';
@@ -118,6 +122,8 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
     </button>
   );
   const icon = (n: IconName) => <Icon name={n} size={15} />;
+  // On a touch screen the box's own buttons are pictures (the words stay in the tooltip and for screen readers), so they can be read at a glance.
+  const pic = (name: IconName, words: ReactNode, on = false) => (COARSE ? <span className={'bar-pic' + (on ? ' on' : '')}><Icon name={name} size={19} /></span> : words);
 
   const extra: ReactNode[] = [];
   useAddons((s) => s.loaded); // re-render when an add-on starts or stops, so its buttons appear
@@ -140,17 +146,17 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
           ]);
         }}
       >
-        {noteStyleLabel[block.style]} ▾
+        {COARSE ? <span className="bar-pic"><Icon name={block.style === 'code' ? 'code' : block.style === 'sticky' ? 'sticky' : 'text'} size={19} /><small>▾</small></span> : <>{noteStyleLabel[block.style]} ▾</>}
       </button>,
     );
     if (block.style === 'sticky') {
       // Tab on a keyboard; a button for a finger: a new sticky beside this one, joined to it by an arrow (a mind map grows from here).
-      extra.push(btn('Add a linked note', '+ Linked', () => void branchFrom(pageId, block.id, (id) => canvasApi.current?.focusBlock(id))));
+      extra.push(btn('Add a linked note', pic('branch', '+ Linked'), () => void branchFrom(pageId, block.id, (id) => canvasApi.current?.focusBlock(id))));
     }
     if ((block.style === 'text' || block.style === 'sticky') && !block.doc) {
       // An optional header row above the text, with a fold arrow (tap it to tuck the box away).
       extra.push(
-        btn(hasHeader(block) ? 'Remove the header' : 'Add a header', hasHeader(block) ? 'Header ✓' : 'Header', () => {
+        btn(hasHeader(block) ? 'Remove the header' : 'Add a header', pic('header', hasHeader(block) ? 'Header ✓' : 'Header', hasHeader(block)), () => {
           const adding = !hasHeader(block);
           updateBlock<NoteBlock>(pageId, block.id, (b) => {
             if (adding) b.header = '';
@@ -165,7 +171,7 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
     }
     if (block.style === 'text') {
       extra.push(
-        btn(block.fill ? 'Remove background' : 'Add background', 'Fill', () =>
+        btn(block.fill ? 'Remove background' : 'Add background', pic('fill', 'Fill', !!block.fill), () =>
           updateBlock<NoteBlock>(pageId, block.id, (b) => {
             b.fill = !b.fill;
           }),
@@ -177,33 +183,33 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
     // A video on the page plays on hover with a mouse; these work with a finger too (and bring the sound).
     const video = () => document.querySelector<HTMLVideoElement>(`[data-id="${CSS.escape(block.id)}"] video`);
     extra.push(
-      btn('Play or pause the video', 'Play / Pause', () => {
+      btn('Play or pause the video', pic('play', 'Play / Pause'), () => {
         const v = video();
         if (v) void (v.paused ? v.play() : v.pause());
       }),
-      btn('Turn the sound on or off', 'Sound', () => {
+      btn('Turn the sound on or off', pic('sound', 'Sound'), () => {
         const v = video();
         if (v) v.muted = !v.muted;
       }),
     );
   }
   if (block.type === 'card') {
-    extra.push(btn('Open card', 'Open', () => openCard(block.cardId)));
+    extra.push(btn('Open card', pic('card', 'Open'), () => openCard(block.cardId)));
   }
   if (block.type === 'table') {
     const edit = (fn: (b: TableBlock) => void) => updateBlock<TableBlock>(pageId, block.id, fn);
     extra.push(
-      btn('Add row', '+ Row', () => edit((b) => void b.rows.push(b.rows[0].map(() => '')))),
-      btn('Add column', '+ Col', () => edit((b) => b.rows.forEach((r, i) => r.push(i ? '' : `Column ${r.length + 1}`)))),
-      btn('Remove last row', '− Row', () => edit((b) => void (b.rows.length > 1 && b.rows.pop()))),
-      btn('Remove last column', '− Col', () => edit((b) => void (b.rows[0].length > 1 && b.rows.forEach((r) => r.pop())))),
+      btn('Add row', pic('rowplus', '+ Row'), () => edit((b) => void b.rows.push(b.rows[0].map(() => '')))),
+      btn('Add column', pic('colplus', '+ Col'), () => edit((b) => b.rows.forEach((r, i) => r.push(i ? '' : `Column ${r.length + 1}`)))),
+      btn('Remove last row', pic('rowminus', '− Row'), () => edit((b) => void (b.rows.length > 1 && b.rows.pop()))),
+      btn('Remove last column', pic('colminus', '− Col'), () => edit((b) => void (b.rows[0].length > 1 && b.rows.forEach((r) => r.pop())))),
     );
   }
   if (block.type === 'checklist') {
     // A tracked list keeps its items (their history is kept per item), so it has no "Clear done".
     if (!block.track) {
       extra.push(
-        btn('Clear completed', 'Clear done', () =>
+        btn('Clear completed', pic('eraser', 'Clear done'), () =>
           updateBlock(pageId, block.id, (b) => {
             if (b.type !== 'checklist') return;
             const left = b.items.filter((i) => !i.done);
@@ -213,7 +219,7 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
       );
     }
     extra.push(
-      btn(block.track ? 'Stop tracking daily' : 'Track daily', block.track ? 'Tracking ✓' : 'Track daily', () => {
+      btn(block.track ? 'Stop tracking daily' : 'Track daily', pic('today', block.track ? 'Tracking ✓' : 'Track daily', !!block.track), () => {
         if (!block.track) {
           setTracking(pageId, block.id, true);
           toast('Tracking daily. Your checks are saved each day and cleared at the start of the next. Open Attendance to see them.');
@@ -228,7 +234,7 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
     );
     if (block.track) {
       extra.push(
-        btn('Open the attendance page', 'Attendance', () => {
+        btn('Open the attendance page', pic('calendar', 'Attendance'), () => {
           const id = ensureAttendancePage(pageId, block.id);
           if (id) navigate({ name: 'page', id });
         }),
@@ -240,7 +246,7 @@ function BlockBar({ block }: { block: NonFrameBlock }) {
     <div className="bar">
       <span className="grip" role="button" aria-label={`Move ${(LABEL[block.type] ?? 'box').toLowerCase()} box`} title="Drag to move" onPointerDown={(e) => startMove(e, block.id)}>
         <Icon name="grip" size={14} />
-        {LABEL[block.type]}
+        {COARSE ? <Icon name={TYPE_ICON(block)} size={17} /> : LABEL[block.type]}
       </span>
       {extra}
       {blockActionsFor(block, pageId).map((a) => btn(a.label, a.label, () => void a.run()))}

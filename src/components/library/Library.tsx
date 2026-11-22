@@ -209,9 +209,9 @@ export function Library() {
             </select>
             {syncOn && <SyncButton />}
             {list.length > 0 && (
-              <button className={'btn' + (selecting ? ' on' : '')} aria-pressed={selecting} title="Pick several pages to archive, move or delete together" onClick={() => (selecting ? cancelSelect() : startSelect())}>
-                <Icon name="check" size={16} />
-                {selecting ? 'Done' : 'Select'}
+              <button className={'btn' + (selecting ? ' on keep-lbl' : '')} aria-pressed={selecting} aria-label={selecting ? 'Done picking' : 'Pick several pages'} title="Pick several pages to archive, move or delete together" onClick={() => (selecting ? cancelSelect() : startSelect())}>
+                <Icon name="select" size={16} />
+                <span className="btn-lbl">{selecting ? 'Done' : 'Select'}</span>
               </button>
             )}
             <button className="btn primary new-page-btn" onClick={openNewPage}>

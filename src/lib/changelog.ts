@@ -9,6 +9,17 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.2.3',
+    date: '2026-11-22',
+    title: 'Pictures before words',
+    items: [
+      'Every menu now shows a small picture beside each entry, so you can pick by the picture.',
+      'On a phone, a selected box’s buttons are pictures (its kind, style, header, colour, layer, link, copy, delete…), the text bar’s list, clear, insert and done buttons are pictures, and Sync and Select in the library are pictures; the words stay in the tooltip and for screen readers.',
+      'The page’s ⋯ panel is a grid of picture tiles. A selected frame has its own strip of finger-sized buttons at the bottom instead of tiny icons in its heading, and a tap on a frame’s title only selects it (double-tap edits).',
+      'Settings → Data buttons carry pictures too.',
+    ],
+  },
+  {
     version: '0.2.2',
     date: '2026-11-22',
     title: 'A tidier phone',

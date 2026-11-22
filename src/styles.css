@@ -1954,3 +1954,41 @@ span.note-title { display: flex; align-items: center; overflow: hidden; white-sp
   /* While drawing, the page's own tools get out of the way of the drawing tools. */
   .ed-body:has(.draw-overlay) :is(.tools, .zoom, .fmt, .touch-dock, .multi-bar) { display: none; }
 }
+
+/* A picture beside every menu entry. */
+.menu-ico { flex: none; width: 20px; display: inline-grid; place-items: center; color: var(--graphite); }
+.menu-item.danger .menu-ico { color: inherit; }
+.menu-item:hover .menu-ico, .menu-item:focus .menu-ico { color: var(--ink); }
+
+@media (max-width: 760px) {
+  /* The opened page header: a grid of picture tiles (the picture first, a short word under it), three to a row. */
+  .ed-head.more :is(.ed-template, .ed-outline, .ed-space, .ed-size, .ed-history, .ed-export, .ed-archive, .ed-backlinks, .ed-phoneonly, .ed-addon, .ed-icon) {
+    flex: 1 1 calc(33.333% - 6px); max-width: calc(33.333% - 4px); flex-direction: column; justify-content: center; align-items: center; gap: 5px;
+    min-height: 74px; padding: 10px 4px; text-align: center; white-space: normal; border: 1px solid var(--rule); border-radius: 12px; background: var(--sheet);
+  }
+  .ed-head.more :is(.ed-template, .ed-outline, .ed-space, .ed-size, .ed-history, .ed-export, .ed-archive, .ed-backlinks, .ed-phoneonly, .ed-addon, .ed-icon) svg { width: 24px; height: 24px; }
+  .ed-head.more :is(.ed-template, .ed-outline, .ed-space, .ed-size, .ed-history, .ed-export, .ed-archive, .ed-backlinks, .ed-phoneonly, .ed-addon) .ed-lbl,
+  .ed-head.more .ed-icon .ed-lbl-more { font-size: 12px; font-weight: 500; line-height: 1.15; display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .ed-head.more .ed-icon.has > span:first-child { font-size: 24px; line-height: 1; }
+}
+
+/* On a touch screen the frame's buttons live in the strip at the bottom (see FrameChrome), not in its small heading. */
+@media (pointer: coarse) {
+  .frame-head .frame-act { display: none; }
+  .bar-pic { display: inline-flex; align-items: center; justify-content: center; gap: 1px; min-width: 28px; }
+  .bar-pic small { font-size: 10px; opacity: 0.8; }
+  .bar-pic.on { color: var(--accent-bar, #ffd84d); }
+  .swatch-dot.big { width: 22px; height: 22px; border-width: 2px; }
+}
+
+@media (max-width: 760px) {
+  /* Sync and Select are pictures on a phone (the state of sync is its dot; the words stay in the tooltip and for screen readers). */
+  .main .controls > .btn:not(.keep-lbl) .btn-lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .main .controls > .btn:not(.keep-lbl) { flex: 0 0 52px; min-width: 52px; position: relative; }
+  .main .controls select.field { flex: 1 1 120px; }
+}
+@media (max-width: 760px) {
+  .ed-head.more .btn:is(.ed-template, .ed-outline, .ed-space, .ed-size, .ed-history, .ed-export, .ed-archive, .ed-backlinks, .ed-phoneonly, .ed-addon),
+  .ed-head.more .icon-btn.ed-icon { font-size: 12px; font-weight: 500; border: 1px solid var(--rule); background: var(--sheet); width: auto; }
+  .ed-head.more .btn:is(.ed-template, .ed-outline, .ed-space, .ed-size, .ed-history, .ed-export, .ed-archive, .ed-backlinks, .ed-phoneonly, .ed-addon):active { background: var(--accent-soft); }
+}

@@ -491,30 +491,37 @@ function DataTab() {
         <p>Save every page, group and picture to one file you keep wherever you like, and add them back later or on another computer. An encrypted backup is locked with a passphrase you choose; without it the file can’t be opened by anyone. The passphrase is not stored, so keep it safe. (Your notes on this computer are not encrypted by the app; use your system’s disk encryption for that.)</p>
         <div className="row start">
           <button className="btn" disabled={busy} onClick={() => void exportAll(false)}>
+            <Icon name="download" size={16} />
             Back up all notes…
           </button>
           <button className="btn" disabled={busy} title="Locks the file with a passphrase you choose" onClick={() => void exportAll(true)}>
+            <Icon name="lock" size={16} />
             Encrypted backup…
           </button>
           <button className="btn" disabled={busy} title="One .zip with your pages and every picture, video and audio clip as normal files" onClick={() => void exportZip()}>
+            <Icon name="archive" size={16} />
             Archive file (.zip)…
           </button>
           {wsOn && wsCount > 1 && (
             <button className="btn" disabled={busy} title="Only the open workspace: its pages, groups, cards and files. Restoring it elsewhere brings the workspace back" onClick={() => void exportZip(true)}>
+              <Icon name="workspace" size={16} />
               This workspace only (.zip)…
             </button>
           )}
           {wsOn && (
             <button className="btn" disabled={busy} title="Every page of the open workspace as Markdown files, with their pictures, in one .zip: to read or publish anywhere" onClick={() => void exportWorkspaceMarkdown(workspaceName(useNotes.getState().workspace ?? ''))}>
+              <Icon name="text" size={16} />
               This workspace as Markdown (.zip)…
             </button>
           )}
           {wsOn && (
             <button className="btn" disabled={busy} title="A small website of the open workspace: one web page per page, with an index and the pictures, ready to put on any web host. Nothing is uploaded." onClick={() => void exportWorkspaceMarkdown(workspaceName(useNotes.getState().workspace ?? ''), 'site')}>
+              <Icon name="graph" size={16} />
               This workspace as a website (.zip)…
             </button>
           )}
           <button className="btn" disabled={busy} onClick={() => fileRef.current?.click()}>
+            <Icon name="undo" size={16} />
             Restore from backup or archive…
           </button>
           <input ref={fileRef} type="file" accept=".json,.zip,application/json,application/zip" hidden onChange={(e) => e.target.files?.[0] && void importFile(e.target.files[0])} />

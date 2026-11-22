@@ -837,7 +837,7 @@ function FormatButtons({ editor, pageId, insert: canInsert }: { editor: TipTapEd
   const has = (name: string) => !!(editor.schema.marks[name] || editor.schema.nodes[name]);
   const sections = [
     // On a touch screen, the way out of typing: the keyboard closes and the box's own buttons (colour, delete…) come back.
-    COARSE ? [b('Done typing: show this box’s buttons', 'Done', false, () => { editor.commands.blur(); }, { fontWeight: 650 })] : [],
+    COARSE ? [b('Done typing: show this box’s buttons', <Icon name="done" size={19} />, false, () => { editor.commands.blur(); }, { fontWeight: 650 })] : [],
     [
       has('bold') && b('Bold', 'B', st.bold, () => chain().toggleBold().run()),
       has('italic') && b('Italic', 'I', st.italic, () => chain().toggleItalic().run(), { fontStyle: 'italic' }),
@@ -848,18 +848,18 @@ function FormatButtons({ editor, pageId, insert: canInsert }: { editor: TipTapEd
     [
       has('heading') && b('Heading', 'H1', st.h1, () => chain().toggleHeading({ level: 1 }).run()),
       has('heading') && b('Subheading', 'H2', st.h2, () => chain().toggleHeading({ level: 2 }).run()),
-      has('blockquote') && b('Quote', '❝', st.quote, () => chain().toggleBlockquote().run()),
+      has('blockquote') && b('Quote', COARSE ? <Icon name="quote" size={18} /> : '❝', st.quote, () => chain().toggleBlockquote().run()),
     ],
     [
-      has('bulletList') && b('Bulleted list', '• List', st.bullet, () => chain().toggleBulletList().run()),
-      has('orderedList') && b('Numbered list', '1. List', st.ordered, () => chain().toggleOrderedList().run()),
+      has('bulletList') && b('Bulleted list', COARSE ? <Icon name="bullets" size={18} /> : '• List', st.bullet, () => chain().toggleBulletList().run()),
+      has('orderedList') && b('Numbered list', COARSE ? <Icon name="numbers" size={18} /> : '1. List', st.ordered, () => chain().toggleOrderedList().run()),
     ],
     [
       has('link') && b('Link', <Icon name="link" size={16} />, st.link, () => void editLink()),
-      b('Clear formatting', 'Clear', false, () => chain().unsetAllMarks().clearNodes().run(), { fontWeight: 500 }),
+      b('Clear formatting', COARSE ? <Icon name="eraser" size={18} /> : 'Clear', false, () => chain().unsetAllMarks().clearNodes().run(), { fontWeight: 500 }),
     ],
     // No "/" key on a touch screen: a button opens the same menu.
-    COARSE && canInsert && canvasOn ? [b('Insert or turn into…', '＋ Insert', false, insertMenu, { fontWeight: 600 })] : [],
+    COARSE && canInsert && canvasOn ? [b('Insert or turn into…', <Icon name="insert" size={19} />, false, insertMenu, { fontWeight: 600 })] : [],
   ].map((items) => items.filter(Boolean)).filter((items) => items.length);
   return (
     <div className="fmt" role="toolbar" aria-label="Text formatting">

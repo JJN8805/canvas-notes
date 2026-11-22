@@ -11,7 +11,8 @@ export function useTyping(enabled: boolean): boolean {
   useEffect(() => {
     if (!enabled) return;
     let timer = 0;
-    const inPage = (t: EventTarget | null) => t instanceof HTMLElement && !!t.closest('.ed-body') && isTextEntry(t);
+    // A read-only field (a frame's title until it is selected) brings up no keyboard, so it is not typing.
+    const inPage = (t: EventTarget | null) => t instanceof HTMLElement && !!t.closest('.ed-body') && isTextEntry(t) && !(t instanceof HTMLInputElement && t.readOnly);
     const onIn = (e: FocusEvent) => {
       window.clearTimeout(timer);
       setTyping(inPage(e.target));

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { GroupColor, NoteColor } from '../types';
+import type { IconName } from '../components/ui/Icon';
 
 export interface ToastMsg {
   id: number;
@@ -24,7 +25,7 @@ export interface DialogReq {
 }
 
 export type MenuItem =
-  | { label: string; action: () => void; danger?: boolean; check?: boolean; dot?: GroupColor }
+  | { label: string; action: () => void; danger?: boolean; check?: boolean; dot?: GroupColor; /** A picture for it; without one, a picture is chosen by what the words mean (`lib/menuIcons.ts`). */ icon?: IconName | null }
   | { heading: string }
   | { separator: true }
   | { swatches: true; title?: string; current: string; pick: (c: GroupColor) => void }
