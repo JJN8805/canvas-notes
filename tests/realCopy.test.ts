@@ -41,8 +41,6 @@ describe.skipIf(!copy)('a copy of the real library', () => {
     expect(JSON.stringify((await s.loadPage(p.id))!.blocks)).toBe(before);
     const backup = await buildBackup(s);
     expect(backup.pages.length).toBe(all.pages.length);
-    // every picture a page uses is stored
-    const missing = backup.pages.flatMap((r) => r.blocks).filter((b) => b.type === 'image' && !backup.images.some((i) => i.id === b.imageId));
-    console.log(`pictures referenced but not stored: ${missing.length}`);
+    // (Picture files are not part of a database copy, so whether they are on disk is not checked here.)
   });
 });

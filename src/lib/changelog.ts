@@ -9,6 +9,21 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.2.0',
+    date: '2026-11-22',
+    title: 'Workspaces, the phone, and much more',
+    items: [
+      'Workspaces: separate desks inside one app (for example Student and Content creator), each with its own pages, groups, cards, journal and archive, in one library. Move, copy, link and search across them; switch with Ctrl+Alt+1–9; drop a page card on a workspace; quick notes into an Inbox (Ctrl+Alt+N); Today across all of them; archive or export one workspace.',
+      'A phone layout of its own, with a bottom tab bar, a docked toolbar above the keyboard, and a touch way for every keyboard shortcut. `npm run phone` installs the current build on your phone and keeps its notes.',
+      'The 3D page view: orbit, zoom to the pointer, named views, a depth grip, and the last view remembered per page.',
+      'A / menu to insert boxes, turn a note into a list, page icons and cover pictures, favorites and recent pages, focus mode.',
+      'Collapsible headers on text and sticky notes; GIFs and videos on pages and cards; box links between pages; frames you can colour.',
+      'Archive pages you want out of the way; pick several pages at once; one dated .zip archive of everything (or of one workspace), with an optional automatic one.',
+      'Pairing your phone with one link or QR code instead of typing an address and code.',
+      'Fewer pauses: switching windows and syncing now read only what changed, and background tidying waits until the app has been open a while.',
+    ],
+  },
+  {
     version: '0.1.0',
     date: '2026-11-09',
     title: 'The first release',
