@@ -8,7 +8,7 @@ import { childSummaries, groupAncestors, groupSummaries } from '../../lib/browse
 import { CardsView } from '../cards/CardsView';
 import { Icon } from '../ui/Icon';
 import { SyncButton } from '../sync/SyncPanel';
-import { openNewPage } from './shared';
+import { COARSE, openNewPage } from './shared';
 import { EmptyState } from './EmptyState';
 import { PhoneTabs } from './PhoneTabs';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
@@ -210,7 +210,7 @@ export function Library() {
             {syncOn && <SyncButton />}
             {list.length > 0 && (
               <button className={'btn' + (selecting ? ' on keep-lbl' : '')} aria-pressed={selecting} aria-label={selecting ? 'Done picking' : 'Pick several pages'} title="Pick several pages to archive, move or delete together" onClick={() => (selecting ? cancelSelect() : startSelect())}>
-                <Icon name="select" size={16} />
+                <Icon name={COARSE ? 'select' : 'check'} size={16} />
                 <span className="btn-lbl">{selecting ? 'Done' : 'Select'}</span>
               </button>
             )}

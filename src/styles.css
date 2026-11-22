@@ -1992,3 +1992,11 @@ span.note-title { display: flex; align-items: center; overflow: hidden; white-sp
   .ed-head.more .icon-btn.ed-icon { font-size: 12px; font-weight: 500; border: 1px solid var(--rule); background: var(--sheet); width: auto; }
   .ed-head.more .btn:is(.ed-template, .ed-outline, .ed-space, .ed-size, .ed-history, .ed-export, .ed-archive, .ed-backlinks, .ed-phoneonly, .ed-addon):active { background: var(--accent-soft); }
 }
+
+/* The laptop keeps words in its menus and settings buttons; the pictures beside them are for touch screens and narrow windows (the phone's way of reading). */
+.menu-ico { display: none; }
+.dialog.settings .row.start .btn > svg { display: none; }
+@media (pointer: coarse), (max-width: 760px) {
+  .menu-ico { display: inline-grid; }
+  .dialog.settings .row.start .btn > svg { display: inline-block; }
+}

@@ -41,7 +41,7 @@ export function startPerfLog(): void {
       for (const e of list.getEntries()) {
         if (e.duration < 150) continue;
         const near = recent.filter((r) => r.at < e.startTime + e.duration && r.at + r.ms > e.startTime - 50).map((r) => `${r.label} ${Math.round(r.ms)}ms`);
-        console.warn(`[perf] the window was blocked for ${Math.round(e.duration)} ms`, near.length ? `while: ${near.join(', ')}` : '(no timed job around it)');
+        console.debug(`[perf] the window was blocked for ${Math.round(e.duration)} ms`, near.length ? `while: ${near.join(', ')}` : '(no timed job around it)');
       }
     }).observe({ entryTypes: ['longtask'] });
   } catch {

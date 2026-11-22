@@ -381,7 +381,7 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
         }}
       >
         <Icon name="pages" size={16} />
-        <span className="ed-lbl">Page size</span>
+        <span className="ed-lbl">{COARSE ? 'Page size' : 'Page'}</span>
       </button>
       )}
       <button className="btn ed-history" aria-label="History" title="Earlier versions of this page" onClick={() => setShowHistory(true)}>
