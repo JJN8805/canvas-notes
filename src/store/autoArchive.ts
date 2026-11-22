@@ -1,4 +1,4 @@
-import { getStorage } from './notes';
+import { getStorage, useNotes } from './notes';
 import { toast } from './ui';
 import { buildBackup } from '../lib/backup';
 import { backupToZip } from '../lib/archiveZip';
@@ -73,11 +73,33 @@ export async function runAutoArchive(force = false): Promise<string | null> {
   }
 }
 
+const REMINDED = 'archive.reminded';
+/**
+ * Once, a while after start: if the automatic archive is off and there is something worth keeping (more than one workspace, or a good few
+ * pages), offer to turn it on. Asked once only (saved), and never on a phone or in a browser.
+ */
+export async function remindAboutArchive(pageCount: number, workspaceCount: number): Promise<void> {
+  if (!autoArchiveAvailable() || (workspaceCount < 2 && pageCount < 20)) return;
+  const s = getStorage();
+  if ((await s.getSetting(REMINDED).catch(() => null)) === '1') return;
+  if (parseAuto(await s.getSetting(CFG).catch(() => null)).mode !== 'off') return;
+  await s.setSetting(REMINDED, '1').catch(() => {});
+  toast(
+    'Your notes are only on your devices. Make a dated archive file every week?',
+    { label: 'Turn on', run: () => void saveAutoConfig({ mode: 'weekly', keep: 4 }).then(() => toast('A weekly archive will be saved in the app’s folder (Settings → Data shows where).')) },
+    14000,
+  );
+}
+
 let started = false;
 /** Check shortly after start and then every few hours, so a laptop that stays on still gets its daily or weekly archive. */
 export function startAutoArchive() {
   if (started || !autoArchiveAvailable()) return;
   started = true;
   window.setTimeout(() => void runAutoArchive(), 60_000);
+  window.setTimeout(() => {
+    const st = useNotes.getState();
+    void remindAboutArchive(Object.keys(st.pages).length + st.elsewhere.length, st.workspaces.length + 1);
+  }, 90_000);
   window.setInterval(() => void runAutoArchive(), 6 * 3_600_000);
 }

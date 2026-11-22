@@ -5,12 +5,19 @@ import { GROUP_COLORS } from '../../types';
 import { featureOn } from '../../store/features';
 import { copyPagesToWorkspace, createWorkspace, deleteWorkspace, movePagesToWorkspace, renameWorkspace, setWorkspaceColor, switchWorkspace } from '../../store/workspaces';
 import { createGroup, get } from '../../store/notes';
+import { captureTo } from '../../store/capture';
 import { openTodayAll } from '../../store/todayAll';
 import { openFindAll } from '../../store/findAll';
 import { listWorkspaces, MAIN, STARTERS } from '../../lib/workspaces';
 
 const all = () => listWorkspaces(get().workspaces, get().mainName);
 const openId = () => get().workspace ?? MAIN;
+
+/** Asks for a thought and drops it into a workspace's Inbox page (the open one when none is given), without leaving what you are doing. */
+export async function quickCaptureFlow(workspace = openId()): Promise<void> {
+  const text = await ask({ title: `Quick note to ${all().find((w) => w.id === workspace)?.name ?? 'Inbox'}`, okLabel: 'Add to Inbox', placeholder: 'A thought, a to-do, a link…', text: 'It is added as a sticky note on the Inbox page of that workspace (made the first time).' });
+  if (text !== null) await captureTo(workspace, text);
+}
 
 /** Asks for a name and makes the workspace, then opens it. */
 export async function newWorkspaceFlow(): Promise<void> {
@@ -41,6 +48,7 @@ export function openWorkspaceMenu(anchor: HTMLElement, counts: Record<string, nu
     { heading: 'Workspaces' },
     ...all().map((w) => ({ label: `${w.name}  (${counts[w.id] ?? 0})`, check: w.id === open, dot: w.color, action: () => void switchWorkspace(w.id) })),
     { label: 'New workspace…', action: () => void newWorkspaceFlow() },
+    { label: 'Quick note to this workspace…', action: () => void quickCaptureFlow() },
     { label: 'Find in every workspace…', action: () => openFindAll() },
     { label: 'Today in every workspace…', action: () => void openTodayAll() },
     { separator: true },

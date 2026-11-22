@@ -11,7 +11,7 @@ import { adopt, cleanWorkspaceName, listWorkspaces, MAIN, scopeTo, splitGroups, 
 import { newId } from '../lib/util';
 import { timed } from '../lib/perf';
 import { history } from './history';
-import { flushAll, flushPage, flushGroups, get, getStorage, loadTrash, refreshFromDisk, scheduleGroupsSave, set, useNotes } from './notes';
+import { mutatePage, flushAll, flushPage, flushGroups, get, getStorage, loadTrash, refreshFromDisk, scheduleGroupsSave, set, useNotes } from './notes';
 import { lastPageOf, MAIN_NAME_KEY, rememberLastPage, rememberWorkspace, stubOf } from './notes/workspaceMemory';
 import { currentRoute, navigate } from '../lib/route';
 import { toast } from './ui';
@@ -228,6 +228,19 @@ export async function deleteWorkspace(id: string): Promise<boolean> {
   await refreshFromDisk();
   toast('Workspace deleted. Its pages are in Main.');
   return true;
+}
+
+/** Makes a template belong to the open workspace only (true) or be offered by every workspace (false). Not an undo step; it saves and syncs like any page change. */
+export function setTemplateScope(id: string, onlyHere: boolean): void {
+  const open = get().workspace ?? MAIN;
+  mutatePage(
+    id,
+    (p) => {
+      if (onlyHere && open) p.workspace = open;
+      else delete p.workspace;
+    },
+    { history: 'none' },
+  );
 }
 
 /** Opens a page wherever it lives: in the open workspace it is just opened; in another one, that workspace opens first. */

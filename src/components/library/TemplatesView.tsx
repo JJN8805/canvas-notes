@@ -8,6 +8,10 @@ import { chooseDailyTemplate, createPageFromTemplate, createTemplate, deleteTemp
 import { ask, confirmDanger, openMenu } from '../../store/ui';
 import { Icon } from '../ui/Icon';
 import { Thumbnail } from './Thumbnail';
+import { featureOn } from '../../store/features';
+import { isBuiltinTemplateId } from '../../lib/builtinTemplates';
+import { workspaceOf } from '../../lib/workspaces';
+import { setTemplateScope } from '../../store/workspaces';
 
 /* ---------------- Templates ---------------- */
 
@@ -74,6 +78,9 @@ export const TemplateCard = memo(function TemplateCard({ template: t, isDaily }:
         },
       },
       { label: 'Duplicate', action: () => void duplicateTemplate(t.id) },
+      ...(featureOn('workspaces') && !isBuiltinTemplateId(t.id) && useNotes.getState().workspaces.length > 0
+        ? [workspaceOf(t) ? { label: 'Offer in every workspace', action: () => setTemplateScope(t.id, false) } : { label: 'Only in this workspace', action: () => setTemplateScope(t.id, true) }]
+        : []),
       { label: 'Use for daily pages', check: isDaily, action: () => chooseDailyTemplate(t.id) },
       { separator: true },
       {

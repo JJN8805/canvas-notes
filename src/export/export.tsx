@@ -1,4 +1,4 @@
-import { isCard } from '../lib/pages';
+import { isCard, kindOf } from '../lib/pages';
 import { isStyle, kindClass } from '../lib/note';
 import { cardLabel, cardParts, cardText } from '../lib/cards';
 import { createRoot } from 'react-dom/client';
@@ -561,6 +561,67 @@ export async function exportPage(pageId: string, format: ExportFormat) {
   } catch (e) {
     console.error(e);
     toast(`Couldn’t export as ${label}: ${e instanceof Error ? e.message : String(e)}`);
+  } finally {
+    busy = false;
+  }
+}
+
+/**
+ * Every page and card of the open workspace as Markdown files in one zip, with the pictures, recordings and PDFs they use shared in
+ * `images/` and `files/` (so a book of notes can be read or published anywhere), plus an `index.md` that lists them.
+ */
+export async function exportWorkspaceMarkdown(workspaceLabel: string) {
+  if (busy) return;
+  busy = true;
+  try {
+    const st = useNotes.getState();
+    const pages = Object.values(st.pages)
+      .filter((p) => kindOf(p) !== 'template' && !p.archived)
+      .sort((a, b) => (a.title || 'Untitled').localeCompare(b.title || 'Untitled'));
+    if (!pages.length) {
+      toast('This workspace has no pages to export yet.');
+      return;
+    }
+    const enc = new TextEncoder();
+    const files: Record<string, Uint8Array> = {};
+    const images = new Map<string, string>();
+    const others = new Map<string, string>();
+    const used = new Set<string>();
+    const index: string[] = [`# ${workspaceLabel}`, ''];
+    for (const page of pages) {
+      const hidden = hiddenBlockIds(page.blocks);
+      for (const b of page.blocks) {
+        if (hidden.has(b.id)) continue;
+        if (b.type === 'image' && !images.has(b.imageId)) {
+          const img = await getStorage().sync.readImage(b.imageId);
+          if (!img) continue;
+          const name = `images/${b.imageId}.${EXT[img.mime] ?? VIDEO_EXT[img.mime] ?? 'png'}`;
+          images.set(b.imageId, name);
+          files[name] = base64ToBytes(img.data);
+        } else if ((b.type === 'audio' || b.type === 'pdf') && !others.has(b.fileId)) {
+          const f = await getStorage().sync.readImage(b.fileId);
+          if (!f) continue;
+          const name = `files/${b.fileId}.${FILE_EXTS[f.mime] ?? 'bin'}`;
+          others.set(b.fileId, name);
+          files[name] = base64ToBytes(f.data);
+        }
+      }
+      const ink = liveDrawing(page.drawing);
+      const drawing = ink ? `images/${page.id}-drawing.svg` : '';
+      if (ink) files[drawing] = enc.encode(ink.preview);
+      let base = fileBase(page);
+      for (let n = 2; used.has(base.toLowerCase()); n++) base = `${fileBase(page)} (${n})`;
+      used.add(base.toLowerCase());
+      files[`${base}.md`] = enc.encode(pageToMarkdown(page, (b) => images.get(b.imageId) ?? '', drawing, (b) => others.get(b.fileId) ?? '', cardInfo));
+      index.push(`- [${page.title.trim() || 'Untitled'}](${encodeURI(base)}.md)`);
+    }
+    files['index.md'] = enc.encode(index.join('\n') + '\n');
+    const day = new Date().toISOString().slice(0, 10);
+    const saved = await saveBytes(`${workspaceLabel.replace(/[^A-Za-z0-9_-]+/g, '-').toLowerCase() || 'workspace'}-markdown-${day}`, 'zip', toArrayBufferBytes(zipSync(files, { level: 6 })));
+    if (saved) toast(`Saved ${pages.length} page${pages.length === 1 ? '' : 's'} as Markdown to ${saved}`);
+  } catch (e) {
+    console.error(e);
+    toast(`Couldn’t export the workspace: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
     busy = false;
   }

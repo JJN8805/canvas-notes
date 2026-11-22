@@ -1722,3 +1722,5 @@ span.note-title { display: flex; align-items: center; overflow: hidden; white-sp
 .today-all .ws-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; display: inline-block; }
 .today-all .ta-none { margin: 4px 0; color: var(--muted, var(--ink)); font-size: 13px; }
 .today-all .ta-recent { margin: 6px 0 0; font-size: 13px; }
+.today-strip { margin: 0 0 18px; padding: 0 0 8px; border-bottom: 1px solid var(--rule); }
+.today-strip .browse-head { margin-top: 0; }

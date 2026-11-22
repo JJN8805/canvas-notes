@@ -60,10 +60,11 @@ export function uniqueName(wanted: string, taken: readonly string[]): string {
 
 /**
  * Whether a page or group is loaded while `active` is open (`null` = everything, for windows that need every workspace).
- * Templates belong to no workspace: every workspace offers all of them (the ones shipped with the app, and the ones you saved).
+ * A template with no workspace is shared: every workspace offers it (the ones shipped with the app, and the ones you saved). One you
+ * marked "only in this workspace" has a workspace like any page.
  */
 export const isInScope = (x: { workspace?: string | null; kind?: string | null }, active: string | null): boolean =>
-  active === null || x.kind === 'template' || inWorkspace(x, active);
+  active === null || inWorkspace(x, active) || (x.kind === 'template' && !workspaceOf(x));
 
 /** The pages and groups of one workspace (pure filter used when a workspace is opened). */
 export function scopeTo<T extends { workspace?: string | null; kind?: string | null }>(items: readonly T[], active: string | null): T[] {
@@ -159,3 +160,7 @@ export function recentStubs(stubs: readonly PageStub[], limit = 4): PageStub[] {
     .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))
     .slice(0, limit);
 }
+
+/** Ctrl+Alt+N: a quick note into the open workspace's Inbox. */
+export const isCaptureShortcut = (e: { code: string; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; metaKey: boolean; repeat?: boolean }): boolean =>
+  e.code === 'KeyN' && e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey && !e.repeat;

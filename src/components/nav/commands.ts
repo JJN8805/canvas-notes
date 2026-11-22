@@ -29,7 +29,7 @@ import { listWorkspaces } from '../../lib/workspaces';
 import { openTodayAll } from '../../store/todayAll';
 import { openFindAll } from '../../store/findAll';
 import { switchWorkspace } from '../../store/workspaces';
-import { newWorkspaceFlow } from '../library/workspaceMenu';
+import { newWorkspaceFlow, quickCaptureFlow } from '../library/workspaceMenu';
 
 /** "Switch to X" for each other workspace, and a way to make one. */
 function workspaceCommands(): Command[] {
@@ -38,6 +38,7 @@ function workspaceCommands(): Command[] {
   const others = listWorkspaces(st.workspaces, st.mainName).filter((w) => w.id !== open);
   return [
     ...others.map((w): Command => ({ id: `workspace-${w.id || 'main'}`, feature: 'workspaces', icon: 'pages', title: `Switch to workspace: ${w.name}`, run: () => void switchWorkspace(w.id) })),
+    ...listWorkspaces(st.workspaces, st.mainName).map((w): Command => ({ id: `capture-${w.id || 'main'}`, feature: 'workspaces', icon: 'plus', title: `Quick note to ${w.name}…`, run: () => void quickCaptureFlow(w.id) })),
     { id: 'workspace-find', feature: 'workspaces', icon: 'search', title: 'Find in every workspace…', run: () => openFindAll() },
     { id: 'workspace-today', feature: 'workspaces', icon: 'today', title: 'Today in every workspace', run: () => void openTodayAll() },
     { id: 'workspace-new', feature: 'workspaces', icon: 'plus', title: 'New workspace…', run: () => void newWorkspaceFlow() },

@@ -13,8 +13,11 @@ import { createWebStorage } from '../src/storage/web';
 import type { NotesStorage } from '../src/storage/types';
 import type { Group, Page } from '../src/types';
 import { buildBackup, restoreBackup } from '../src/lib/backup';
-import { splitGroups } from '../src/lib/workspaces';
+import { splitGroups, workspaceOf } from '../src/lib/workspaces';
 import { createPage, flushAll, flushGroups, refreshFromDisk, setStorage, useNotes, createGroup } from '../src/store/notes';
+import { captureTo } from '../src/store/capture';
+import { setTemplateScope } from '../src/store/workspaces';
+import { scopeTo } from '../src/lib/workspaces';
 import { copyPagesToWorkspace, createWorkspace, deleteWorkspace, movePagesToWorkspace, openPageAnywhere, renameWorkspace, switchWorkspace } from '../src/store/workspaces';
 import { createCardFolder } from '../src/store/cardFolders';
 
@@ -232,5 +235,42 @@ describe('the workspace actions', () => {
     renameWorkspace(w.id, '   '); // an empty name is ignored
     expect(st().workspaces[0].name).toBe('University');
     await refreshFromDisk();
+  });
+
+  it('drops a quick note into the Inbox of any workspace, making the page the first time', async () => {
+    const w = createWorkspace('Student');
+    await flushGroups();
+    expect(await captureTo('', '   ')).toBeNull(); // nothing to add
+    const id = await captureTo(w.id, 'Email the tutor'); // not the open workspace
+    expect(id).not.toBeNull();
+    expect(st().pages[id!]).toBeUndefined(); // it is in the other workspace
+    const first = (await storage.loadPage(id!))!;
+    expect(first.title).toBe('Inbox');
+    expect(first.workspace).toBe(w.id);
+    expect(first.blocks).toHaveLength(1);
+    expect(await captureTo(w.id, 'Book a room')).toBe(id); // the same Inbox, one more note
+    expect((await storage.loadPage(id!))!.blocks).toHaveLength(2);
+    const mine = await captureTo('', 'In Main'); // the open workspace shows it at once
+    expect(st().pages[mine!].blocks).toHaveLength(1);
+  });
+
+  it('keeps a template to one workspace when asked, and shares it again', async () => {
+    const w = createWorkspace('Student');
+    const t = createPage({ title: 'Cornell', kind: 'template' });
+    await flushGroups();
+    await flushAll();
+    setTemplateScope(t.id, true); // in Main: stays Main's only
+    await flushAll();
+    expect(workspaceOf(st().pages[t.id])).toBe('');
+    await switchWorkspace(w.id, { go: false });
+    setTemplateScope('nope', false); // unknown ids are ignored
+    expect(st().pages[t.id]).toBeDefined(); // shared (no workspace) templates are in every workspace
+    const own = createPage({ title: 'Essay', kind: 'template' });
+    setTemplateScope(own.id, true);
+    await flushAll();
+    expect(workspaceOf(st().pages[own.id])).toBe(w.id);
+    await switchWorkspace('', { go: false });
+    expect(st().pages[own.id]).toBeUndefined(); // now only the Student desk has it
+    expect(scopeTo([{ workspace: w.id, kind: 'template' }], '')).toEqual([]);
   });
 });

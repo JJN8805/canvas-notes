@@ -12,6 +12,7 @@ import { openNewPage } from './shared';
 import { EmptyState } from './EmptyState';
 import { PhoneTabs } from './PhoneTabs';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
+import { TodayStrip } from './TodayStrip';
 import { SelectionBar } from './SelectionBar';
 import { cancelSelect, startSelect, useSelect } from '../../store/librarySelect';
 import { usePhone } from '../ui/usePhone';
@@ -220,6 +221,7 @@ export function Library() {
           </div>
         </div>
 
+        {filter.kind === 'all' && !query.trim() && <TodayStrip />}
         {subgroups.length > 0 && (
           <section aria-label="Subgroups">
             <h2 className="browse-head">Subgroups</h2>

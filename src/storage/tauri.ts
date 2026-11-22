@@ -645,8 +645,8 @@ export async function createTauriStorage(): Promise<NotesStorage> {
         ? await db.select<{ id: string; rev: number }[]>('SELECT id, rev FROM pages WHERE deleted = 0')
         : scope === ''
           // Main also holds pages whose workspace has no row (deleted on another device), so they are never hidden for good.
-          ? await db.select<{ id: string; rev: number }[]>("SELECT id, rev FROM pages WHERE deleted = 0 AND (workspace = '' OR kind = 'template' OR workspace NOT IN (SELECT id FROM page_groups WHERE scope = 'workspaces' AND deleted = 0))")
-          : await db.select<{ id: string; rev: number }[]>("SELECT id, rev FROM pages WHERE deleted = 0 AND (workspace = $1 OR kind = 'template')", [scope]);
+          ? await db.select<{ id: string; rev: number }[]>("SELECT id, rev FROM pages WHERE deleted = 0 AND (workspace = '' OR workspace NOT IN (SELECT id FROM page_groups WHERE scope = 'workspaces' AND deleted = 0))")
+          : await db.select<{ id: string; rev: number }[]>("SELECT id, rev FROM pages WHERE deleted = 0 AND (workspace = $1 OR (kind = 'template' AND workspace = ''))", [scope]);
       const want = revs.filter((r) => known[r.id] !== r.rev).map((r) => r.id);
       const rows = want.length ? await selectIn<PageRow>((ph) => `SELECT * FROM pages WHERE id IN (${ph}) AND deleted = 0`, want) : [];
       const groupRows = await db.select<GroupRow[]>('SELECT * FROM page_groups WHERE deleted = 0 ORDER BY position, name');

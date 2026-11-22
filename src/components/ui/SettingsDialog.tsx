@@ -22,7 +22,7 @@ import { backupToZip, isZip, zipToBackup } from '../../lib/archiveZip';
 import { archiveFolder, autoArchiveAvailable, loadAutoState, runAutoArchive, saveAutoConfig, type AutoState } from '../../store/autoArchive';
 import type { AutoArchive } from '../../lib/autoArchive';
 import { decryptBackupText, encryptBackupText, isEncryptedBackup } from '../../lib/backupCrypto';
-import { saveBytes } from '../../export/export';
+import { exportWorkspaceMarkdown, saveBytes } from '../../export/export';
 import { openSyncPanel, useSync } from '../../sync/controller';
 import { ask, confirmDanger, toast } from '../../store/ui';
 import { Avatar } from './Avatar';
@@ -500,6 +500,11 @@ function DataTab() {
           {wsOn && wsCount > 1 && (
             <button className="btn" disabled={busy} title="Only the open workspace: its pages, groups, cards and files. Restoring it elsewhere brings the workspace back" onClick={() => void exportZip(true)}>
               This workspace only (.zip)…
+            </button>
+          )}
+          {wsOn && (
+            <button className="btn" disabled={busy} title="Every page of the open workspace as Markdown files, with their pictures, in one .zip: to read or publish anywhere" onClick={() => void exportWorkspaceMarkdown(workspaceName(useNotes.getState().workspace ?? ''))}>
+              This workspace as Markdown (.zip)…
             </button>
           )}
           <button className="btn" disabled={busy} onClick={() => fileRef.current?.click()}>

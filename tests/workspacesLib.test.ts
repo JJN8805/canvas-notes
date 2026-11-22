@@ -45,8 +45,8 @@ describe('the list of workspaces', () => {
 
 describe('scoping', () => {
   const items = [{ id: 'a' }, { id: 'b', workspace: 'w1' }, { id: 't', kind: 'template', workspace: 'w1' }, { id: 'u', kind: 'template' }];
-  it('keeps what belongs to the open workspace, and every template', () => {
-    expect(scopeTo(items, '').map((x) => x.id)).toEqual(['a', 't', 'u']);
+  it('keeps what belongs to the open workspace, and every shared template', () => {
+    expect(scopeTo(items, '').map((x) => x.id)).toEqual(['a', 'u']); // a template with a workspace belongs to that one only
     expect(scopeTo(items, 'w1').map((x) => x.id)).toEqual(['b', 't', 'u']);
     expect(scopeTo(items, null)).toHaveLength(4);
     expect(isInScope({ workspace: 'w2' }, 'w1')).toBe(false);
@@ -195,5 +195,28 @@ describe('orphans and recents', () => {
     ];
     expect(recentStubs(stubs).map((s) => s.id)).toEqual(['b', 'a']);
     expect(recentStubs(stubs, 1)).toHaveLength(1);
+  });
+});
+
+import { cleanCapture, captureBlock } from '../src/lib/capture';
+import { deskToday } from '../src/lib/todayAll';
+
+describe('quick capture and the day strip', () => {
+  it('cleans what was typed and stacks new notes under the Inbox’s boxes', () => {
+    expect(cleanCapture('  hello  ')).toBe('hello');
+    expect(cleanCapture(5)).toBe('');
+    expect(cleanCapture('x'.repeat(5000))).toHaveLength(2000);
+    const first = captureBlock([], 'one');
+    expect(first.y).toBe(0);
+    const second = captureBlock([first], 'two');
+    expect(second.y).toBe(first.y + first.h + 20);
+    expect(second.z).toBeGreaterThan(first.z);
+    expect(second.html).toContain('two');
+    expect(captureBlock([first], '<b>x</b>').html).not.toContain('<b>'); // text is escaped, never markup
+  });
+  it('builds a workspace’s day from the pages already in memory', () => {
+    const d = deskToday([pg('j', { dailyDate: '2026-11-22', title: 'Today' }), pg('t', { kind: 'template' }), pg('a', { blocks: [list('l', [['Call', false]])] })], { id: 'w', name: 'W', color: 'teal' }, '2026-11-22');
+    expect(d.journal?.pageId).toBe('j');
+    expect(d.todos.map((t) => t.text)).toEqual(['Call']);
   });
 });

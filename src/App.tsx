@@ -25,7 +25,8 @@ import { initSync } from './sync/controller';
 import { setupDesktopWidgets } from './widgets';
 import { startAutoArchive } from './store/autoArchive';
 import { switchWorkspace } from './store/workspaces';
-import { listWorkspaces, workspaceShortcut } from './lib/workspaces';
+import { isCaptureShortcut, listWorkspaces, workspaceShortcut } from './lib/workspaces';
+import { quickCaptureFlow } from './components/library/workspaceMenu';
 import { colorVar } from './lib/util';
 import { startPerfLog } from './lib/perf';
 
@@ -92,6 +93,12 @@ export function App() {
   useEffect(() => {
     if (status !== 'ready') return;
     const onKey = (e: KeyboardEvent) => {
+      if (isCaptureShortcut(e) && featureOn('workspaces')) {
+        if (useUi.getState().dialog || useDraw.getState().open) return;
+        e.preventDefault();
+        void quickCaptureFlow();
+        return;
+      }
       const n = workspaceShortcut(e);
       if (n === null || !featureOn('workspaces')) return;
       if (useUi.getState().dialog || useDraw.getState().open) return;

@@ -26,40 +26,43 @@ export interface DeskToday {
 const MAX_TODOS = 8;
 const MAX_RECENT = 3;
 
-export function todayEverywhere(pages: readonly Page[], groupRows: readonly Group[], mainName: string, today: string): DeskToday[] {
-  return listWorkspaces(groupRows, mainName).map((workspace) => {
-    const mine = pages.filter((p) => kindOf(p) !== 'template' && !isArchived(p) && workspaceOf(p) === workspace.id);
-    const day = mine.find((p) => cleanDate(p.dailyDate) === today) ?? null;
-    const todos: OpenTodo[] = [];
-    let todoCount = 0;
-    for (const p of [...mine].sort((a, b) => b.updated - a.updated)) {
-      for (const b of p.blocks) {
-        if (b.type !== 'checklist') continue;
-        for (const i of b.items) {
-          if (i.done || !i.text.trim()) continue;
-          todoCount++;
-          if (todos.length < MAX_TODOS) todos.push({ pageId: p.id, page: p.title.trim() || 'Untitled', text: i.text.trim() });
-        }
+/** One workspace's day from pages that are already its own (the open workspace, held in memory): no filtering by workspace. */
+export function deskToday(own: readonly Page[], workspace: WorkspaceInfo, today: string): DeskToday {
+  const mine = own.filter((p) => kindOf(p) !== 'template' && !isArchived(p));
+  const day = mine.find((p) => cleanDate(p.dailyDate) === today) ?? null;
+  const todos: OpenTodo[] = [];
+  let todoCount = 0;
+  for (const p of [...mine].sort((a, b) => b.updated - a.updated)) {
+    for (const b of p.blocks) {
+      if (b.type !== 'checklist') continue;
+      for (const i of b.items) {
+        if (i.done || !i.text.trim()) continue;
+        todoCount++;
+        if (todos.length < MAX_TODOS) todos.push({ pageId: p.id, page: p.title.trim() || 'Untitled', text: i.text.trim() });
       }
     }
-    const snippet = day
-      ? day.blocks
-          .map((b) => (b.type === 'note' && b.style !== 'code' ? htmlToText(b.html) : ''))
-          .join(' ')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .slice(0, 120)
-      : '';
-    return {
-      workspace,
-      journal: day ? { pageId: day.id, snippet } : null,
-      todos,
-      todoCount,
-      recent: mine
-        .filter((p) => p.id !== day?.id)
-        .sort((a, b) => b.updated - a.updated)
-        .slice(0, MAX_RECENT)
-        .map((p) => ({ pageId: p.id, title: p.title.trim() || 'Untitled' })),
-    };
-  });
+  }
+  const snippet = day
+    ? day.blocks
+        .map((b) => (b.type === 'note' && b.style !== 'code' ? htmlToText(b.html) : ''))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 120)
+    : '';
+  return {
+    workspace,
+    journal: day ? { pageId: day.id, snippet } : null,
+    todos,
+    todoCount,
+    recent: mine
+      .filter((p) => p.id !== day?.id)
+      .sort((a, b) => b.updated - a.updated)
+      .slice(0, MAX_RECENT)
+      .map((p) => ({ pageId: p.id, title: p.title.trim() || 'Untitled' })),
+  };
+}
+
+export function todayEverywhere(pages: readonly Page[], groupRows: readonly Group[], mainName: string, today: string): DeskToday[] {
+  return listWorkspaces(groupRows, mainName).map((workspace) => deskToday(pages.filter((p) => workspaceOf(p) === workspace.id), workspace, today));
 }

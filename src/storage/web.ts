@@ -23,7 +23,7 @@ import {
 } from './types';
 import { cleanSheet } from '../lib/sheet';
 import { cleanIcon } from '../lib/pageIcon';
-import { adopt, workspaceOf } from '../lib/workspaces';
+import { adopt, isInScope, workspaceOf } from '../lib/workspaces';
 
 type PageRow = PageRecord & { rev: number; synced: string | null };
 type GroupRow = GroupRecord & { synced: string | null };
@@ -375,7 +375,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
         .map((g): Group => ({ id: g.id, name: g.name, color: g.color as GroupColor, parentId: g.parentId ?? null, ...(g.scope === 'cards' || g.scope === 'workspaces' ? { scope: g.scope } : {}), ...(g.workspace ? { workspace: g.workspace } : {}), ...(g.description ? { description: g.description } : {}) }));
       const rows = groups.filter((g) => g.scope === 'workspaces');
       const live = (await db.getAll('pages')).filter((p) => !p.deleted);
-      const all = live.filter((p) => scope === null || kindOf(p) === 'template' || (scope === '' ? adopt([p], rows)[0].workspace === undefined : workspaceOf(p) === scope));
+      const all = live.filter((p) => isInScope({ ...adopt([p], rows)[0], kind: kindOf(p) }, scope));
       return { pages: adopt(all.filter((p) => known[p.id] !== p.rev).map(rowToPage), rows), ids: all.map((p) => p.id), groups };
     },
 

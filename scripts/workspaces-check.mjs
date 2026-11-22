@@ -182,6 +182,16 @@ check('Find in every workspace finds a page that is in another workspace', (awai
 await page.screenshot({ path: join(OUT, '7-find.png') });
 await page.keyboard.press('Escape');
 
+/* ---- quick note into the Inbox ---- */
+await page.keyboard.press('Control+Alt+n');
+await page.waitForSelector('.dialog input');
+await page.fill('.dialog input', 'Remember the viva date');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(900);
+check('Ctrl+Alt+N adds a note to an Inbox page of the open workspace', (await page.locator('.card:has-text("Inbox")').count()) === 1);
+check('and says so', /Added to Inbox/.test(await page.locator('.toast, [role=status]').allInnerTexts().then((t) => t.join(' ')).catch(() => '')));
+await page.screenshot({ path: join(OUT, '8-inbox.png') });
+
 check('no console errors', errors.length === 0, errors.join(' | '));
 console.log('screenshots in', OUT);
 await browser.close();
