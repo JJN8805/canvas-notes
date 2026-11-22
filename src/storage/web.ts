@@ -1,5 +1,5 @@
 import { openDB, type DBSchema } from 'idb';
-import { assertSafeFile } from './validate';
+import { assertSafeFile, isSafeId } from './validate';
 import { fileIdsOf, pageFileIds } from '../lib/files';
 import { assembleBlocks, sha256Hex, shareBlocks } from '../lib/contentHash';
 import type { Block, Group, GroupColor, Page } from '../types';
@@ -67,6 +67,7 @@ const groupRecord = (r: GroupRow): GroupRecord => ({
   id: r.id, etag: r.etag, deleted: r.deleted, name: r.name, color: r.color, position: r.position, parentId: r.parentId ?? null,
   ...(r.scope === 'cards' || r.scope === 'workspaces' ? { scope: r.scope } : {}),
   ...(r.workspace ? { workspace: r.workspace } : {}),
+  ...(r.scope === 'cards' && r.cover && isSafeId(r.cover) ? { cover: r.cover } : {}),
   ...(r.description ? { description: r.description } : {}),
 });
 
@@ -357,7 +358,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
       const groups = (await db.getAll('groups'))
         .filter((g) => !g.deleted)
         .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name))
-        .map((g): Group => ({ id: g.id, name: g.name, color: g.color as GroupColor, parentId: g.parentId ?? null, ...(g.scope === 'cards' || g.scope === 'workspaces' ? { scope: g.scope } : {}), ...(g.workspace ? { workspace: g.workspace } : {}), ...(g.description ? { description: g.description } : {}) }));
+        .map((g): Group => ({ id: g.id, name: g.name, color: g.color as GroupColor, parentId: g.parentId ?? null, ...(g.scope === 'cards' || g.scope === 'workspaces' ? { scope: g.scope } : {}), ...(g.workspace ? { workspace: g.workspace } : {}), ...(g.scope === 'cards' && g.cover && isSafeId(g.cover) ? { cover: g.cover } : {}), ...(g.description ? { description: g.description } : {}) }));
       return { pages, groups };
     },
 
@@ -372,7 +373,7 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
       const groups = (await db.getAll('groups'))
         .filter((g) => !g.deleted)
         .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name))
-        .map((g): Group => ({ id: g.id, name: g.name, color: g.color as GroupColor, parentId: g.parentId ?? null, ...(g.scope === 'cards' || g.scope === 'workspaces' ? { scope: g.scope } : {}), ...(g.workspace ? { workspace: g.workspace } : {}), ...(g.description ? { description: g.description } : {}) }));
+        .map((g): Group => ({ id: g.id, name: g.name, color: g.color as GroupColor, parentId: g.parentId ?? null, ...(g.scope === 'cards' || g.scope === 'workspaces' ? { scope: g.scope } : {}), ...(g.workspace ? { workspace: g.workspace } : {}), ...(g.scope === 'cards' && g.cover && isSafeId(g.cover) ? { cover: g.cover } : {}), ...(g.description ? { description: g.description } : {}) }));
       const rows = groups.filter((g) => g.scope === 'workspaces');
       const live = (await db.getAll('pages')).filter((p) => !p.deleted);
       const all = live.filter((p) => isInScope({ ...adopt([p], rows)[0], kind: kindOf(p) }, scope));
@@ -445,9 +446,10 @@ export async function createWebStorage(dbName = 'canvas-notes'): Promise<NotesSt
         const parentId = g.parentId ?? null;
         const scope = g.scope === 'cards' || g.scope === 'workspaces' ? g.scope : undefined;
         const workspace = workspaceOf(g) || undefined;
+        const cover = scope === 'cards' && g.cover && isSafeId(g.cover) ? g.cover : undefined;
         const description = scope && g.description ? g.description : undefined;
-        if (cur && !cur.deleted && cur.name === g.name && cur.color === g.color && cur.position === i && (cur.parentId ?? null) === parentId && cur.scope === scope && (cur.workspace || undefined) === workspace && (cur.description || undefined) === description) continue;
-        await tx.store.put({ id: g.id, name: g.name, color: g.color, position: i, parentId, ...(scope ? { scope } : {}), ...(workspace ? { workspace } : {}), ...(description ? { description } : {}), etag: newEtag(), synced: cur?.synced ?? null, deleted: false });
+        if (cur && !cur.deleted && cur.name === g.name && cur.color === g.color && cur.position === i && (cur.parentId ?? null) === parentId && cur.scope === scope && (cur.workspace || undefined) === workspace && (cur.cover || undefined) === cover && (cur.description || undefined) === description) continue;
+        await tx.store.put({ id: g.id, name: g.name, color: g.color, position: i, parentId, ...(scope ? { scope } : {}), ...(workspace ? { workspace } : {}), ...(cover ? { cover } : {}), ...(description ? { description } : {}), etag: newEtag(), synced: cur?.synced ?? null, deleted: false });
       }
       for (const r of await tx.store.getAll()) {
         if (!keep.has(r.id) && !r.deleted) await tx.store.put({ ...r, deleted: true, etag: newEtag() });

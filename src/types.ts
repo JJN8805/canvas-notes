@@ -275,6 +275,8 @@ export interface Group {
   scope?: 'cards' | 'workspaces';
   /** The workspace a page group or card folder belongs to (absent = Main). Not used by workspace rows themselves. */
   workspace?: string;
+  /** The id of a stored picture shown with a card folder or section (card folders only). Absent = none. Older app versions ignore it. */
+  cover?: string;
   /** A few words about what this folder or section is for (card folders only). Absent = none. */
   description?: string;
 }

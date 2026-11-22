@@ -1724,3 +1724,11 @@ span.note-title { display: flex; align-items: center; overflow: hidden; white-sp
 .today-all .ta-recent { margin: 6px 0 0; font-size: 13px; }
 .today-strip { margin: 0 0 18px; padding: 0 0 8px; border-bottom: 1px solid var(--rule); }
 .today-strip .browse-head { margin-top: 0; }
+
+/* A card folder's or section's own picture: a small square in its heading, a banner across the top of it */
+.folder-pic { display: inline-block; flex: none; overflow: hidden; border-radius: 6px; }
+.folder-pic img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.folder-pic.thumb { width: 26px; height: 26px; margin: 0 4px 0 2px; border: 1.5px solid rgba(255,255,255,.7); }
+.folder-pic.banner { display: block; width: 100%; height: 130px; margin: 0 0 10px; border-radius: 8px; }
+.fe-pic { display: flex; align-items: center; gap: 8px; }
+.fe-pic .folder-pic.thumb { width: 40px; height: 40px; border-color: var(--rule); }

@@ -2,7 +2,7 @@
 import { normalizePage, type NotesStorage, type PageRecord } from '../storage/types';
 import type { Group } from '../types';
 import { isKnownFileType, isSafeId } from '../storage/validate';
-import { pageFileIds } from './files';
+import { groupFileIds, pageFileIds } from './files';
 import { MAIN, workspaceOf } from './workspaces';
 
 const FORMAT = 'canvas-notes-backup';
@@ -35,6 +35,7 @@ export async function buildBackup(storage: NotesStorage, now = Date.now(), opts:
   const records = (await storage.sync.getRecords('page', pages.map((p) => p.id))) as PageRecord[];
   const used = new Set<string>();
   for (const r of records) for (const id of pageFileIds(r)) used.add(id);
+  for (const id of groupFileIds(groups)) used.add(id); // the pictures of card folders and sections
   const images: BackupImage[] = [];
   for (const id of used) {
     const img = await storage.sync.readImage(id);

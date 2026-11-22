@@ -71,6 +71,8 @@ export interface GroupRecord {
   scope?: 'cards' | 'workspaces';
   /** The workspace a page group or card folder belongs to; absent = Main (and in records from older app versions). */
   workspace?: string;
+  /** The id of the picture of a card folder or section; absent = none (and in records from older app versions). */
+  cover?: string;
   /** The description of a card folder; absent when it has none (and in records from older app versions). */
   description?: string;
 }

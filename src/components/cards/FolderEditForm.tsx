@@ -3,6 +3,9 @@ import type { Group } from '../../types';
 import { MAX_DESCRIPTION, placeNameCap } from '../../lib/cardFolders';
 import { updateCardFolder } from '../../store/cardFolders';
 import { stopFolderEdit } from '../../store/cardEdit';
+import { removeCardFolderCover } from '../../store/cardFolderCover';
+import { chooseFolderPicture } from './chooseFolderPicture';
+import { FolderPicture } from './FolderPicture';
 
 /**
  * Edits a folder or section's name and description in place. Enter in the name, or Ctrl+Enter in the description, saves; Esc cancels.
@@ -59,6 +62,14 @@ export function FolderEditForm({ folder, depth }: { folder: Group; depth: number
           }}
         />
       </label>
+      <div className="fe-field">
+        <span>Picture</span>
+        <div className="fe-pic">
+          <FolderPicture folder={folder} kind="thumb" />
+          <button type="button" className="btn small" onClick={() => chooseFolderPicture(folder.id)}>{folder.cover ? 'Change picture…' : 'Add a picture…'}</button>
+          {folder.cover && <button type="button" className="btn small" onClick={() => removeCardFolderCover(folder.id)}>Remove</button>}
+        </div>
+      </div>
       <div className="fe-actions">
         <button type="submit" className="btn primary">
           Save

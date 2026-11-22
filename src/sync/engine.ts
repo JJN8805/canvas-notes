@@ -16,7 +16,7 @@
  */
 import type { Block } from '../types';
 import { newId } from '../lib/util';
-import { pageFileIds } from '../lib/files';
+import { groupFileIds, pageFileIds } from '../lib/files';
 import type { GroupRecord, ImagePayload, PageRecord, SyncKind, SyncMeta, SyncRecord, SyncStore } from '../storage/types';
 
 export const PROTOCOL_VERSION = 1;
@@ -225,12 +225,13 @@ async function syncRound(store: SyncStore, send: Send, report: SyncReport): Prom
       }
     }
 
-    // Images the laptop needs for pages we're about to send, before the pages themselves.
-    if (kind === 'page' && p.push.length) {
-      const outgoing = (await store.getRecords('page', p.push.map((x) => x.id))) as PageRecord[];
+    // Images the laptop needs for the pages (and card folders, which can have a picture) we're about to send, before the records themselves.
+    if (p.push.length) {
+      const outgoing = await store.getRecords(kind, p.push.map((x) => x.id));
       const have = new Set(manifest.images);
       const local = new Set(await store.listImageIds());
-      const needed = [...new Set(outgoing.flatMap((r) => imageIdsOf(r)))].filter((id) => !have.has(id) && local.has(id));
+      const wanted = kind === 'page' ? (outgoing as PageRecord[]).flatMap((r) => imageIdsOf(r)) : groupFileIds(outgoing as GroupRecord[]);
+      const needed = [...new Set(wanted)].filter((id) => !have.has(id) && local.has(id));
       report.images += await sendImages(store, send, needed);
       needed.forEach((id) => have.add(id));
     }
@@ -264,7 +265,8 @@ async function syncRound(store: SyncStore, send: Send, report: SyncReport): Prom
   const pages = (await store.getRecords('page', (await store.listMeta('page')).filter((m) => !m.deleted).map((m) => m.id))) as PageRecord[];
   const local = new Set(await store.listImageIds());
   const onLaptop = new Set(manifest.images);
-  const missing = [...new Set(pages.flatMap((r) => imageIdsOf(r)))].filter((id) => !local.has(id) && onLaptop.has(id));
+  const groups = (await store.getRecords('group', (await store.listMeta('group')).filter((m) => !m.deleted).map((m) => m.id))) as GroupRecord[];
+  const missing = [...new Set([...pages.flatMap((r) => imageIdsOf(r)), ...groupFileIds(groups)])].filter((id) => !local.has(id) && onLaptop.has(id));
   for (const ids of chunks(missing, 4)) {
     const { images } = await send<{ images: ImagePayload[] }>({ op: 'getImages', ids });
     for (const img of images) await store.writeImage(img);

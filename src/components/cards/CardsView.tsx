@@ -14,6 +14,7 @@ import { useFolderDrop } from './cardDnd';
 import { toggleCardTree, useLayout } from '../../store/layout';
 import { startFolderEdit, stopFolderEdit, useFolderEdit } from '../../store/cardEdit';
 import { FolderEditForm } from './FolderEditForm';
+import { FolderPicture } from './FolderPicture';
 import { MOD_LABEL } from '../../lib/util';
 import { openCardFolderMenu, promptNewFolder } from './cardFolderMenu';
 import { CardGrid, SectionList, useClosedSections } from './CardSections';
@@ -266,6 +267,15 @@ export function CardsView() {
 function PlaceDetails({ folder, depth }: { folder: Group; depth: number }) {
   const editing = useFolderEdit((s) => s.id === folder.id);
   if (editing) return <FolderEditForm folder={folder} depth={depth} />;
+  return (
+    <>
+      <FolderPicture folder={folder} kind="banner" />
+      <PlaceText folder={folder} />
+    </>
+  );
+}
+
+function PlaceText({ folder }: { folder: Group }) {
   return folder.description ? (
     <p className="cf-desc" title="Click to edit" onClick={() => startFolderEdit(folder.id)}>
       {folder.description}

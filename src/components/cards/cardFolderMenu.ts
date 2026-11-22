@@ -3,6 +3,8 @@ import { createCardFolder, deleteCardFolder, moveCardFolder, reorderCardFolder, 
 import { ask, confirmDanger, openMenu, toast } from '../../store/ui';
 import { childrenOf, depthOf, placeName, reordered, validMoveTargets } from '../../lib/cardFolders';
 import { groupChoices } from '../library/shared';
+import { chooseFolderPicture } from './chooseFolderPicture';
+import { removeCardFolderCover } from '../../store/cardFolderCover';
 
 /** Asks for a name and makes a folder (at the top) or a section (inside `parentId`). Resolves to the new one, or null if cancelled. */
 export async function promptNewFolder(folders: Group[], parentId: string | null): Promise<Group | null> {
@@ -30,6 +32,8 @@ export function openCardFolderMenu(anchor: HTMLElement, f: Group, folders: Group
     { label: 'Edit name and description…', action: () => onEdit(f) },
     { label: 'New section…', action: () => void promptNewFolder(folders, f.id) },
     { swatches: true, current: f.color, pick: (c) => setCardFolderColor(f.id, c) },
+    { label: f.cover ? `Change the ${kind}’s picture…` : `Add a picture to the ${kind}…`, action: () => chooseFolderPicture(f.id) },
+    ...(f.cover ? [{ label: 'Remove the picture', action: () => removeCardFolderCover(f.id) }] : []),
     ...(childrenOf(folders, f.parentId).length > 1
       ? [
           { separator: true as const },

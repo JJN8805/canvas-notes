@@ -4,7 +4,7 @@ import { loadPrefs, selectDailyTemplate, usePrefs } from '../prefs';
 import { loadAddons } from '../../addons/store';
 import { loadFeatures } from '../features';
 import { deepClone } from '../../lib/util';
-import { pageFileIds } from '../../lib/files';
+import { groupFileIds, pageFileIds } from '../../lib/files';
 import { isTauri, openStorage } from '../../storage';
 import { toast } from '../ui';
 import { Snapshot } from '../../storage/types';
@@ -75,7 +75,10 @@ export async function doInit() {
         .tidy()
         .catch((e) => console.warn('Tidying storage failed', e))
         // Every workspace's pages count, not only the open one's: a file used by a page of another workspace must stay.
-        .then(async () => storage.pruneImages(usedImageIds([...(await storage.loadAll()).pages, ...Object.values(get().pages)])))
+        .then(async () => {
+          const all = await storage.loadAll();
+          return storage.pruneImages(usedImageIds([...all.pages, ...Object.values(get().pages)], [...all.groups, ...get().cardFolders]));
+        })
         .catch((e) => console.warn('Image cleanup failed', e));
     }, 20_000);
 
@@ -146,9 +149,10 @@ export async function restoreSnapshot(pageId: string, snap: Snapshot) {
   toast('Restored an earlier version. Undo brings back the one you had.');
 }
 
-export function usedImageIds(pages: Page[]): Set<string> {
+export function usedImageIds(pages: Page[], groups: readonly { cover?: string | null }[] = []): Set<string> {
   const ids = new Set<string>();
   for (const p of pages) for (const id of pageFileIds(p)) ids.add(id);
+  for (const id of groupFileIds(groups)) ids.add(id); // card folder and section pictures
   return ids;
 }
 

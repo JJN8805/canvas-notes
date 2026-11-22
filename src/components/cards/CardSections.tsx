@@ -7,6 +7,7 @@ import { frameInk } from '../../lib/colors';
 import { colorVar } from '../../lib/util';
 import { Icon } from '../ui/Icon';
 import { CardTile } from './CardTile';
+import { FolderPicture } from './FolderPicture';
 import { CARD_FOLDER_MIME, CARD_MIME, useFolderDrop } from './cardDnd';
 
 const KEY = 'cards.sections.closed';
@@ -115,6 +116,7 @@ function CardSection({ folder, level, ...shared }: Shared & { folder: Group; lev
         <button className={'section-twist' + (open ? ' open' : '')} aria-expanded={open} aria-label={`${open ? 'Roll up' : 'Open'} ${folder.name}`} onClick={() => toggle(folder.id)}>
           <Icon name="chevron" size={16} />
         </button>
+        <FolderPicture folder={folder} kind="thumb" />
         <button className="section-name" onClick={() => onFocus(folder.id)} title={`Open ${folder.name}`}>
           {folder.name}
         </button>
@@ -133,6 +135,7 @@ function CardSection({ folder, level, ...shared }: Shared & { folder: Group; lev
       </header>
       {open && (
         <div className="section-body">
+          <FolderPicture folder={folder} kind="banner" />
           {editing ? (
             <FolderEditForm folder={folder} depth={depthOf(folders, folder.id)} />
           ) : folder.description ? (

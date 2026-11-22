@@ -61,7 +61,7 @@ type PageRow = {
   synced: string | null;
   deleted: number;
 };
-type GroupRow = { id: string; name: string; color: string; position: number; etag: string; synced: string | null; deleted: number; parent_id: string | null; scope: string | null; description: string | null; workspace?: string };
+type GroupRow = { id: string; name: string; color: string; position: number; etag: string; synced: string | null; deleted: number; parent_id: string | null; scope: string | null; description: string | null; workspace?: string; cover?: string };
 type SnapshotRow = { id: string; page_id: string; taken: number; title: string; blocks: string; arrows: string };
 type ImageRow = { id: string; file: string; mime: string; created: number; sha256: string | null; size: number | null };
 
@@ -170,6 +170,8 @@ const MIGRATIONS: string[][] = [
   [`ALTER TABLE pages ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`],
   // v20: the workspace a page or group belongs to ('' = Main). Workspaces themselves are rows of page_groups with scope 'workspaces'.
   [`ALTER TABLE pages ADD COLUMN workspace TEXT NOT NULL DEFAULT ''`, `ALTER TABLE page_groups ADD COLUMN workspace TEXT NOT NULL DEFAULT ''`],
+  // v21: the picture of a card folder or section (a stored file's id; '' = none)
+  [`ALTER TABLE page_groups ADD COLUMN cover TEXT NOT NULL DEFAULT ''`],
 ];
 
 async function migrate(db: Database) {
@@ -260,7 +262,7 @@ function rowToPageRecord(r: PageRow): PageRecord {
 }
 
 function rowToGroupRecord(r: GroupRow): GroupRecord {
-  return { id: r.id, etag: r.etag, deleted: !!r.deleted, name: r.name, color: r.color as GroupColor, position: r.position, parentId: r.parent_id ?? null, ...(r.scope === 'cards' || r.scope === 'workspaces' ? { scope: r.scope } : {}), ...(r.workspace ? { workspace: r.workspace } : {}), ...(r.description ? { description: r.description } : {}) };
+  return { id: r.id, etag: r.etag, deleted: !!r.deleted, name: r.name, color: r.color as GroupColor, position: r.position, parentId: r.parent_id ?? null, ...(r.scope === 'cards' || r.scope === 'workspaces' ? { scope: r.scope } : {}), ...(r.workspace ? { workspace: r.workspace } : {}), ...(r.scope === 'cards' && r.cover && isSafeId(r.cover) ? { cover: r.cover } : {}), ...(r.description ? { description: r.description } : {}) };
 }
 
 const EXT = FILE_EXT;
@@ -388,9 +390,9 @@ export async function createTauriStorage(): Promise<NotesStorage> {
     r.created, r.updated, r.etag, r.deleted ? 1 : 0, r.drawing ? JSON.stringify(r.drawing) : '', r.color ?? null,
     kindOf(r), cleanDate(r.dailyDate), sheetJson(r.sheet), coverId(r.cover), iconOf(r.icon), archivedOf(r.archived), workspaceOf(r),
   ];
-  const groupValues = (r: GroupRecord) => [r.id, r.name, r.color, r.position, r.etag, r.deleted ? 1 : 0, r.parentId ?? null, groupScope(r.scope), r.description ?? '', workspaceOf(r)];
+  const groupValues = (r: GroupRecord) => [r.id, r.name, r.color, r.position, r.etag, r.deleted ? 1 : 0, r.parentId ?? null, groupScope(r.scope), r.description ?? '', workspaceOf(r), r.scope === 'cards' ? coverId(r.cover) : ''];
 
-  const toGroup = (g: GroupRow): Group => ({ id: g.id, name: g.name, color: g.color as GroupColor, parentId: g.parent_id ?? null, ...(g.scope === 'cards' || g.scope === 'workspaces' ? { scope: g.scope } : {}), ...(g.workspace ? { workspace: g.workspace } : {}), ...(g.description ? { description: g.description } : {}) });
+  const toGroup = (g: GroupRow): Group => ({ id: g.id, name: g.name, color: g.color as GroupColor, parentId: g.parent_id ?? null, ...(g.scope === 'cards' || g.scope === 'workspaces' ? { scope: g.scope } : {}), ...(g.workspace ? { workspace: g.workspace } : {}), ...(g.scope === 'cards' && g.cover && isSafeId(g.cover) ? { cover: g.cover } : {}), ...(g.description ? { description: g.description } : {}) });
 
   const sync: SyncStore = {
     async listMeta(kind) {
@@ -423,11 +425,11 @@ export async function createTauriStorage(): Promise<NotesStorage> {
         );
       } else {
         await db.execute(
-          `INSERT INTO page_groups (id, name, color, position, etag, deleted, parent_id, synced, scope, description, workspace)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $5, $8, $9, $10)
+          `INSERT INTO page_groups (id, name, color, position, etag, deleted, parent_id, synced, scope, description, workspace, cover)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $5, $8, $9, $10, $11)
            ON CONFLICT(id) DO UPDATE SET
              name = excluded.name, color = excluded.color, position = excluded.position,
-             etag = excluded.etag, deleted = excluded.deleted, parent_id = excluded.parent_id, scope = excluded.scope, description = excluded.description, workspace = excluded.workspace, synced = excluded.etag`,
+             etag = excluded.etag, deleted = excluded.deleted, parent_id = excluded.parent_id, scope = excluded.scope, description = excluded.description, workspace = excluded.workspace, cover = excluded.cover, synced = excluded.etag`,
           groupValues(rec as GroupRecord),
         );
       }
@@ -448,8 +450,8 @@ export async function createTauriStorage(): Promise<NotesStorage> {
         } else {
           affected = (
             await db.execute(
-              `INSERT INTO page_groups (id, name, color, position, etag, deleted, parent_id, synced, scope, description, workspace)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $5, $8, $9, $10) ON CONFLICT(id) DO NOTHING`,
+              `INSERT INTO page_groups (id, name, color, position, etag, deleted, parent_id, synced, scope, description, workspace, cover)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $5, $8, $9, $10, $11) ON CONFLICT(id) DO NOTHING`,
               groupValues(rec as GroupRecord),
             )
           ).rowsAffected;
@@ -466,8 +468,8 @@ export async function createTauriStorage(): Promise<NotesStorage> {
       } else {
         affected = (
           await db.execute(
-            `UPDATE page_groups SET name = $2, color = $3, position = $4, etag = $5, deleted = $6, parent_id = $7, scope = $8, description = $9, workspace = $10, synced = $5
-             WHERE id = $1 AND etag = $11`,
+            `UPDATE page_groups SET name = $2, color = $3, position = $4, etag = $5, deleted = $6, parent_id = $7, scope = $8, description = $9, workspace = $10, cover = $11, synced = $5
+             WHERE id = $1 AND etag = $12`,
             [...groupValues(rec as GroupRecord), base],
           )
         ).rowsAffected;
@@ -749,18 +751,19 @@ export async function createTauriStorage(): Promise<NotesStorage> {
         const g = groups[i];
         const scope = groupScope(g.scope);
         const workspace = workspaceOf(g);
+        const cover = scope === 'cards' ? coverId(g.cover) : '';
         const description = scope === 'cards' ? (g.description ?? '') : '';
         // Only rows that really changed get a new etag, so sync sends just those.
         const upd = await db.execute(
-          `UPDATE page_groups SET name = $2, color = $3, position = $4, parent_id = $6, scope = $7, description = $8, workspace = $9, deleted = 0, etag = $5
-           WHERE id = $1 AND (name IS NOT $2 OR color IS NOT $3 OR position IS NOT $4 OR parent_id IS NOT $6 OR scope IS NOT $7 OR description IS NOT $8 OR workspace IS NOT $9 OR deleted = 1)`,
-          [g.id, g.name, g.color, i, newEtag(), g.parentId ?? null, scope, description, workspace],
+          `UPDATE page_groups SET name = $2, color = $3, position = $4, parent_id = $6, scope = $7, description = $8, workspace = $9, cover = $10, deleted = 0, etag = $5
+           WHERE id = $1 AND (name IS NOT $2 OR color IS NOT $3 OR position IS NOT $4 OR parent_id IS NOT $6 OR scope IS NOT $7 OR description IS NOT $8 OR workspace IS NOT $9 OR cover IS NOT $10 OR deleted = 1)`,
+          [g.id, g.name, g.color, i, newEtag(), g.parentId ?? null, scope, description, workspace, cover],
         );
         if (upd.rowsAffected === 0) {
           await db.execute(
-            `INSERT INTO page_groups (id, name, color, position, etag, parent_id, synced, deleted, scope, description, workspace)
-             VALUES ($1, $2, $3, $4, $5, $6, NULL, 0, $7, $8, $9) ON CONFLICT(id) DO NOTHING`,
-            [g.id, g.name, g.color, i, newEtag(), g.parentId ?? null, scope, description, workspace],
+            `INSERT INTO page_groups (id, name, color, position, etag, parent_id, synced, deleted, scope, description, workspace, cover)
+             VALUES ($1, $2, $3, $4, $5, $6, NULL, 0, $7, $8, $9, $10) ON CONFLICT(id) DO NOTHING`,
+            [g.id, g.name, g.color, i, newEtag(), g.parentId ?? null, scope, description, workspace, cover],
           );
         }
       }

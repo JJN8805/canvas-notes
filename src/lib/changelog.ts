@@ -9,6 +9,15 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.2.1',
+    date: '2026-11-22',
+    title: 'Pictures for card folders and sections',
+    items: [
+      'A card folder or section can have its own picture: shown small in its heading and as a banner at the top of it. Add, change or remove it from its menu or its edit form. It syncs to your phone and is kept in backups and archive files.',
+      'Export a workspace as a small website, or as Markdown files with their pictures.',
+    ],
+  },
+  {
     version: '0.2.0',
     date: '2026-11-22',
     title: 'Workspaces, the phone, and much more',
