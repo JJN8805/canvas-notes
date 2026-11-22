@@ -1,4 +1,5 @@
 import { isCard, kindOf } from '../lib/pages';
+import { buildSite, type SiteEntry } from '../lib/staticSite';
 import { isStyle, kindClass } from '../lib/note';
 import { cardLabel, cardParts, cardText } from '../lib/cards';
 import { createRoot } from 'react-dom/client';
@@ -570,7 +571,7 @@ export async function exportPage(pageId: string, format: ExportFormat) {
  * Every page and card of the open workspace as Markdown files in one zip, with the pictures, recordings and PDFs they use shared in
  * `images/` and `files/` (so a book of notes can be read or published anywhere), plus an `index.md` that lists them.
  */
-export async function exportWorkspaceMarkdown(workspaceLabel: string) {
+export async function exportWorkspaceMarkdown(workspaceLabel: string, as: 'markdown' | 'site' = 'markdown') {
   if (busy) return;
   busy = true;
   try {
@@ -588,6 +589,7 @@ export async function exportWorkspaceMarkdown(workspaceLabel: string) {
     const others = new Map<string, string>();
     const used = new Set<string>();
     const index: string[] = [`# ${workspaceLabel}`, ''];
+    const site: SiteEntry[] = [];
     for (const page of pages) {
       const hidden = hiddenBlockIds(page.blocks);
       for (const b of page.blocks) {
@@ -612,13 +614,16 @@ export async function exportWorkspaceMarkdown(workspaceLabel: string) {
       let base = fileBase(page);
       for (let n = 2; used.has(base.toLowerCase()); n++) base = `${fileBase(page)} (${n})`;
       used.add(base.toLowerCase());
-      files[`${base}.md`] = enc.encode(pageToMarkdown(page, (b) => images.get(b.imageId) ?? '', drawing, (b) => others.get(b.fileId) ?? '', cardInfo));
+      const md = pageToMarkdown(page, (b) => images.get(b.imageId) ?? '', drawing, (b) => others.get(b.fileId) ?? '', cardInfo);
+      if (as === 'site') site.push({ slug: base, title: page.title.trim() || 'Untitled', markdown: md });
+      else files[`${base}.md`] = enc.encode(md);
       index.push(`- [${page.title.trim() || 'Untitled'}](${encodeURI(base)}.md)`);
     }
-    files['index.md'] = enc.encode(index.join('\n') + '\n');
+    if (as === 'site') for (const [path, text] of Object.entries(buildSite(site, workspaceLabel))) files[path] = enc.encode(text);
+    else files['index.md'] = enc.encode(index.join('\n') + '\n');
     const day = new Date().toISOString().slice(0, 10);
-    const saved = await saveBytes(`${workspaceLabel.replace(/[^A-Za-z0-9_-]+/g, '-').toLowerCase() || 'workspace'}-markdown-${day}`, 'zip', toArrayBufferBytes(zipSync(files, { level: 6 })));
-    if (saved) toast(`Saved ${pages.length} page${pages.length === 1 ? '' : 's'} as Markdown to ${saved}`);
+    const saved = await saveBytes(`${workspaceLabel.replace(/[^A-Za-z0-9_-]+/g, '-').toLowerCase() || 'workspace'}-${as === 'site' ? 'website' : 'markdown'}-${day}`, 'zip', toArrayBufferBytes(zipSync(files, { level: 6 })));
+    if (saved) toast(`Saved ${pages.length} page${pages.length === 1 ? '' : 's'} as ${as === 'site' ? 'a website (open index.html)' : 'Markdown'} to ${saved}`);
   } catch (e) {
     console.error(e);
     toast(`Couldn’t export the workspace: ${e instanceof Error ? e.message : String(e)}`);

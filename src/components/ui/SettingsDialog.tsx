@@ -507,6 +507,11 @@ function DataTab() {
               This workspace as Markdown (.zip)…
             </button>
           )}
+          {wsOn && (
+            <button className="btn" disabled={busy} title="A small website of the open workspace: one web page per page, with an index and the pictures, ready to put on any web host. Nothing is uploaded." onClick={() => void exportWorkspaceMarkdown(workspaceName(useNotes.getState().workspace ?? ''), 'site')}>
+              This workspace as a website (.zip)…
+            </button>
+          )}
           <button className="btn" disabled={busy} onClick={() => fileRef.current?.click()}>
             Restore from backup or archive…
           </button>
