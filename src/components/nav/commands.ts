@@ -26,6 +26,8 @@ import { canArchive, isArchived } from '../../lib/pages';
 import { openNewPage } from '../library/shared';
 import { pageApp } from '../../lib/office/app';
 import { listWorkspaces } from '../../lib/workspaces';
+import { openTodayAll } from '../../store/todayAll';
+import { openFindAll } from '../../store/findAll';
 import { switchWorkspace } from '../../store/workspaces';
 import { newWorkspaceFlow } from '../library/workspaceMenu';
 
@@ -36,6 +38,8 @@ function workspaceCommands(): Command[] {
   const others = listWorkspaces(st.workspaces, st.mainName).filter((w) => w.id !== open);
   return [
     ...others.map((w): Command => ({ id: `workspace-${w.id || 'main'}`, feature: 'workspaces', icon: 'pages', title: `Switch to workspace: ${w.name}`, run: () => void switchWorkspace(w.id) })),
+    { id: 'workspace-find', feature: 'workspaces', icon: 'search', title: 'Find in every workspace…', run: () => openFindAll() },
+    { id: 'workspace-today', feature: 'workspaces', icon: 'today', title: 'Today in every workspace', run: () => void openTodayAll() },
     { id: 'workspace-new', feature: 'workspaces', icon: 'plus', title: 'New workspace…', run: () => void newWorkspaceFlow() },
   ];
 }

@@ -3,6 +3,7 @@ import { normalizePage, type NotesStorage, type PageRecord } from '../storage/ty
 import type { Group } from '../types';
 import { isKnownFileType, isSafeId } from '../storage/validate';
 import { pageFileIds } from './files';
+import { MAIN, workspaceOf } from './workspaces';
 
 const FORMAT = 'canvas-notes-backup';
 
@@ -21,9 +22,16 @@ export interface Backup {
   images: BackupImage[];
 }
 
-/** Collects everything that isn't deleted (trashed pages are left out). */
-export async function buildBackup(storage: NotesStorage, now = Date.now()): Promise<Backup> {
-  const { pages, groups } = await storage.loadAll();
+/**
+ * Collects everything that isn't deleted (trashed pages are left out). With `workspace`, only that workspace: its pages, its groups and
+ * card folders, and its own row, so restoring the file elsewhere brings the workspace back whole ('' is Main; templates, which belong to
+ * no workspace, go with Main).
+ */
+export async function buildBackup(storage: NotesStorage, now = Date.now(), opts: { workspace?: string } = {}): Promise<Backup> {
+  const all = await storage.loadAll();
+  const only = opts.workspace;
+  const pages = only === undefined ? all.pages : all.pages.filter((p) => (p.kind === 'template' ? only === MAIN : workspaceOf(p) === only));
+  const groups = only === undefined ? all.groups : all.groups.filter((g) => (g.scope === 'workspaces' ? g.id === only : workspaceOf(g) === only));
   const records = (await storage.sync.getRecords('page', pages.map((p) => p.id))) as PageRecord[];
   const used = new Set<string>();
   for (const r of records) for (const id of pageFileIds(r)) used.add(id);
@@ -76,6 +84,8 @@ export async function restoreBackup(storage: NotesStorage, backup: Backup): Prom
   const { groups: existing } = await storage.loadAll();
   const haveGroups = new Set(existing.map((g) => g.id));
   const newGroups = backup.groups.filter((g) => !haveGroups.has(g.id));
+  // A page whose workspace is nowhere (a backup made of one workspace of another library, say) would be hidden for good: it goes to Main.
+  const workspaces = new Set([...existing, ...newGroups].filter((g) => g.scope === 'workspaces').map((g) => g.id));
   if (newGroups.length) {
     const known = new Set([...haveGroups, ...newGroups.map((g) => g.id)]);
     // A group whose parent isn't anywhere comes back at the top level.
@@ -108,7 +118,7 @@ export async function restoreBackup(storage: NotesStorage, backup: Backup): Prom
       cover: p.cover,
       icon: p.icon,
       archived: p.archived,
-      workspace: p.workspace,
+      workspace: p.workspace && workspaces.has(p.workspace) ? p.workspace : undefined,
       created: p.created,
       updated: p.updated,
     });

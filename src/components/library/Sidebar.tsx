@@ -18,7 +18,7 @@ import { toggleSidebar } from '../../store/layout';
 import { useFeature, useFeatures } from '../../store/features';
 import { navigate } from '../../lib/route';
 import { listedPages } from '../../lib/pages';
-import { WorkspaceSwitcher } from './WorkspaceSwitcher';
+import { WorkspaceDrops, WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { favoritePages, recentPages } from '../../lib/favorites';
 import { toggleStar, useFavorites } from '../../store/favorites';
 
@@ -57,6 +57,7 @@ export function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Grou
       </div>
       <ProfileChip />
       <WorkspaceSwitcher />
+      <WorkspaceDrops />
 
       <button className="side-search" onClick={() => openNav('switcher')} aria-label={`${canAsk ? 'Search or ask' : 'Search'} (${MOD_LABEL}+K)`}>
         <Icon name="search" size={15} />

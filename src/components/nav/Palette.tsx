@@ -6,6 +6,8 @@ import { fuzzyFilter } from '../../lib/fuzzy';
 import { libraryPages } from '../../lib/pages';
 import { listWorkspaces, searchStubs } from '../../lib/workspaces';
 import { openPageAnywhere } from '../../store/workspaces';
+import { openFindAll } from '../../store/findAll';
+import { featureOn } from '../../store/features';
 import { useFavorites } from '../../store/favorites';
 import { navigate } from '../../lib/route';
 import { buildCommands } from './commands';
@@ -58,6 +60,7 @@ function PaletteBody({ mode }: { mode: 'commands' | 'switcher' }) {
     }
     const ask = askHandler();
     const q = query.trim();
+    if (q && listWorkspaces(st.workspaces, st.mainName).length > 1 && featureOn('workspaces')) found.push({ key: 'find-all', label: `Search every workspace for “${q}”`, icon: 'search', run: () => openFindAll(q) });
     if (ask && q) found.push({ key: 'ask-ai', label: `Ask AI: “${q}”`, icon: 'sparkle', run: () => ask(q) });
     return found;
   }, [mode, pages, query, loaded, stars, elsewhere]);

@@ -80,6 +80,36 @@ describe.each([
   });
 });
 
+describe('a backup of one workspace', () => {
+  it('holds that workspace whole, and restoring it elsewhere brings the workspace back (a page of an unknown workspace goes to Main)', async () => {
+    useDevice('b1');
+    const a = await createTauriStorage();
+    await a.saveGroups([{ id: 'w1', name: 'Student', color: 'teal', parentId: null, scope: 'workspaces' }, { id: 'g1', name: 'Maths', color: 'plum', parentId: null, workspace: 'w1' }, { id: 'g0', name: 'Main group', color: 'plum', parentId: null }]);
+    await a.savePage(page('s', { workspace: 'w1', groupId: 'g1' }));
+    await a.savePage(page('m'));
+    await a.savePage(page('t', { kind: 'template' }));
+    const student = await buildBackup(a, 1, { workspace: 'w1' });
+    expect(student.pages.map((p) => p.id)).toEqual(['s']);
+    expect(student.groups.map((g) => g.id).sort()).toEqual(['g1', 'w1']);
+    const main = await buildBackup(a, 1, { workspace: '' });
+    expect(main.pages.map((p) => p.id).sort()).toEqual(['m', 't']);
+    expect((await buildBackup(a)).pages).toHaveLength(3);
+
+    useDevice('b2');
+    const b = await createTauriStorage();
+    await restoreBackup(b, JSON.parse(JSON.stringify(student)));
+    expect((await b.loadPage('s'))!.workspace).toBe('w1');
+    expect(splitGroups((await b.loadAll()).groups, 'w1').workspaces.map((g) => g.name)).toEqual(['Student']);
+
+    useDevice('b3');
+    const c = await createTauriStorage();
+    const orphan = JSON.parse(JSON.stringify(student));
+    orphan.groups = []; // the workspace's row is not in the file
+    await restoreBackup(c, orphan);
+    expect((await c.loadPage('s'))!.workspace).toBeUndefined();
+  });
+});
+
 describe('the workspace actions', () => {
   let storage: NotesStorage;
   beforeEach(async () => {

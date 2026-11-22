@@ -117,7 +117,7 @@ await page.keyboard.press('Control+k');
 await page.waitForSelector('.palette');
 await page.fill('.palette input', 'Video script');
 await page.waitForTimeout(300);
-const row = page.locator('.palette-row:has-text("Video script")');
+const row = page.locator('.palette-row:has-text("Video script"):not(:has-text("Search every"))');
 check('the quick switcher also finds a page of another workspace, naming it', (await row.count()) === 1 && /Content creator/.test(await row.innerText()));
 await page.keyboard.press('Enter');
 await page.waitForTimeout(800);
@@ -142,6 +142,42 @@ await page.click('.menu-item:has-text("Move to Main")');
 await page.waitForSelector('.sidebar');
 await page.waitForTimeout(500);
 check('moving from the header goes back to the library, and the page has left', (await page.locator('.card:has-text("Video script")').count()) === 0);
+
+/* ---- drag a card onto a workspace ---- */
+await page.click('.ws-side');
+await page.click('.menu-item:has-text("Main")');
+await page.waitForTimeout(500);
+const card = page.locator('.card:has-text("Lecture notes")').first();
+await card.hover();
+const box = await card.boundingBox();
+await page.mouse.move(box.x + 20, box.y + 20);
+await page.mouse.down();
+await page.mouse.move(box.x + 60, box.y + 60, { steps: 5 });
+const dropShown = await page.locator('.ws-drop').count();
+check('dragging a card shows the other workspaces as drop places', dropShown >= 1, String(dropShown));
+if (dropShown) {
+  const t = await page.locator('.ws-drop').first().boundingBox();
+  await page.mouse.move(t.x + 20, t.y + 10, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(700);
+  check('dropping it moves the page there', (await page.locator('.card:has-text("Lecture notes")').count()) === 0);
+} else await page.mouse.up();
+
+/* ---- today everywhere, and find everywhere ---- */
+await page.click('.ws-side');
+await page.click('.menu-item:has-text("Today in every workspace")');
+await page.waitForSelector('.today-all');
+check('Today in every workspace lists each workspace', (await page.locator('.today-all .ta-desk').count()) >= 2);
+await page.screenshot({ path: join(OUT, '6-today.png') });
+await page.keyboard.press('Escape');
+await page.click('.ws-side');
+await page.click('.menu-item:has-text("Find in every workspace")');
+await page.waitForSelector('[aria-label="Search every workspace"]');
+await page.fill('[aria-label="Search every workspace"]', 'lecture');
+await page.waitForTimeout(500);
+check('Find in every workspace finds a page that is in another workspace', (await page.locator('[aria-label="Results"] li:has-text("Lecture notes")').count()) === 1);
+await page.screenshot({ path: join(OUT, '7-find.png') });
+await page.keyboard.press('Escape');
 
 check('no console errors', errors.length === 0, errors.join(' | '));
 console.log('screenshots in', OUT);

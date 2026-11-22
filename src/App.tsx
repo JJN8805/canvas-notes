@@ -11,6 +11,8 @@ import { Overlays } from './components/ui/Overlays';
 import { TemplatePicker } from './components/library/TemplatePicker';
 import { SettingsDialog } from './components/ui/SettingsDialog';
 import { LinkDialog } from './components/nav/LinkDialog';
+import { TodayAllDialog } from './components/nav/TodayAllDialog';
+import { FindAllDialog } from './components/nav/FindAllDialog';
 import { CardViewHost } from './components/cards/CardViewHost';
 import { AddonOverlays } from './addons/AddonOverlays';
 import { SyncPanel } from './components/sync/SyncPanel';
@@ -162,6 +164,8 @@ export function App() {
       <SettingsDialog />
       <CardViewHost />
       <LinkDialog />
+      <TodayAllDialog />
+      <FindAllDialog />
       <AddonOverlays />
       <Navigation />
       <Overlays />

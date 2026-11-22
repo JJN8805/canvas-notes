@@ -32,6 +32,7 @@ import { DesktopTab } from './SettingsDesktop';
 import { AddonsTab } from './SettingsAddons';
 import { FeaturesTab } from './FeaturesTab';
 import { useFeature } from '../../store/features';
+import { useWorkspaceList, workspaceName } from '../../store/workspaces';
 import { CUSTOM_PALETTE, DEFAULT_CUSTOM, DEFAULT_PALETTE, isReadable, PRESETS, type ThemeColors } from '../../lib/themes';
 
 const TABS = ['General', 'Profile', 'Appearance', 'Editor', 'Features', 'Sync', 'Desktop', 'Add-ons', 'Data', 'About'] as const;
@@ -389,6 +390,8 @@ function AutoArchiveSection() {
 function DataTab() {
   const trashDays = usePrefs((s) => s.trashDays);
   const fileRef = useRef<HTMLInputElement>(null);
+  const wsOn = useFeature('workspaces');
+  const wsCount = useWorkspaceList().length;
   const [busy, setBusy] = useState(false);
 
   async function exportAll(encrypted: boolean) {
@@ -427,12 +430,14 @@ function DataTab() {
   }
 
   /** One .zip with the pages and every picture, GIF, video, audio clip and PDF as normal files: for keeping, not for the app only. */
-  async function exportZip() {
+  async function exportZip(onlyOpenWorkspace = false) {
     setBusy(true);
     try {
-      const backup = await buildBackup(getStorage());
+      const open = useNotes.getState().workspace ?? '';
+      const backup = await buildBackup(getStorage(), Date.now(), onlyOpenWorkspace ? { workspace: open } : {});
       const day = new Date().toISOString().slice(0, 10);
-      const saved = await saveBytes(`canvas-notes-archive-${day}`, 'zip', backupToZip(backup));
+      const label = onlyOpenWorkspace ? `-${workspaceName(open).replace(/[^A-Za-z0-9_-]+/g, '-').toLowerCase()}` : '';
+      const saved = await saveBytes(`canvas-notes-archive${label}-${day}`, 'zip', backupToZip(backup));
       if (saved) toast(`Saved ${backup.pages.length} page${backup.pages.length === 1 ? '' : 's'} and ${backup.images.length} file${backup.images.length === 1 ? '' : 's'} to ${saved}`);
     } catch (e) {
       toast(`The archive couldn’t be saved: ${e instanceof Error ? e.message : e}`);
@@ -492,6 +497,11 @@ function DataTab() {
           <button className="btn" disabled={busy} title="One .zip with your pages and every picture, video and audio clip as normal files" onClick={() => void exportZip()}>
             Archive file (.zip)…
           </button>
+          {wsOn && wsCount > 1 && (
+            <button className="btn" disabled={busy} title="Only the open workspace: its pages, groups, cards and files. Restoring it elsewhere brings the workspace back" onClick={() => void exportZip(true)}>
+              This workspace only (.zip)…
+            </button>
+          )}
           <button className="btn" disabled={busy} onClick={() => fileRef.current?.click()}>
             Restore from backup or archive…
           </button>

@@ -5,6 +5,8 @@ import { GROUP_COLORS } from '../../types';
 import { featureOn } from '../../store/features';
 import { copyPagesToWorkspace, createWorkspace, deleteWorkspace, movePagesToWorkspace, renameWorkspace, setWorkspaceColor, switchWorkspace } from '../../store/workspaces';
 import { createGroup, get } from '../../store/notes';
+import { openTodayAll } from '../../store/todayAll';
+import { openFindAll } from '../../store/findAll';
 import { listWorkspaces, MAIN, STARTERS } from '../../lib/workspaces';
 
 const all = () => listWorkspaces(get().workspaces, get().mainName);
@@ -39,6 +41,8 @@ export function openWorkspaceMenu(anchor: HTMLElement, counts: Record<string, nu
     { heading: 'Workspaces' },
     ...all().map((w) => ({ label: `${w.name}  (${counts[w.id] ?? 0})`, check: w.id === open, dot: w.color, action: () => void switchWorkspace(w.id) })),
     { label: 'New workspace…', action: () => void newWorkspaceFlow() },
+    { label: 'Find in every workspace…', action: () => openFindAll() },
+    { label: 'Today in every workspace…', action: () => void openTodayAll() },
     { separator: true },
     {
       label: 'Rename this workspace…',

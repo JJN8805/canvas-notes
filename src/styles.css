@@ -1711,3 +1711,14 @@ span.note-title { display: flex; align-items: center; overflow: hidden; white-sp
 /* The open workspace's colour (Main has none) tints the top edge of the sidebar and the phone's workspace chip. */
 .sidebar { box-shadow: inset 0 3px 0 var(--ws-accent, transparent); }
 .ws-toolbar { box-shadow: inset 3px 0 0 var(--ws-accent, transparent); }
+
+.ws-drops { display: flex; flex-direction: column; gap: 4px; margin: 0 10px 8px; }
+.ws-drop { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1.5px dashed var(--rule); border-radius: 6px; font-size: 13px; color: var(--muted, var(--ink)); }
+.ws-drop .ws-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.ws-drop.over { border-style: solid; border-color: var(--accent); background: var(--hover); color: var(--ink); }
+.today-all { max-width: 640px; max-height: 80vh; overflow: auto; }
+.today-all .ta-desk { padding: 10px 0; border-top: 1px solid var(--rule); }
+.today-all .ta-desk h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 15px; }
+.today-all .ws-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; display: inline-block; }
+.today-all .ta-none { margin: 4px 0; color: var(--muted, var(--ink)); font-size: 13px; }
+.today-all .ta-recent { margin: 6px 0 0; font-size: 13px; }
