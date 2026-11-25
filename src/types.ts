@@ -76,6 +76,15 @@ export interface DocMeta {
   size?: 'letter' | 'a4';
 }
 
+/**
+ * Marks a code note as the whole page of a script (a Workspace script): its `code` is the script in Fountain text, which any older
+ * version of the app simply shows as a plain code box. `format` says how it is laid out (screenplay, stage, tv, av, audio, manuscript).
+ */
+export interface ScriptMeta {
+  page: true;
+  format: 'screenplay' | 'tv' | 'stage' | 'av' | 'audio' | 'manuscript';
+}
+
 /** Marks a frame as a slide of a presentation (a Workspace presentation). */
 export interface SlideMeta {
   /** What the speaker will say. */
@@ -109,6 +118,8 @@ export interface NoteBlock extends BlockBase {
   folded?: boolean;
   /** Set on the text of a Workspace document. */
   doc?: DocMeta;
+  /** Set on the code of a Workspace script. */
+  script?: ScriptMeta;
 }
 export interface ImageBlock extends BlockBase {
   type: 'image';

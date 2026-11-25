@@ -7,6 +7,8 @@ import { frameInk } from '../../lib/colors';
 import { colorVar } from '../../lib/util';
 import { Icon } from '../ui/Icon';
 import { CardTile } from './CardTile';
+import { cardLabel } from '../../lib/cards';
+import { openCardMenu, openCardMenuAt } from './cardMenu';
 import { FolderPicture } from './FolderPicture';
 import { CARD_FOLDER_MIME, CARD_MIME, useFolderDrop } from './cardDnd';
 
@@ -59,6 +61,7 @@ export function CardGrid({ cards, onOpenCard }: { cards: Page[]; onOpenCard: (id
         <div
           key={c.id}
           className="cf-card"
+          onContextMenu={(e) => { e.preventDefault(); openCardMenuAt(e.clientX, e.clientY, e.currentTarget, c, () => onOpenCard(c.id)); }}
           draggable
           onDragStart={(e) => {
             e.dataTransfer.setData(CARD_MIME, c.id);
@@ -66,6 +69,9 @@ export function CardGrid({ cards, onOpenCard }: { cards: Page[]; onOpenCard: (id
           }}
         >
           <CardTile card={c} onOpen={() => onOpenCard(c.id)} />
+          <button className="cf-card-more" aria-label={`Options for ${cardLabel(c)}`} title="Copy, move to another workspace, archive, delete" onClick={(e) => openCardMenu(e.currentTarget, c, () => onOpenCard(c.id))}>
+            <Icon name="more" size={16} />
+          </button>
         </div>
       ))}
     </div>

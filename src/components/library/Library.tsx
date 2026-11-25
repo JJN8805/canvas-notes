@@ -14,6 +14,8 @@ import { PhoneTabs } from './PhoneTabs';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { TodayStrip } from './TodayStrip';
 import { SelectionBar } from './SelectionBar';
+import { PasteBar } from './PasteBar';
+import { pasteHere, usePageClipboard } from '../../store/pageClipboard';
 import { cancelSelect, startSelect, useSelect } from '../../store/librarySelect';
 import { usePhone } from '../ui/usePhone';
 import { TemplatesView } from './TemplatesView';
@@ -106,6 +108,11 @@ export function Library() {
       if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey && !isEditableTarget(document.activeElement)) {
         e.preventDefault();
         openShortcuts();
+        return;
+      }
+      if (e.code === 'KeyV' && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && !isEditableTarget(document.activeElement) && usePageClipboard.getState().clip) {
+        e.preventDefault();
+        void pasteHere();
         return;
       }
       if (e.code !== 'Backslash' || !(e.ctrlKey || e.metaKey) || e.altKey) return;
@@ -246,6 +253,7 @@ export function Library() {
           </>
         )}
       </main>
+      <PasteBar />
     </div>
   );
 }

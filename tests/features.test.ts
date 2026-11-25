@@ -33,12 +33,13 @@ describe('feature switches', () => {
     expect(profileOf(PROFILES[1].off, true)).toBe('office');
     expect(profileOf(PROFILES[1].off, false)).toBe('custom');
     expect(profileOf(['journal'], true)).toBe('custom');
-    expect(profileOf(['doc', 'sheet', 'slides'], false)).toBe('notes');
+    expect(profileOf(['doc', 'sheet', 'slides', 'script'], false)).toBe('notes');
   });
-  it('Workspace needs at least one of its three kinds', () => {
+  it('Workspace needs at least one of its four kinds', () => {
     expect(workspaceOn([])).toBe(true);
     expect(workspaceOn(['doc', 'sheet'])).toBe(true);
-    expect(workspaceOn(['doc', 'sheet', 'slides'])).toBe(false);
+    expect(workspaceOn(['doc', 'sheet', 'slides'])).toBe(true); // scripts are still on
+    expect(workspaceOn(['doc', 'sheet', 'slides', 'script'])).toBe(false);
   });
   it('a build can ship a profile; an unknown or empty one means everything', () => {
     expect(buildProfile('office').id).toBe('office');

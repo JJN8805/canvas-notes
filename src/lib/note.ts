@@ -68,6 +68,7 @@ export function setNoteStyle(b: NoteBlock, style: NoteStyle): void {
   } else if (b.style === 'code') {
     b.html = textToHtml(b.code ?? '');
     delete b.code;
+    delete b.script;
   }
   if (style !== 'text') delete b.fill;
   b.style = style;

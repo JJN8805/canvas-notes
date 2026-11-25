@@ -7,7 +7,7 @@
  */
 export type FeatureId =
   | 'canvas' | 'journal' | 'cards' | 'groups' | 'tags' | 'templates' | 'archive' | 'workspaces' | 'links' | 'graph' | 'space' | 'media' | 'drawing' | 'widgets' | 'sync'
-  | 'doc' | 'sheet' | 'slides';
+  | 'doc' | 'sheet' | 'slides' | 'script';
 
 export interface FeatureInfo {
   id: FeatureId;
@@ -22,6 +22,7 @@ export const FEATURES: readonly FeatureInfo[] = [
   { id: 'doc', section: 'Workspace', label: 'Documents', description: 'Word-style documents.' },
   { id: 'sheet', section: 'Workspace', label: 'Spreadsheets', description: 'Excel-style spreadsheets with formulas.' },
   { id: 'slides', section: 'Workspace', label: 'Presentations', description: 'Slides with speaker notes and a full-screen show.' },
+  { id: 'script', section: 'Workspace', label: 'Scripts', description: 'Screenplays, stage plays, TV, audio dramas and story manuscripts, with a scene list, cards and exports.' },
   { id: 'canvas', section: 'Pages', label: 'Free canvas pages', description: 'Creating pages where boxes can go anywhere. Existing pages still open.' },
   { id: 'journal', section: 'Pages', label: 'Journal', description: 'A page for each day, the weekly review and attendance.' },
   { id: 'cards', section: 'Pages', label: 'Cards', description: 'Cards with a picture and details, filed in folders.' },
@@ -54,13 +55,13 @@ export interface Profile {
   workspace: boolean;
 }
 
-const ALL_BUT_WORKSPACE: FeatureId[] = ['canvas', 'journal', 'cards', 'groups', 'tags', 'templates', 'archive', 'workspaces', 'links', 'graph', 'space', 'media', 'drawing', 'widgets', 'sync'];
+const ALL_BUT_WORKSPACE: FeatureId[] = ['canvas', 'journal', 'cards', 'groups', 'tags', 'templates', 'archive', 'workspaces', 'links', 'graph', 'space', 'media', 'drawing', 'widgets', 'sync', 'script'];
 
 export const PROFILES: readonly Profile[] = [
   { id: 'everything', label: 'Everything', description: 'Every feature: canvas pages, cards, journal, links, documents, spreadsheets and presentations.', off: [], workspace: true },
   { id: 'office', label: 'Word, Excel and PowerPoint only', description: 'Documents, spreadsheets and presentations, and nothing else. Your pages are listed in All pages.', off: ALL_BUT_WORKSPACE, workspace: true },
   { id: 'documents', label: 'Word and Excel only', description: 'Documents and spreadsheets, and nothing else.', off: [...ALL_BUT_WORKSPACE, 'slides'], workspace: true },
-  { id: 'notes', label: 'Notes without Workspace', description: 'The free canvas, cards, journal and links, without documents, spreadsheets and presentations.', off: ['doc', 'sheet', 'slides'], workspace: false },
+  { id: 'notes', label: 'Notes without Workspace', description: 'The free canvas, cards, journal and links, without documents, spreadsheets and presentations.', off: ['doc', 'sheet', 'slides', 'script'], workspace: false },
 ];
 
 export const profileById = (id: unknown): Profile | undefined => PROFILES.find((p) => p.id === id);
@@ -97,4 +98,4 @@ export function buildProfile(raw: unknown = typeof __FEATURE_PROFILE__ === 'stri
 }
 
 /** Whether any part of Workspace is on: the Workspace screen and its commands need at least one of the three. */
-export const workspaceOn = (disabled: readonly FeatureId[]): boolean => (['doc', 'sheet', 'slides'] as const).some((f) => isFeatureOn(disabled, f));
+export const workspaceOn = (disabled: readonly FeatureId[]): boolean => (['doc', 'sheet', 'slides', 'script'] as const).some((f) => isFeatureOn(disabled, f));

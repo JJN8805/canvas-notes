@@ -15,14 +15,14 @@ import { BLOCK_LABEL, blockHeight, blockText, isFixedHeight } from '../lib/util'
 import { hiddenBlockIds, paintOrder } from '../lib/frames';
 import { routeBetween, type Rect as ArrowRect } from '../lib/arrows';
 import { getStorage, useNotes } from '../store/notes';
-import { pageApp } from '../lib/office/app';
+import { pageApp, scriptBlock } from '../lib/office/app';
 import { toast } from '../store/ui';
 import { isTauri } from '../storage';
 import { base64ToBytes } from '../storage/types';
 import { VIDEO_EXT } from '../storage/validate';
 import { StaticBody } from '../components/library/Thumbnail';
 
-export type ExportFormat = 'markdown' | 'pdf' | 'png' | 'xlsx' | 'docx';
+export type ExportFormat = 'markdown' | 'pdf' | 'png' | 'xlsx' | 'docx' | 'fountain' | 'text' | 'scriptpdf';
 
 const PAD = 48;
 
@@ -488,6 +488,8 @@ const FILTERS: Record<string, { name: string; extensions: string[]; mime: string
   json: { name: 'Canvas Notes backup', extensions: ['json'], mime: 'application/json' },
   png: { name: 'PNG image', extensions: ['png'], mime: 'image/png' },
   xlsx: { name: 'Excel workbook', extensions: ['xlsx'], mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+  fountain: { name: 'Fountain script', extensions: ['fountain'], mime: 'text/plain' },
+  txt: { name: 'Plain text', extensions: ['txt'], mime: 'text/plain' },
   docx: { name: 'Word document', extensions: ['docx'], mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
 };
 
@@ -533,12 +535,25 @@ export async function exportPage(pageId: string, format: ExportFormat) {
   const page = useNotes.getState().pages[pageId];
   if (!page || busy) return;
   busy = true;
-  const label = format === 'markdown' ? 'Markdown' : format === 'xlsx' ? 'Excel' : format === 'docx' ? 'Word' : format.toUpperCase();
+  const label = format === 'fountain' ? 'Fountain' : format === 'text' ? 'text' : format === 'scriptpdf' ? 'PDF' : format === 'markdown' ? 'Markdown' : format === 'xlsx' ? 'Excel' : format === 'docx' ? 'Word' : format.toUpperCase();
   try {
     let bytes: Uint8Array<ArrayBuffer>;
     let ext: string;
     if (format === 'markdown') {
       ({ bytes, ext } = await markdownExport(page));
+    } else if (format === 'fountain' || format === 'text' || format === 'scriptpdf') {
+      const sb = scriptBlock(page.blocks);
+      if (!sb?.script) throw new Error('This page is not a script.');
+      const { parseScript } = await import('../lib/script/fountain');
+      const { scriptToPdf, scriptToText } = await import('../lib/script/export');
+      const doc = parseScript(sb.code ?? '');
+      if (format === 'scriptpdf') {
+        bytes = scriptToPdf(doc, sb.script.format);
+        ext = 'pdf';
+      } else {
+        bytes = new TextEncoder().encode(format === 'fountain' ? sb.code ?? '' : scriptToText(doc, sb.script.format)) as Uint8Array<ArrayBuffer>;
+        ext = format === 'fountain' ? 'fountain' : 'txt';
+      }
     } else if (format === 'xlsx' || format === 'docx') {
       const { pageToDocx, pageToXlsx } = await import('./officeExport');
       const made = format === 'xlsx' ? pageToXlsx(page) : pageToDocx(page);
@@ -638,8 +653,15 @@ export const EXPORT_ITEMS = (pageId: string) => {
     // A Workspace spreadsheet or document can also leave as the file Excel or Word opens.
     ...(app === 'sheet' ? [{ label: 'Excel workbook (.xlsx)', action: () => void exportPage(pageId, 'xlsx') }] : []),
     ...(app === 'doc' ? [{ label: 'Word document (.docx)', action: () => void exportPage(pageId, 'docx') }] : []),
+    ...(app === 'script'
+      ? [
+          { label: 'PDF, script layout', action: () => void exportPage(pageId, 'scriptpdf') },
+          { label: 'Fountain (.fountain)', action: () => void exportPage(pageId, 'fountain') },
+          { label: 'Plain text, as printed (.txt)', action: () => void exportPage(pageId, 'text') },
+        ]
+      : []),
     { label: 'Markdown (.md)', action: () => void exportPage(pageId, 'markdown') },
-    { label: 'PDF', action: () => void exportPage(pageId, 'pdf') },
+    { label: app === 'script' ? 'PDF, picture of the page' : 'PDF', action: () => void exportPage(pageId, 'pdf') },
     { label: 'PNG image', action: () => void exportPage(pageId, 'png') },
   ];
 };

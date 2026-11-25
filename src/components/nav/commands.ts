@@ -29,6 +29,7 @@ import { listWorkspaces } from '../../lib/workspaces';
 import { openTodayAll } from '../../store/todayAll';
 import { openFindAll } from '../../store/findAll';
 import { switchWorkspace } from '../../store/workspaces';
+import { pasteHere, usePageClipboard } from '../../store/pageClipboard';
 import { newWorkspaceFlow, quickCaptureFlow } from '../library/workspaceMenu';
 
 /** "Switch to X" for each other workspace, and a way to make one. */
@@ -36,7 +37,9 @@ function workspaceCommands(): Command[] {
   const st = useNotes.getState();
   const open = st.workspace ?? '';
   const others = listWorkspaces(st.workspaces, st.mainName).filter((w) => w.id !== open);
+  const clip = usePageClipboard.getState().clip;
   return [
+    ...(clip ? [{ id: 'paste-here', feature: 'workspaces' as const, icon: 'clipboard' as const, title: `Paste ${clip.ids.length} ${clip.noun}${clip.ids.length === 1 ? '' : 's'} here`, run: () => void pasteHere() } satisfies Command] : []),
     ...others.map((w): Command => ({ id: `workspace-${w.id || 'main'}`, feature: 'workspaces', icon: 'pages', title: `Switch to workspace: ${w.name}`, run: () => void switchWorkspace(w.id) })),
     ...listWorkspaces(st.workspaces, st.mainName).map((w): Command => ({ id: `capture-${w.id || 'main'}`, feature: 'workspaces', icon: 'plus', title: `Quick note to ${w.name}…`, run: () => void quickCaptureFlow(w.id) })),
     { id: 'workspace-find', feature: 'workspaces', icon: 'search', title: 'Find in every workspace…', run: () => openFindAll() },

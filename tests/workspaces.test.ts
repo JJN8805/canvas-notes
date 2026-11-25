@@ -19,6 +19,7 @@ import { captureTo } from '../src/store/capture';
 import { setTemplateScope } from '../src/store/workspaces';
 import { scopeTo } from '../src/lib/workspaces';
 import { copyPagesToWorkspace, createWorkspace, deleteWorkspace, movePagesToWorkspace, openPageAnywhere, renameWorkspace, switchWorkspace } from '../src/store/workspaces';
+import { copyPages, cutPages, pasteHere, usePageClipboard } from '../src/store/pageClipboard';
 import { createCardFolder } from '../src/store/cardFolders';
 
 const page = (id: string, extra: Partial<Page> = {}): Page => ({ id, title: id, groupId: null, tags: [], blocks: [], arrows: [], created: 1, updated: 1, rev: 0, ...extra });
@@ -195,6 +196,28 @@ describe('the workspace actions', () => {
     const copy = st().elsewhere.find((e) => e.workspace === w.id)!;
     expect(copy.id).not.toBe(p.id);
     expect((await storage.loadPage(copy.id))!.tags).toEqual(['x']);
+  });
+
+  it('copies and cuts a card, then pastes it into another workspace', async () => {
+    const w = createWorkspace('Creator');
+    const card = createPage({ title: 'Sponsor', kind: 'card' });
+    await flushAll();
+    copyPages([card.id]);
+    await switchWorkspace(w.id, { go: false });
+    expect(await pasteHere()).toBe(1);
+    const pasted = Object.values(st().pages).find((x) => x.title === 'Sponsor')!;
+    expect(pasted.kind).toBe('card');
+    expect(pasted.id).not.toBe(card.id);
+    expect(pasted.workspace).toBe(w.id);
+    expect(usePageClipboard.getState().clip).not.toBeNull();
+    // cut: the original itself moves
+    await switchWorkspace('', { go: false });
+    cutPages([card.id]);
+    await switchWorkspace(w.id, { go: false });
+    expect(await pasteHere()).toBe(1);
+    expect(usePageClipboard.getState().clip).toBeNull();
+    expect((await storage.loadPage(card.id))!.workspace).toBe(w.id);
+    expect(await pasteHere()).toBe(0);
   });
 
   it('deletes a workspace by moving its pages and groups to Main', async () => {

@@ -8,6 +8,7 @@ import type { Block, Page } from '../types';
 import { cleanHeader, cleanStyle, legacyNote } from './note';
 import { cleanLinks } from './boxLinks';
 import { newId } from './util';
+import { isScriptFormat } from './script/model';
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const num = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
@@ -56,6 +57,9 @@ export function cleanBlock(raw: unknown): Block | null {
         out.html = text(b.html);
         delete out.code;
       }
+      // A script marker only on a code note, with a format the app knows; anything else is dropped.
+      if (out.style === 'code' && isObj(b.script) && b.script.page === true && isScriptFormat(b.script.format)) out.script = { page: true, format: b.script.format };
+      else delete out.script;
       // A header (and its fold) only on a text box or a sticky that is not a document's text; anything else is dropped.
       if ((out.style === 'text' || out.style === 'sticky') && !b.doc && typeof b.header === 'string') {
         out.header = cleanHeader(b.header) ?? '';

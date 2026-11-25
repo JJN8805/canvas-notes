@@ -9,6 +9,20 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.3.0',
+    date: '2026-11-25',
+    title: 'Scripts, and cards that move between workspaces',
+    items: [
+      'A new kind of page for writing scripts: screenplay, multi-camera TV, stage play, two-column video | audio, audio drama / podcast, and a story manuscript. Each lays the page out the way that form is written (margins, capitals, centred speakers, double spacing, brackets for sound cues).',
+      'Write like a screenwriting program: Enter picks the next element (cue → dialogue → action), Tab or Ctrl+1…9 changes the element, a type-ahead offers character names, places, times of day and transitions, and typing INT. or CUT TO: makes the heading or transition by itself.',
+      'A side panel with the scene list (move a scene up or down with everything in it), scenes as index cards with a summary, who speaks (with a rename-everywhere), ten ready-made story structures (three acts, Save the Cat, eight sequences, Hero’s Journey, story circle, five acts, TV hour) added as an outline with the page each beat usually falls on, and the title page.',
+      'Pages, running time and word count follow the form (a page a minute for a screenplay, spoken words for audio, about 250 words a page for a manuscript); long speeches continue on the next page with (MORE) and (CONT’D).',
+      'Scripts are stored as Fountain text, the plain format that Highland, Fade In, WriterDuet, Celtx and others read, so they open anywhere; an older version of the app shows one as a readable text box. Export as PDF with real text, Fountain, or text as printed.',
+      'On a phone the script is a reading and writing layout of its own, with the element types as a strip of pictures above the keyboard and the side panel as a full screen.',
+      'Cards can be copied or cut and pasted into another workspace (from a card’s ⋯ button, right-click, or its detail window), and moved or copied directly with a Workspace button. Paste appears as a bar (or Ctrl+V, or the command palette) in the workspace you open.',
+    ],
+  },
+  {
     version: '0.2.3',
     date: '2026-11-22',
     title: 'Pictures before words',

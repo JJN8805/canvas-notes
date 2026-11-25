@@ -505,6 +505,11 @@ await page.click('.slides-head button:has-text("Present")');
 await page.waitForSelector('.present');
 await shot('workspace-present');
 await page.keyboard.press('Escape');
+await page.goto(URL + '#/');
+await page.click('.sidebar >> text=Workspace');
+await page.click('.office-col[aria-label="Script"] .office-starter:has-text("Stage play")');
+await page.waitForSelector('.sc-screen');
+await shot('workspace-script-stage');
 // Features: a Word and Excel only copy
 await page.goto(URL + '#/');
 await page.waitForSelector('.sidebar');

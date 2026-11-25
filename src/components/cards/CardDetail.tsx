@@ -6,7 +6,8 @@ import { archivePage } from '../../store/archive';
 import { Picture } from '../blocks/Picture';
 import { featureOn } from '../../store/features';
 import { ensureCardBody, removeCardCover, setCardCover, setCardLabel } from '../../store/cards';
-import { confirmDanger, toast } from '../../store/ui';
+import { confirmDanger, openMenu, toast } from '../../store/ui';
+import { workspaceMoveItems } from '../library/workspaceMenu';
 import { Icon } from '../ui/Icon';
 import { BlockBody } from '../blocks/BlockBody';
 import { CanvasCtx } from '../editor/context';
@@ -163,6 +164,12 @@ export function CardDetail({ cardId, onClose: onCloseProp }: { cardId: string; o
             <Icon name="trash" size={16} />
             Delete
           </button>
+          {featureOn('workspaces') && (
+            <button className="btn" onClick={(e) => openMenu(e.currentTarget, workspaceMoveItems([cardId]))}>
+              <Icon name="folder" size={16} />
+              Workspace
+            </button>
+          )}
           {featureOn('archive') && (
             <button
               className="btn"

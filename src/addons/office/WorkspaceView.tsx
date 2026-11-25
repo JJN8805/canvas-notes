@@ -20,6 +20,7 @@ const APPS: { app: OfficeApp; icon: IconName; about: string }[] = [
   { app: 'doc', icon: 'edit', about: 'Write on a sheet of paper, with headings, lists and a word count.' },
   { app: 'sheet', icon: 'table', about: 'Rows, columns, formulas, number formats, sorting and CSV.' },
   { app: 'slides', icon: 'frame', about: 'Slides you can reorder, with speaker notes and a full-screen show.' },
+  { app: 'script', icon: 'book', about: 'Screenplays, stage plays, TV, audio dramas and stories, with scene cards and a structure planner.' },
 ];
 
 /** The Workspace screen: start a document, spreadsheet or presentation from a blank page or a ready-made starter, and reopen what you made. */

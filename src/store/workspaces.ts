@@ -134,7 +134,7 @@ export const canMoveBetweenWorkspaces = (p: Page): boolean => canArchive(p);
  * Moves pages and cards to another workspace. They leave their group (groups belong to a workspace) and keep everything else, including
  * links made to them from boxes. Works from the stored copy, so it is the same wherever the pages are listed. Returns how many moved.
  */
-export async function movePagesToWorkspace(ids: string[], target: string, opts: { quiet?: boolean } = {}): Promise<number> {
+export async function movePagesToWorkspace(ids: string[], target: string, opts: { quiet?: boolean; groupId?: string | null } = {}): Promise<number> {
   const st = get();
   if (!listWorkspaces(st.workspaces, st.mainName).some((w) => w.id === target)) return 0;
   const storage = getStorage();
@@ -146,7 +146,7 @@ export async function movePagesToWorkspace(ids: string[], target: string, opts: 
   for (const id of ids) {
     const p = await storage.loadPage(id);
     if (!p || !canMoveBetweenWorkspaces(p) || workspaceOf(p) === target) continue;
-    const res = await storage.savePage({ ...p, workspace: target || undefined, groupId: null, updated: Date.now() });
+    const res = await storage.savePage({ ...p, workspace: target || undefined, groupId: opts.groupId ?? null, updated: Date.now() });
     if (res.ok) moved.push({ id, from: workspaceOf(p), groupId: p.groupId, title: p.title });
   }
   if (!moved.length) return 0;
@@ -173,7 +173,7 @@ async function putBack(moved: { id: string; from: string; groupId: string | null
 }
 
 /** Puts a copy of pages and cards in another workspace (new ids throughout; pictures are shared). The originals stay where they are. */
-export async function copyPagesToWorkspace(ids: string[], target: string, opts: { quiet?: boolean } = {}): Promise<number> {
+export async function copyPagesToWorkspace(ids: string[], target: string, opts: { quiet?: boolean; groupId?: string | null } = {}): Promise<number> {
   const st = get();
   if (!listWorkspaces(st.workspaces, st.mainName).some((w) => w.id === target)) return 0;
   const storage = getStorage();
@@ -183,7 +183,7 @@ export async function copyPagesToWorkspace(ids: string[], target: string, opts: 
     const p = await storage.loadPage(id);
     if (!p || !canMoveBetweenWorkspaces(p)) continue;
     const now = Date.now();
-    const copy: Page = { ...p, ...cloneContent(p), id: newId(), groupId: null, workspace: target || undefined, created: now, updated: now, rev: 0 };
+    const copy: Page = { ...p, ...cloneContent(p), id: newId(), groupId: opts.groupId ?? null, workspace: target || undefined, created: now, updated: now, rev: 0 };
     delete copy.archived;
     if ((await storage.savePage(copy)).ok) n++;
   }

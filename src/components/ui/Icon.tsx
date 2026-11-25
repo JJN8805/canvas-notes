@@ -216,6 +216,19 @@ const PATHS = {
       <rect x="9" y="9" width="6" height="5" rx="1" />
     </>
   ),
+  scissors: (
+    <>
+      <circle cx="5.5" cy="14.5" r="2" />
+      <circle cx="5.5" cy="5.5" r="2" />
+      <path d="M7 7l9 7M7 13l9-7" />
+    </>
+  ),
+  clipboard: (
+    <>
+      <rect x="4.5" y="4" width="11" height="13" rx="1.5" />
+      <path d="M8 4V3h4v1M7.5 9h5M7.5 12.5h5" />
+    </>
+  ),
   header: (
     <>
       <rect x="3" y="4" width="14" height="12" rx="1.5" />

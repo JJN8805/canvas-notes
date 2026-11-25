@@ -6,6 +6,7 @@ import { featureOn } from '../../store/features';
 import { copyPagesToWorkspace, createWorkspace, deleteWorkspace, movePagesToWorkspace, renameWorkspace, setWorkspaceColor, switchWorkspace } from '../../store/workspaces';
 import { createGroup, get } from '../../store/notes';
 import { captureTo } from '../../store/capture';
+import { copyPages, cutPages } from '../../store/pageClipboard';
 import { openTodayAll } from '../../store/todayAll';
 import { openFindAll } from '../../store/findAll';
 import { listWorkspaces, MAIN, STARTERS } from '../../lib/workspaces';
@@ -83,8 +84,12 @@ export function workspaceMoveItems(ids: string[], after?: () => void): MenuItem[
   const others = all().filter((w) => w.id !== openId());
   if (!others.length) return [];
   const done = (n: number) => n > 0 && after?.();
+  const cards = ids.every((id) => get().pages[id]?.kind === 'card');
+  const noun = cards ? 'card' : 'page';
   return [
     { heading: 'Workspaces' },
+    { label: `Copy ${noun}${ids.length > 1 ? 's' : ''}  (to paste in another workspace)`, icon: 'copy', action: () => copyPages(ids) },
+    { label: `Cut ${noun}${ids.length > 1 ? 's' : ''}  (to paste in another workspace)`, icon: 'scissors', action: () => cutPages(ids) },
     ...others.map((w): MenuItem => ({ label: `Move to ${w.name}`, dot: w.color, action: () => void movePagesToWorkspace(ids, w.id).then(done) })),
     ...others.map((w): MenuItem => ({ label: `Copy to ${w.name}`, dot: w.color, action: () => void copyPagesToWorkspace(ids, w.id).then(done) })),
     { separator: true },

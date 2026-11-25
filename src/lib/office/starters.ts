@@ -7,6 +7,7 @@ import { builder, type Built } from '../templateKit';
 import { slideBlocks, type OfficeApp, type SlideLayout, type SlideText, SLIDE_GAP, SLIDE_H } from './app';
 import { ensureSize } from './sheetModel';
 import { cellName } from './formula';
+import { SCRIPT_STARTERS, starterText, type ScriptStarter } from '../script/starters';
 
 export interface Starter {
   id: string;
@@ -122,7 +123,14 @@ function deck(prefix: string, title: string, slides: [SlideLayout, SlideText][])
   return { title, blocks: b.blocks, arrows: [] };
 }
 
+function scriptPage(prefix: string, s: ScriptStarter): Built {
+  const b = builder(prefix);
+  b.add({ type: 'note', style: 'code', x: 0, y: 0, w: 640, h: 600, html: '', code: starterText(s), script: { page: true, format: s.format } } as never);
+  return { title: s.doc().meta.find(([k]) => k === 'Title')?.[1] || s.title, blocks: b.blocks, arrows: [] };
+}
+
 export const STARTERS: Starter[] = [
+  ...SCRIPT_STARTERS.map((s): Starter => ({ id: s.id, app: 'script', title: s.title, description: s.description, build: (p) => scriptPage(p, s) })),
   { id: 'doc-blank', app: 'doc', title: 'Blank document', description: 'An empty page to write on.', build: (p) => docPage(p, 'Untitled document', BLANK_DOC) },
   { id: 'doc-report', app: 'doc', title: 'Report', description: 'Summary, findings and recommendations.', build: (p) => docPage(p, 'Report', REPORT) },
   { id: 'doc-letter', app: 'doc', title: 'Letter', description: 'A formal letter with the usual layout.', build: (p) => docPage(p, 'Letter', LETTER) },

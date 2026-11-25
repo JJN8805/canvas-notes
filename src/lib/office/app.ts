@@ -6,14 +6,17 @@
 import type { Block, FrameBlock, Page, TableBlock, NoteBlock } from '../../types';
 import { frameDescendants } from '../frames';
 
-export type OfficeApp = 'doc' | 'sheet' | 'slides';
+export type OfficeApp = 'doc' | 'sheet' | 'slides' | 'script';
 
-export const OFFICE_LABEL: Record<OfficeApp, string> = { doc: 'Document', sheet: 'Spreadsheet', slides: 'Presentation' };
+export const OFFICE_LABEL: Record<OfficeApp, string> = { doc: 'Document', sheet: 'Spreadsheet', slides: 'Presentation', script: 'Script' };
 
 /** The spreadsheet of a spreadsheet page: its table. */
 export const sheetBlock = (blocks: readonly Block[]): TableBlock | undefined => blocks.find((b): b is TableBlock => b.type === 'table' && !!b.calc?.page);
 /** The text of a document page. */
 export const docBlock = (blocks: readonly Block[]): NoteBlock | undefined => blocks.find((b): b is NoteBlock => b.type === 'note' && !!b.doc?.page);
+
+/** The script of a script page: a code note holding Fountain text. */
+export const scriptBlock = (blocks: readonly Block[]): NoteBlock | undefined => blocks.find((b): b is NoteBlock => b.type === 'note' && b.style === 'code' && !!b.script?.page);
 
 export const isSlide = (b: Block): b is FrameBlock => b.type === 'frame' && !!b.slide;
 
@@ -22,6 +25,7 @@ export function pageApp(page: Pick<Page, 'blocks'> | undefined | null): OfficeAp
   if (!page) return null;
   if (sheetBlock(page.blocks)) return 'sheet';
   if (docBlock(page.blocks)) return 'doc';
+  if (scriptBlock(page.blocks)) return 'script';
   if (page.blocks.some(isSlide)) return 'slides';
   return null;
 }
