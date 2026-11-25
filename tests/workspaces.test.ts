@@ -20,6 +20,7 @@ import { setTemplateScope } from '../src/store/workspaces';
 import { scopeTo } from '../src/lib/workspaces';
 import { copyPagesToWorkspace, createWorkspace, deleteWorkspace, movePagesToWorkspace, openPageAnywhere, renameWorkspace, switchWorkspace } from '../src/store/workspaces';
 import { copyPages, cutPages, pasteHere, usePageClipboard } from '../src/store/pageClipboard';
+import { copyFolderToWorkspace, moveFolderToWorkspace } from '../src/store/folderWorkspaces';
 import { createCardFolder } from '../src/store/cardFolders';
 
 const page = (id: string, extra: Partial<Page> = {}): Page => ({ id, title: id, groupId: null, tags: [], blocks: [], arrows: [], created: 1, updated: 1, rev: 0, ...extra });
@@ -218,6 +219,37 @@ describe('the workspace actions', () => {
     expect(usePageClipboard.getState().clip).toBeNull();
     expect((await storage.loadPage(card.id))!.workspace).toBe(w.id);
     expect(await pasteHere()).toBe(0);
+  });
+
+  it('moves and copies a card folder with its sections and cards to another workspace', async () => {
+    const w = createWorkspace('Creator');
+    const folder = createCardFolder('Sponsors')!;
+    const section = createCardFolder('Active', folder.id)!;
+    const a = createPage({ title: 'Acme', kind: 'card', groupId: folder.id });
+    const b = createPage({ title: 'Zed', kind: 'card', groupId: section.id });
+    const other = createPage({ title: 'Loose', kind: 'card' });
+    await flushGroups();
+    await flushAll();
+    expect(await copyFolderToWorkspace(folder.id, w.id)).toBe(2);
+    expect(st().cardFolders.map((f) => f.name).sort()).toEqual(['Active', 'Sponsors']); // originals stay
+    expect(st().pages[a.id].groupId).toBe(folder.id);
+    expect(await moveFolderToWorkspace(section.id, w.id)).toBe(1); // a section becomes a folder over there
+    expect(st().cardFolders.map((f) => f.name)).toEqual(['Sponsors']);
+    expect(st().pages[b.id]).toBeUndefined();
+    expect(st().pages[other.id]).toBeDefined();
+    await switchWorkspace(w.id, { go: false });
+    const names = st().cardFolders.map((f) => f.name).sort();
+    expect(names).toEqual(['Active', 'Active', 'Sponsors']);
+    const top = st().cardFolders.filter((f) => !f.parentId).map((f) => f.name).sort();
+    expect(top).toEqual(['Active', 'Sponsors']);
+    const copiedFolder = st().cardFolders.find((f) => f.name === 'Sponsors')!;
+    const copiedSection = st().cardFolders.find((f) => f.parentId === copiedFolder.id)!;
+    expect(copiedSection.name).toBe('Active');
+    const cards = Object.values(st().pages).filter((p) => p.kind === 'card');
+    expect(cards.map((c) => c.title).sort()).toEqual(['Acme', 'Zed', 'Zed']);
+    expect(cards.find((c) => c.title === 'Acme')!.groupId).toBe(copiedFolder.id);
+    expect(cards.find((c) => c.id === b.id)!.groupId).toBe(section.id);
+    expect(await moveFolderToWorkspace('nope', '')).toBe(-1);
   });
 
   it('deletes a workspace by moving its pages and groups to Main', async () => {

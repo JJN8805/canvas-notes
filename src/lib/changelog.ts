@@ -9,6 +9,14 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.3.1',
+    date: '2026-11-25',
+    title: 'Move whole card folders between workspaces',
+    items: [
+      'A card folder or section’s ⋯ menu can move or copy it to another workspace together with every section inside it and all their cards. A section that is moved becomes a folder at the top of the other workspace; copies get new ids and share the pictures.',
+    ],
+  },
+  {
     version: '0.3.0',
     date: '2026-11-25',
     title: 'Scripts, and cards that move between workspaces',

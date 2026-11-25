@@ -3,6 +3,7 @@ import { createCardFolder, deleteCardFolder, moveCardFolder, reorderCardFolder, 
 import { ask, confirmDanger, openMenu, toast } from '../../store/ui';
 import { childrenOf, depthOf, placeName, reordered, validMoveTargets } from '../../lib/cardFolders';
 import { groupChoices } from '../library/shared';
+import { folderWorkspaceItems } from '../library/workspaceMenu';
 import { chooseFolderPicture } from './chooseFolderPicture';
 import { removeCardFolderCover } from '../../store/cardFolderCover';
 
@@ -45,6 +46,7 @@ export function openCardFolderMenu(anchor: HTMLElement, f: Group, folders: Group
     { heading: 'Move into' },
     { label: 'Top level (as a folder)', check: !f.parentId, action: () => void moveCardFolder(f.id, null) },
     ...groupChoices(folders, f.parentId, (id) => void moveCardFolder(f.id, id), allowed),
+    ...folderWorkspaceItems(f, kind),
     { separator: true },
     {
       label: `Delete ${kind}…`,

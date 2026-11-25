@@ -6,6 +6,7 @@ import { featureOn } from '../../store/features';
 import { copyPagesToWorkspace, createWorkspace, deleteWorkspace, movePagesToWorkspace, renameWorkspace, setWorkspaceColor, switchWorkspace } from '../../store/workspaces';
 import { createGroup, get } from '../../store/notes';
 import { captureTo } from '../../store/capture';
+import { copyFolderToWorkspace, moveFolderToWorkspace } from '../../store/folderWorkspaces';
 import { copyPages, cutPages } from '../../store/pageClipboard';
 import { openTodayAll } from '../../store/todayAll';
 import { openFindAll } from '../../store/findAll';
@@ -93,5 +94,18 @@ export function workspaceMoveItems(ids: string[], after?: () => void): MenuItem[
     ...others.map((w): MenuItem => ({ label: `Move to ${w.name}`, dot: w.color, action: () => void movePagesToWorkspace(ids, w.id).then(done) })),
     ...others.map((w): MenuItem => ({ label: `Copy to ${w.name}`, dot: w.color, action: () => void copyPagesToWorkspace(ids, w.id).then(done) })),
     { separator: true },
+  ];
+}
+
+/** Menu entries to move or copy a card folder or section, with its sections and cards, to another workspace. */
+export function folderWorkspaceItems(f: { id: string }, kind: string): MenuItem[] {
+  if (!featureOn('workspaces')) return [];
+  const others = all().filter((w) => w.id !== openId());
+  if (!others.length) return [];
+  return [
+    { separator: true },
+    { heading: 'Workspaces' },
+    ...others.map((w): MenuItem => ({ label: `Move ${kind} and its cards to ${w.name}`, dot: w.color, action: () => void moveFolderToWorkspace(f.id, w.id) })),
+    ...others.map((w): MenuItem => ({ label: `Copy ${kind} and its cards to ${w.name}`, dot: w.color, action: () => void copyFolderToWorkspace(f.id, w.id) })),
   ];
 }
