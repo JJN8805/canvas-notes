@@ -64,10 +64,11 @@ newest_apk() {
 sync_hint() {
   local ip
   ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  [ -n "$ip" ] || ip="this laptop's IP address"
   cat <<EOF
 
 phone: done. To keep the phone's notes in step with this laptop:
-  1. On the laptop (npm run desktop): Sync -> turn on "Let my phone sync with this laptop".  Address: ${ip:-<this laptop's IP>}  (it shows the pairing code)
+  1. On the laptop (npm run desktop): Sync -> turn on "Let my phone sync with this laptop".  Address: ${ip}  (it shows the pairing code)
   2. On the phone: Sync -> enter the address and the code -> Connect (once; it is remembered across updates).
   The laptop app must be open, both on the same Wi-Fi. If it cannot connect: sudo ufw allow 47821/tcp
 Run 'scripts/phone.sh' again after any change to put the update on the phone; the notes on the phone are kept.
