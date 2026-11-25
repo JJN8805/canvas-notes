@@ -9,6 +9,7 @@ import { loadTrash, setFilter, setPageGroup, useNotes } from '../../store/notes'
 import { toast } from '../../store/ui';
 import { tagSummaries } from '../../lib/browse';
 import { Icon, type IconName } from '../ui/Icon';
+import { SyncButton } from '../sync/SyncPanel';
 import { PAGE_MIME, openNewPage } from './shared';
 import { createCount, openCreateMenu } from './createMenu';
 import { addonScreens, askHandler, useAddons } from '../../addons/store';
@@ -58,6 +59,7 @@ export function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Grou
   const tagsOn = useFeature('tags');
   const cardsOn = useFeature('cards');
   const templatesOn = useFeature('templates');
+  const syncOn = useFeature('sync');
 
   return (
     <nav className="sidebar" aria-label="Pages, groups and tags">
@@ -126,6 +128,11 @@ export function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Grou
         />
       </div>
 
+      {syncOn && (
+        <div className="side-sync">
+          <SyncButton />
+        </div>
+      )}
       <button className="side-settings" onClick={openSettings}>
         <Icon name="settings" size={16} />
         Settings

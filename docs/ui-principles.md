@@ -51,6 +51,7 @@ so the rules below lean on well-established usability findings and use the app r
 - **A laptop and a phone are different interfaces on purpose.** Words, hover and keys on a laptop; pictures, taps and sheets
   on a phone. The New menu is the same list on both; the sidebar's New button is hidden on a phone, where the middle tab does
   the same job.
+- **The library toolbar reads in the order you use it** (laptop): search, Sort, a divider, Select, then the main action as a split button (New page, with an arrow for the whole New menu). Sync is a status, not a task, so it lives in the sidebar's footer with its dot. The toolbar is sticky and `/` jumps to search.
 - **Two groups in the page header**: what the page *is* (group, tags, links) then what to *do* with it (outline, 3D,
   history, export), divided by a thin rule on a laptop.
 - **Every shortcut has a touch way and every icon-only button has a label** (`aria-label` and `title`).

@@ -8,13 +8,14 @@ import { childSummaries, groupAncestors, groupSummaries } from '../../lib/browse
 import { CardsView } from '../cards/CardsView';
 import { Icon } from '../ui/Icon';
 import { SyncButton } from '../sync/SyncPanel';
-import { COARSE, openNewPage } from './shared';
+import { COARSE } from './shared';
 import { EmptyState } from './EmptyState';
 import { PhoneTabs } from './PhoneTabs';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { TodayStrip } from './TodayStrip';
 import { SelectionBar } from './SelectionBar';
 import { PasteBar } from './PasteBar';
+import { NewSplit } from './NewSplit';
 import { pasteHere, usePageClipboard } from '../../store/pageClipboard';
 import { cancelSelect, startSelect, useSelect } from '../../store/librarySelect';
 import { usePhone } from '../ui/usePhone';
@@ -115,6 +116,15 @@ export function Library() {
         void pasteHere();
         return;
       }
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !isEditableTarget(document.activeElement) && !window.matchMedia('(max-width: 760px)').matches) {
+        const box = document.querySelector<HTMLInputElement>('.lib-head input.search');
+        if (box) {
+          e.preventDefault();
+          box.focus();
+          box.select();
+          return;
+        }
+      }
       if (e.code !== 'Backslash' || !(e.ctrlKey || e.metaKey) || e.altKey) return;
       e.preventDefault();
       if (e.shiftKey) toggleCardTree();
@@ -187,7 +197,7 @@ export function Library() {
           />
         )}
         {filter.kind === 'tag' && <Crumbs trail={[{ label: 'Tags', to: { kind: 'tags' } }]} />}
-        <div className="main-head">
+        <div className="main-head lib-head">
           <div className="main-title">
             <h1>{filterTitle(filter, groups)}</h1>
             {phone && <WorkspaceSwitcher variant="toolbar" />}
@@ -209,22 +219,23 @@ export function Library() {
                 onChange={(e) => setQuery(e.target.value)}
               />
             </label>
-            <select className="field" aria-label="Sort pages" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
-              <option value="updated">Last edited</option>
-              <option value="created">Newest</option>
-              <option value="title">Title A–Z</option>
-            </select>
-            {syncOn && <SyncButton />}
+            <label className="sort-wrap">
+              <span className="sort-lbl">Sort</span>
+              <select className="field" aria-label="Sort pages" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
+                <option value="updated">Last edited</option>
+                <option value="created">Newest</option>
+                <option value="title">Title A–Z</option>
+              </select>
+            </label>
+            {syncOn && phone && <SyncButton />}
+            <span className="tool-sep" aria-hidden="true" />
             {list.length > 0 && (
               <button className={'btn' + (selecting ? ' on keep-lbl' : '')} aria-pressed={selecting} aria-label={selecting ? 'Done picking' : 'Pick several pages'} title="Pick several pages to archive, move or delete together" onClick={() => (selecting ? cancelSelect() : startSelect())}>
                 <Icon name={COARSE ? 'select' : 'check'} size={16} />
                 <span className="btn-lbl">{selecting ? 'Done' : 'Select'}</span>
               </button>
             )}
-            <button className="btn primary new-page-btn" onClick={openNewPage}>
-              <Icon name="plus" size={16} />
-              {canvasOn ? 'New page' : 'New…'}
-            </button>
+            <NewSplit canvasOn={canvasOn} />
           </div>
         </div>
 

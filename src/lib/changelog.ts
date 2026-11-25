@@ -9,6 +9,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.4.1',
+    date: '2026-11-25',
+    title: 'A calmer library toolbar',
+    items: [
+      'The library toolbar on a laptop now reads left to right: search first (wider, and “/” jumps to it), then Sort, a divider, Select, and the New page button with an arrow that opens the whole New menu (card, document, spreadsheet, presentation, script, group).',
+      'Sync moved to the bottom of the sidebar, next to Settings, with its status dot; it is still in the toolbar on a phone.',
+      'The toolbar stays at the top while a long list scrolls.',
+    ],
+  },
+  {
     version: '0.4.0',
     date: '2026-11-25',
     title: 'A clearer layout: one New button, a grouped sidebar',

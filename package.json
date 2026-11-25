@@ -1,7 +1,7 @@
 {
   "name": "canvas-notes",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Free-canvas notes app: drag text, images, lists, code and tables anywhere. Stored locally with SQLite.",
   "type": "module",
   "engines": {

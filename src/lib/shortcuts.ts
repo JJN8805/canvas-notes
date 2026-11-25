@@ -78,6 +78,7 @@ export function shortcutGroups(k: Keymap = DEFAULT_KEYMAP): ShortcutGroup[] {
       [`${M} + ${ALT} + D`, 'Today’s page'],
       [`${M} + ${ALT} + N`, 'Quick note: a thought into this workspace’s Inbox, from anywhere'],
       [`${M} + ${ALT} + 1 … 9`, 'Open the 1st … 9th workspace (1 is Main)'],
+      ['/  (in the library)', 'Jump to the search box'],
       ['?', 'This list'],
     ],
   },
