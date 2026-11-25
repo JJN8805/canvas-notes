@@ -167,11 +167,11 @@ export function CardsView() {
               <option value="updated">Last edited</option>
               <option value="created">Newest</option>
             </select>
-            <button className="btn" onClick={() => void newFolder()}>
+            <button className="btn keep-lbl" onClick={() => void newFolder()}>
               <Icon name="folder" size={16} />
               New {newKind}
             </button>
-            <button className="btn primary" onClick={newCard}>
+            <button className="btn primary keep-lbl" onClick={newCard}>
               <Icon name="plus" size={16} />
               New card
             </button>

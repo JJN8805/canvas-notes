@@ -70,7 +70,7 @@ check('no console errors while saving', a.errors.length === 0, a.errors.join(' |
 
 /* ---- restore it into a brand-new browser profile ---- */
 const b = await open(await browser.newContext({ viewport: { width: 1400, height: 900 } }));
-check('the second library starts empty', (await b.page.locator('.nav-item:has-text("Cards") .cnt').innerText()) === '0');
+check('the second library starts empty', (await b.page.locator('.nav-item:has-text("Cards") .cnt').count()) === 0);
 await b.page.click('.side-settings');
 await b.page.click('[role=tab]:has-text("Data")');
 await b.page.locator('input[type=file][accept*=".zip"]').setInputFiles(zipPath);

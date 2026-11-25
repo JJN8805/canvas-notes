@@ -9,6 +9,28 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.4.0',
+    date: '2026-11-25',
+    title: 'A clearer layout: one New button, a grouped sidebar',
+    items: [
+      'A New button makes anything from one place: a page, a card, today’s journal page, a document, spreadsheet, presentation or script, or a group. On a phone, the raised middle tab opens the same menu.',
+      'The sidebar is grouped by what you want to do: Library (All pages, Cards, Journal), Organize (Groups, Tags, pages not in a group) and Studio, with Templates, Archive and Trash kept quietly at the bottom. Counts show only when there is something to count.',
+      'The documents / spreadsheets / presentations / scripts hub is now called Studio, so “Workspace” means only the separate desks (Main, Student…).',
+      'An empty library offers “Or start with” tiles for every kind of thing you can make.',
+      'The page header separates what the page is (group, tags, links) from what you can do with it (outline, 3D, history, export).',
+      'On a phone, New is now the raised middle tab (always in reach, never floating over a list), Search is the first row of More, and the small controls on the Cards, Journal, Groups and Templates screens are finger-sized with their full words. The phone audit now also catches clipped button text.',
+      'The research and the rules behind this are in docs/ui-principles.md.',
+    ],
+  },
+  {
+    version: '0.3.2',
+    date: '2026-11-25',
+    title: 'Workspace (and Scripts) show up on older copies',
+    items: [
+      'A copy that had saved its add-on choice before Workspace ran by default (for example with only AI and OCR on) never showed Workspace, so documents, spreadsheets, presentations and scripts were missing. Workspace is now switched on once for such a copy; turning it off in Settings → Add-ons afterwards is respected.',
+    ],
+  },
+  {
     version: '0.3.1',
     date: '2026-11-25',
     title: 'Move whole card folders between workspaces',

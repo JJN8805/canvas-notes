@@ -52,11 +52,22 @@ async function load(id: AddOnId) {
   }
 }
 
+const OFFICE_DEFAULT_KEY = 'addons.workspaceDefaulted';
+
 /** At start-up: remembers which add-ons are on and loads them. */
 export async function loadAddons(storage: SettingsStore) {
   // Nothing saved yet (a first start): Workspace runs unless the build's profile leaves it out. A saved choice, even "none", always wins.
   const raw = await storage.getSetting(KEY).catch(() => null);
-  const enabled: AddOnId[] = raw === null ? (buildProfile().workspace ? ['office'] : []) : parseEnabled(raw);
+  let enabled: AddOnId[] = raw === null ? (buildProfile().workspace ? ['office'] : []) : parseEnabled(raw);
+  // A choice saved before Workspace ran by default (e.g. only AI and OCR on) never listed it, so it stayed hidden. Once, switch it on for such a copy
+  // (unless the build leaves it out); the marker is kept so turning it off afterwards is respected.
+  if (raw !== null && buildProfile().workspace && (await storage.getSetting(OFFICE_DEFAULT_KEY).catch(() => null)) === null) {
+    await storage.setSetting(OFFICE_DEFAULT_KEY, '1').catch(() => {});
+    if (!enabled.includes('office')) {
+      enabled = [...enabled, 'office'];
+      await storage.setSetting(KEY, JSON.stringify(enabled)).catch(() => {});
+    }
+  } else if (raw === null) await storage.setSetting(OFFICE_DEFAULT_KEY, '1').catch(() => {});
   useAddons.setState({ enabled });
   await Promise.all(enabled.map(load));
 }

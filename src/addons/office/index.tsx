@@ -21,7 +21,7 @@ const make = (app: OfficeApp) => () => {
 
 const addon: AddOnModule = {
   Settings: OfficeSettings,
-  navItem: { label: 'Workspace', icon: 'pages' },
+  navItem: { label: 'Studio', icon: 'edit' },
   navVisible: () => workspaceOn(useFeatures.getState().disabled),
   View: WorkspaceView,
   Overlay: PresentMode,

@@ -42,7 +42,7 @@ const newScript = async (page, starter) => {
 // ---------------- laptop ----------------
 {
   const { ctx, page } = await open({ viewport: { width: 1400, height: 900 } });
-  await page.click('.sidebar >> text=Workspace');
+  await page.click('.sidebar >> text=Studio');
   await page.waitForSelector('.office-hub');
   check('the hub offers four kinds including scripts', (await page.locator('.office-col').count()) === 4);
   await page.screenshot({ path: join(OUT, 'hub.png') });
@@ -116,7 +116,7 @@ const newScript = async (page, starter) => {
   const { ctx, page } = await open({ viewport: { width: 393, height: 851 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
   await page.waitForSelector('.phone-tabs');
   await page.locator('.phone-tabs >> text=More').click();
-  await page.locator('text=Workspace').first().click();
+  await page.locator('.phone-sheet .nav-item:has-text("Studio")').first().click();
   await page.waitForSelector('.office-hub');
   await page.locator('.office-col[aria-label="Script"] .office-starter').first().click();
   await page.waitForSelector('.sc-screen');

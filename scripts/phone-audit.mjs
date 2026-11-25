@@ -121,7 +121,8 @@ async function audit(name, { shot = true } = {}) {
         } else if (e.tagName !== 'INPUT' && (cs.overflow === 'hidden' || cs.overflowX === 'hidden') && e.scrollWidth > e.clientWidth + 2 && cs.textOverflow !== 'ellipsis') {
           out.push(`CLIPPED text: ${label(e)} (${e.scrollWidth} > ${e.clientWidth})`);
         }
-        const small = r.width < 36 || r.height < 36;
+        if (e.tagName === 'BUTTON' && e.scrollWidth > e.clientWidth + 3 && r.width > 0 && !e.closest('.minimap, .zoom') && getComputedStyle(e).overflow !== 'hidden') out.push(`OVERFLOW button text: ${label(e)} (${e.scrollWidth} > ${e.clientWidth})`);
+        const small = (r.width < 36 || r.height < 36) && !e.classList.contains('sr') && !(e.matches('input[type=checkbox], input[type=radio]') && e.closest('label')); // a tick box in a label is tapped through the whole label
         if (small && !e.closest('.minimap, .zoom, .ci-grip') && r.width > 0) out.push(`SMALL target: ${label(e)} ${Math.round(r.width)}x${Math.round(r.height)}`);
       }
       // text that overflows its box without ellipsis (non-interactive labels)
@@ -136,6 +137,7 @@ async function audit(name, { shot = true } = {}) {
       for (let j = i + 1; j < ctl.length; j++) {
         const a = ctl[i], b = ctl[j];
         if (a.contains(b) || b.contains(a)) continue;
+        if (a.matches('.cf-card-more, .phone-tab') || b.matches('.cf-card-more, .phone-tab')) continue; // the ⋯ sits on its tile; the fixed tab bar covers whatever has scrolled under it // the card's ⋯ is meant to sit on its tile
         const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
         const w = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left);
         const h = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
@@ -177,7 +179,7 @@ await audit('library: cards (a folder opened)');
 await page.locator('.section-act[aria-label^="Menu for"]').first().tap().catch(() => {});
 await audit('library: cards (section menu)');
 await closeAny();
-await tab('Search'); await audit('search: quick switcher');
+await tab('More'); await page.locator('.phone-sheet .side-search').tap(); await audit('search: quick switcher');
 await page.fill('.palette input', 'Plan'); await audit('search: typed a word');
 await closeAny();
 await tab('More'); await audit('more sheet');
@@ -218,7 +220,7 @@ await audit('new workspace dialog');
 await closeAny(); await closeAny();
 
 /* ---------------- new page / settings ---------------- */
-await page.locator('.fab, .new-fab, button[aria-label="New page"]').first().tap().catch(() => {});
+await page.locator('.phone-new').first().tap().catch(() => {});
 await page.waitForTimeout(500);
 await audit('new page: choose a template');
 await closeAny(); await back();
@@ -321,7 +323,7 @@ await page.waitForTimeout(400);
 await page.locator('.bcard, .gcard, .browse-card').first().tap().catch(() => {});
 await audit('groups: a group opened');
 await tab('More');
-await page.locator('.nav-item:has-text("Workspace")').first().tap().catch(() => {});
+await page.locator('.nav-item:has-text("Studio")').first().tap().catch(() => {});
 await audit('the Workspace screen');
 await tab('More');
 await page.locator('.nav-item:has-text("Tags")').first().tap().catch(() => {});
@@ -353,13 +355,13 @@ await setSync({ connected: true, lastSync: Date.now(), status: 'idle' });
 await audit('sync: connected');
 await setSync({ panelOpen: false });
 await fresh('#/');
-await more('Workspace');
+await more('Studio');
 for (const [name, label] of [['a document', 'Blank document'], ['a spreadsheet', 'Blank spreadsheet'], ['a presentation', 'Blank presentation']]) {
   await page.locator(`button:has-text("${label}")`).first().tap().catch(() => {});
   await page.waitForTimeout(900);
   await audit(`workspace: ${name}`);
   await back();
-  await more('Workspace');
+  await more('Studio');
 }
 await fresh('#/page/sp');
 await page.locator('.tools button:has-text("Draw")').first().tap().catch(() => {});

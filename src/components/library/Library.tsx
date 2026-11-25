@@ -34,7 +34,7 @@ import { JournalView } from '../journal/JournalView';
 
 function filterTitle(f: Filter, groups: Group[]): string {
   if (f.kind === 'group') return groupPath(groups, f.id).join(' / ') || 'Group';
-  if (f.kind === 'ungrouped') return 'Ungrouped';
+  if (f.kind === 'ungrouped') return 'Not in a group';
   if (f.kind === 'tag') return '#' + f.tag;
   if (f.kind === 'groups') return 'Groups';
   if (f.kind === 'tags') return 'Tags';

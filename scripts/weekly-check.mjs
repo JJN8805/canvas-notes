@@ -48,7 +48,7 @@ await page.keyboard.type('Shipped the weekly review feature');
 await page.keyboard.press('Escape');
 await page.waitForTimeout(600);
 
-const pagesCount = async () => Number(((await page.locator('.sidebar .nav-item:has-text("All pages") .cnt').innerText()) || '0').trim());
+const pagesCount = async () => ((await page.locator('.sidebar .nav-item:has-text("All pages") .cnt').count()) ? Number((await page.locator('.sidebar .nav-item:has-text("All pages") .cnt').innerText()).trim()) : 0);
 const before = await pagesCount();
 
 // 1. the Week button shows the review

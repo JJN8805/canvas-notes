@@ -116,7 +116,7 @@ await page.keyboard.press('Escape');
 await page.click('button[aria-label="Hide sidebar"]');
 await page.setViewportSize({ width: 600, height: 800 });
 await page.waitForTimeout(250);
-check('on a narrow screen the navigation is still there when the sidebar is closed', (await vis('.sidebar')) && !(await vis('button[aria-label="Show sidebar"]')));
+check('on a narrow screen the navigation (the bottom tabs) is still there when the sidebar is closed', (await vis('.phone-tabs')) && !(await vis('button[aria-label="Show sidebar"]')));
 await page.screenshot({ path: join(OUT, '5-narrow.png') });
 
 check('no console errors or exceptions', errors.length === 0, errors.slice(0, 3).join(' | '));

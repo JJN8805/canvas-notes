@@ -9,7 +9,8 @@ import { loadTrash, setFilter, setPageGroup, useNotes } from '../../store/notes'
 import { toast } from '../../store/ui';
 import { tagSummaries } from '../../lib/browse';
 import { Icon, type IconName } from '../ui/Icon';
-import { PAGE_MIME } from './shared';
+import { PAGE_MIME, openNewPage } from './shared';
+import { createCount, openCreateMenu } from './createMenu';
 import { addonScreens, askHandler, useAddons } from '../../addons/store';
 import { journalEntries } from '../../lib/journal';
 import { openNav } from '../../store/nav';
@@ -21,6 +22,18 @@ import { listedPages } from '../../lib/pages';
 import { WorkspaceDrops, WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { favoritePages, recentPages } from '../../lib/favorites';
 import { toggleStar, useFavorites } from '../../store/favorites';
+
+/** The one place to make anything: a page, a card, a document, a script… (the menu lists only what this copy of the app has on). */
+function NewButton() {
+  useFeatures((s) => s.disabled);
+  useAddons((s) => s.loaded);
+  return (
+    <button className="side-new" onClick={(e) => (createCount() > 1 ? openCreateMenu(e.currentTarget) : openNewPage())} aria-haspopup="menu" title="Make something new">
+      <Icon name="plus" size={16} />
+      <span>New</span>
+    </button>
+  );
+}
 
 /* ---------------- Sidebar ---------------- */
 
@@ -59,6 +72,8 @@ export function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Grou
       <WorkspaceSwitcher />
       <WorkspaceDrops />
 
+      <NewButton />
+
       <button className="side-search" onClick={() => openNav('switcher')} aria-label={`${canAsk ? 'Search or ask' : 'Search'} (${MOD_LABEL}+K)`}>
         <Icon name="search" size={15} />
         <span className="side-search-label">{canAsk ? 'Search or ask' : 'Search'}</span>
@@ -67,42 +82,37 @@ export function Sidebar({ pages, groups, filter }: { pages: Page[]; groups: Grou
 
       <PageShortcuts />
 
-      <div className="side-section">
-        {screens.map((s) => (
-          <NavItem key={s.id} icon={s.icon} label={s.label} active={filter.kind === 'addon' && filter.id === s.id} onClick={() => setFilter({ kind: 'addon', id: s.id })} />
-        ))}
-        {journalOn && <NavItem icon="book" label="Journal" count={journalCount} active={filter.kind === 'journal'} onClick={() => setFilter({ kind: 'journal' })} />}
+      <div className="side-section" aria-label="Library">
+        <div className="side-head">Library</div>
         <NavItem icon="pages" label="All pages" count={pages.length} active={filter.kind === 'all'} onClick={() => setFilter({ kind: 'all' })} />
-        {groupsOn && (
-          <NavItem
-            icon="folder"
-            label="Groups"
-            count={groups.length}
-            active={filter.kind === 'groups' || filter.kind === 'group'}
-            onClick={() => setFilter({ kind: 'groups' })}
-          />
-        )}
-        {tagsOn && <NavItem icon="tag" label="Tags" count={tagCount} active={filter.kind === 'tags' || filter.kind === 'tag'} onClick={() => setFilter({ kind: 'tags' })} />}
         {cardsOn && <NavItem icon="card" label="Cards" count={cardCount} active={filter.kind === 'cards'} onClick={() => setFilter({ kind: 'cards' })} />}
-        {groupsOn && (
-          <NavItem
-            icon="pages"
-            label="Ungrouped"
-            count={ungrouped}
-            active={filter.kind === 'ungrouped'}
-            onClick={() => setFilter({ kind: 'ungrouped' })}
-            dropGroup={null}
-          />
-        )}
-        {templatesOn && (
-          <NavItem
-            icon="template"
-            label="Templates"
-            count={templateCount}
-            active={filter.kind === 'templates'}
-            onClick={() => setFilter({ kind: 'templates' })}
-          />
-        )}
+        {journalOn && <NavItem icon="book" label="Journal" count={journalCount} active={filter.kind === 'journal'} onClick={() => setFilter({ kind: 'journal' })} />}
+      </div>
+
+      {(groupsOn || tagsOn) && (
+        <div className="side-section" aria-label="Organize">
+          <div className="side-head">Organize</div>
+          {groupsOn && (
+            <NavItem icon="folder" label="Groups" count={groups.length} active={filter.kind === 'groups' || filter.kind === 'group'} onClick={() => setFilter({ kind: 'groups' })} />
+          )}
+          {tagsOn && <NavItem icon="tag" label="Tags" count={tagCount} active={filter.kind === 'tags' || filter.kind === 'tag'} onClick={() => setFilter({ kind: 'tags' })} />}
+          {groupsOn && ungrouped > 0 && (
+            <NavItem icon="pages" label="Not in a group" count={ungrouped} active={filter.kind === 'ungrouped'} onClick={() => setFilter({ kind: 'ungrouped' })} dropGroup={null} />
+          )}
+        </div>
+      )}
+
+      {screens.length > 0 && (
+        <div className="side-section" aria-label="Studio">
+          {screens.length > 1 && <div className="side-head">Studio</div>}
+          {screens.map((s) => (
+            <NavItem key={s.id} icon={s.icon} label={s.label} active={filter.kind === 'addon' && filter.id === s.id} onClick={() => setFilter({ kind: 'addon', id: s.id })} />
+          ))}
+        </div>
+      )}
+
+      <div className="side-section side-manage" aria-label="Manage">
+        {templatesOn && <NavItem icon="template" label="Templates" count={templateCount} active={filter.kind === 'templates'} onClick={() => setFilter({ kind: 'templates' })} />}
         {archiveOn && <NavItem icon="archive" label="Archive" count={archiveCount} active={filter.kind === 'archive'} onClick={() => setFilter({ kind: 'archive' })} />}
         <NavItem
           icon="trash"
@@ -218,7 +228,7 @@ export function NavItem(props: { label: string; count?: number; active: boolean;
     >
       {props.icon && <span className="nav-ico"><Icon name={props.icon} size={16} /></span>}
       <span className="lbl" title={props.label}>{props.label}</span>
-      {props.count !== undefined && <span className="cnt">{props.count}</span>}
+      {props.count !== undefined && props.count > 0 && <span className="cnt">{props.count}</span>}
     </button>
   );
 }

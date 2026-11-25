@@ -154,30 +154,30 @@ export function JournalView() {
             </span>
           </button>
           {earlier && earlier !== addDays(date, -1) && (
-            <button className="btn" title={`The last day written before this one: ${dailyTitle(earlier)}`} onClick={() => turnTo(earlier)}>
+            <button className="btn keep-lbl" title={`The last day written before this one: ${dailyTitle(earlier)}`} onClick={() => turnTo(earlier)}>
               Earlier entry
             </button>
           )}
           {later && later !== addDays(date, 1) && (
-            <button className="btn" title={`The next day written after this one: ${dailyTitle(later)}`} onClick={() => turnTo(later)}>
+            <button className="btn keep-lbl" title={`The next day written after this one: ${dailyTitle(later)}`} onClick={() => turnTo(later)}>
               Later entry
             </button>
           )}
           {date !== today && (
-            <button className="btn" title="Turn to today (Ctrl+Alt+D)" onClick={() => turnTo(today)}>
+            <button className="btn keep-lbl" title="Turn to today (Ctrl+Alt+D)" onClick={() => turnTo(today)}>
               <Icon name="today" size={16} />
               Today
             </button>
           )}
-          <button className="btn" title="Open the attendance page" onClick={(e) => openAttendance(e.currentTarget)}>
+          <button className="btn keep-lbl" title="Open the attendance page" onClick={(e) => openAttendance(e.currentTarget)}>
             <Icon name="check" size={16} />
             Attendance
           </button>
-          <button className="btn" title="What the week looked like: days written, tasks, habits, pages worked on" onClick={() => openWeekly(date)}>
+          <button className="btn keep-lbl" title="What the week looked like: days written, tasks, habits, pages worked on" onClick={() => openWeekly(date)}>
             <Icon name="calendar" size={16} />
             Week
           </button>
-          <button className={'btn' + (contents ? ' on' : '')} aria-pressed={contents} onClick={() => setContents(!contents)}>
+          <button className={'btn keep-lbl' + (contents ? ' on' : '')} aria-pressed={contents} onClick={() => setContents(!contents)}>
             <Icon name="outline" size={16} />
             Contents
           </button>

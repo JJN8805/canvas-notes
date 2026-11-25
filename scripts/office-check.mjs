@@ -31,11 +31,11 @@ page.on('pageerror', (e) => errors.push(`exception: ${e.message}`));
 
 await page.goto(URL);
 await page.waitForSelector('.sidebar');
-await page.waitForSelector('.sidebar >> text=Workspace', { timeout: 30000 }).catch(() => {});
-check('Workspace is on from the start', (await page.locator('.sidebar >> text=Workspace').count()) === 1);
-await page.click('.sidebar >> text=Workspace');
+await page.waitForSelector('.sidebar >> text=Studio', { timeout: 30000 }).catch(() => {});
+check('Workspace is on from the start', (await page.locator('.sidebar >> text=Studio').count()) === 1);
+await page.click('.sidebar >> text=Studio');
 await page.waitForSelector('.office-hub');
-check('the hub offers documents, spreadsheets and presentations', (await page.locator('.office-col').count()) === 3);
+check('the hub offers documents, spreadsheets, presentations and scripts', (await page.locator('.office-col').count()) === 4);
 await page.screenshot({ path: join(OUT, 'hub.png') });
 
 /* ---------- document ---------- */
@@ -61,7 +61,7 @@ check('the Word file is a real zip named after the page', dl.suggestedFilename()
 /* ---------- spreadsheet ---------- */
 await page.goto(URL + '#/');
 await page.waitForSelector('.sidebar');
-await page.click('.sidebar >> text=Workspace');
+await page.click('.sidebar >> text=Studio');
 await page.click('.office-col[aria-label="Spreadsheet"] .office-starter:has-text("Blank spreadsheet")');
 await page.waitForSelector('.sheet-table');
 const cellAt = (r, c) => page.locator(`td[data-r="${r}"][data-c="${c}"]`);
@@ -105,7 +105,7 @@ check('the Excel file is a real zip', dl2.suggestedFilename().endsWith('.xlsx') 
 /* ---------- presentation ---------- */
 await page.goto(URL + '#/');
 await page.waitForSelector('.sidebar');
-await page.click('.sidebar >> text=Workspace');
+await page.click('.sidebar >> text=Studio');
 await page.click('.office-col[aria-label="Presentation"] .office-starter:has-text("Pitch")');
 await page.waitForSelector('.slides-panel');
 check('a presentation keeps its canvas and gets a slide list', (await page.locator('.slides-list > li').count()) === 5 && (await page.locator('.world').count()) === 1, (await page.locator('.slides-list > li').count()) + ' slides, ' + (await page.locator('.world').count()) + ' worlds');
@@ -146,7 +146,7 @@ const xlsx = mkZip({
 });
 await page.goto(URL + '#/');
 await page.waitForSelector('.sidebar');
-await page.click('.sidebar >> text=Workspace');
+await page.click('.sidebar >> text=Studio');
 let [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('button:has-text("Open a Word file")')]);
 await chooser.setFiles({ name: 'Letter to Sam.docx', mimeType: 'application/octet-stream', buffer: docx });
 await page.waitForSelector('.doc-paper');
@@ -154,13 +154,13 @@ check('a Word file opens as a document named after the file', (await page.locato
 check('its heading and bold text come through', (await page.locator('.doc-paper h1').innerText()) === 'Imported heading' && (await page.locator('.doc-paper strong').innerText()) === 'Bold words');
 check('markup inside the text stays text', (await page.locator('.doc-paper').innerText()).includes('<b>plain</b>') && (await page.locator('.doc-paper b').count()) === 0);
 await page.goto(URL + '#/');
-await page.click('.sidebar >> text=Workspace');
+await page.click('.sidebar >> text=Studio');
 [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('button:has-text("Open an Excel or CSV file")')]);
 await chooser.setFiles({ name: 'numbers.xlsx', mimeType: 'application/octet-stream', buffer: xlsx });
 await page.waitForSelector('.sheet-table');
 check('an Excel file opens as a spreadsheet with its formula working', (await page.locator('td[data-r="0"][data-c="2"]').innerText()) === '12');
 await page.goto(URL + '#/');
-await page.click('.sidebar >> text=Workspace');
+await page.click('.sidebar >> text=Studio');
 [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('button:has-text("Open an Excel or CSV file")')]);
 await chooser.setFiles({ name: 'bad.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from('this is not a zip') });
 await page.waitForSelector('.toast:has-text("Couldn’t open that file"), [role=status]:has-text("Couldn’t open that file")');

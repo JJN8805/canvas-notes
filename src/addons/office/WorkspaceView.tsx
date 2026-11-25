@@ -23,7 +23,7 @@ const APPS: { app: OfficeApp; icon: IconName; about: string }[] = [
   { app: 'script', icon: 'book', about: 'Screenplays, stage plays, TV, audio dramas and stories, with scene cards and a structure planner.' },
 ];
 
-/** The Workspace screen: start a document, spreadsheet or presentation from a blank page or a ready-made starter, and reopen what you made. */
+/** The Studio screen (the Workspace add-on): start a document, spreadsheet or presentation from a blank page or a ready-made starter, and reopen what you made. */
 export function WorkspaceView() {
   const pages = useNotes((s) => s.pages);
   const disabled = useFeatures((s) => s.disabled);
@@ -44,7 +44,7 @@ export function WorkspaceView() {
     <>
       <div className="main-head">
         <div className="main-title">
-          <h1>Workspace</h1>
+          <h1>Studio</h1>
           <p>{listOf(apps.map((a) => OFFICE_LABEL[a.app].toLowerCase() + 's'))}. They are ordinary pages: they sync, back up and export like the rest.</p>
         </div>
       </div>

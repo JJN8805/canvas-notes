@@ -34,7 +34,7 @@ export function TemplatesView() {
           </p>
         </div>
         <div className="controls">
-          <button className="btn primary" onClick={() => openTemplate(createTemplate().id)}>
+          <button className="btn primary keep-lbl" onClick={() => openTemplate(createTemplate().id)}>
             <Icon name="plus" size={16} />
             New template
           </button>

@@ -336,6 +336,7 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
       )}
         </>
       )}
+      <span className="ed-sep" aria-hidden="true" />
       {app !== 'sheet' && (
       <button className="btn ed-outline" aria-label="Outline" title="Headings, frames and links of this page" onClick={() => openNav('outline')}>
         <Icon name="outline" size={16} />
@@ -399,12 +400,12 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
         <>
           {canvasOn && app !== 'sheet' && (
             <button className="btn ed-phoneonly" onClick={() => toggleFocusMode()}>
-              <Icon name="frame" size={16} />
+              <Icon name="focus" size={16} />
               Focus mode
             </button>
           )}
           <button className="btn ed-phoneonly" onClick={() => openNav('commands')}>
-            <Icon name="outline" size={16} />
+            <Icon name="command" size={16} />
             Commands
           </button>
         </>
@@ -416,7 +417,7 @@ function EditorHeader({ pageId, compact = false }: { pageId: string; compact?: b
           title="Move or copy this page to another workspace"
           onClick={(e) => openMenu(e.currentTarget, workspaceMoveItems([pageId], () => navigate({ name: 'library' })).slice(0, -1))}
         >
-          <Icon name="pages" size={16} />
+          <Icon name="workspace" size={16} />
           <span className="ed-lbl">Workspace</span>
         </button>
       )}

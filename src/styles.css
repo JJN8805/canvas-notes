@@ -1555,8 +1555,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .phone-tab { flex: 1; min-width: 0; min-height: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 0; background: transparent; color: var(--graphite); font-size: 11.5px; font-weight: 500; cursor: pointer; padding: 6px 2px; }
 .phone-tab.on { color: var(--accent); font-weight: 650; }
 .phone-tab.on svg { color: var(--accent); }
-.fab { position: fixed; right: 16px; bottom: calc(72px + env(safe-area-inset-bottom, 0px)); z-index: 41; width: 56px; height: 56px; border-radius: 18px; border: 0; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; box-shadow: 0 6px 18px -4px rgba(0, 0, 0, 0.45); cursor: pointer; }
-.fab:active { transform: scale(0.96); }
 .phone-scrim { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.4); display: flex; align-items: flex-end; }
 .phone-sheet { width: 100%; max-height: 82vh; overflow-y: auto; background: var(--desk); border-radius: 18px 18px 0 0; padding: 8px 4px calc(16px + env(safe-area-inset-bottom, 0px)); animation: sheet-up 0.18s ease-out; }
 .sheet-grip { width: 40px; height: 4px; border-radius: 2px; background: var(--rule); margin: 4px auto 6px; }
@@ -1845,7 +1843,8 @@ span.note-title { display: flex; align-items: center; overflow: hidden; white-sp
 
 @media (max-width: 760px) {
   /* The More sheet starts with what you opened it for: no second app name, no second search box (the Search tab is right there). */
-  .phone-sheet .brand, .phone-sheet .side-search { display: none; }
+  .phone-sheet .brand { display: none; }
+  .phone-sheet .side-search { min-height: 48px; font-size: 16px; }
   .phone-sheet .ws-side { margin: 4px 0 6px; width: 100%; }
   .phone-sheet .profile-chip { margin: 0 0 6px; }
   .phone-sheet .sheet-cmd { margin-bottom: 8px; }
@@ -2084,3 +2083,74 @@ span.note-title { display: flex; align-items: center; overflow: hidden; white-sp
 }
 
 .sc-paper > .sc-row:first-child { margin-top: 0; }
+
+/* ---------- Sidebar: grouped, with one New button ---------- */
+.side-new { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 9px 12px; border: 0; border-radius: 10px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.side-new:hover { filter: brightness(1.08); }
+.side-new:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.sidebar .side-section[aria-label="Library"] .side-head, .sidebar .side-section[aria-label="Organize"] .side-head, .sidebar .side-section[aria-label="Studio"] .side-head, .sidebar .side-section[aria-label="Favorites"] .side-head, .sidebar .side-section[aria-label="Recent"] .side-head { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--graphite); opacity: .85; padding: 0 4px 4px 10px; }
+.side-manage { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--rule); }
+.side-manage .nav-item { color: var(--graphite); }
+.side-manage .nav-item[aria-current='true'] { color: var(--ink); }
+@media (pointer: coarse), (max-width: 760px) { .side-new { display: none; } }
+
+.start-tiles { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 22px 0 6px; }
+.start-or { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--graphite); width: 100%; }
+.start-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: 112px; height: 84px; border: 1px solid var(--rule); border-radius: 12px; background: var(--sheet); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; transition: border-color .12s, transform .12s; }
+.start-tile:hover { border-color: var(--accent); transform: translateY(-1px); }
+.start-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (pointer: coarse), (max-width: 760px) { .start-tile { width: calc(50% - 5px); height: 72px; } }
+
+/* The header's controls in two groups: what the page is (group, tags, links), then what to do with it (outline, 3D, history, export…). */
+.ed-sep { width: 1px; height: 22px; background: var(--rule); flex: none; margin: 0 4px; }
+@media (pointer: coarse), (max-width: 760px) { .ed-sep { display: none; } }
+
+/* Phone: New is the middle tab (always in the thumb's reach, never over the content). */
+.phone-new { position: relative; color: var(--ink); }
+.phone-new-dot { display: grid; place-items: center; width: 46px; height: 46px; margin-top: -18px; border-radius: 16px; background: var(--accent); color: var(--accent-ink, #fff); box-shadow: 0 6px 16px -4px rgba(0, 0, 0, .45); }
+.phone-new:active .phone-new-dot { transform: scale(.95); }
+.phone-new:disabled { opacity: .4; }
+
+/* Phone: finger-sized targets for the small controls the audit found (cards screen, workspace chip, tag chips, menus). */
+@media (pointer: coarse), (max-width: 760px) {
+  .ws-switch.ws-toolbar { min-height: 40px; }
+  .section-twist, .section-act { min-width: 38px; height: 38px; }
+  .section-name { min-height: 38px; }
+  .section-adddesc, .cf-adddesc { min-height: 38px; }
+  .cf-twist { width: 38px; height: 38px; }
+  .cf-go { min-height: 40px; }
+  .cf-tree .icon-btn, .cf-more.icon-btn { min-width: 40px; min-height: 40px; }
+  .crumbs button { min-height: 38px; padding: 8px 4px; }
+  .swatch { width: 36px; height: 36px; }
+  .chip-x { min-width: 38px; min-height: 36px; font-size: 20px; }
+  .tag-input { min-height: 40px; }
+  .cd-link-chip { min-height: 38px; }
+}
+
+@media (max-width: 760px) {
+  /* Cards: the sort box on its own row, then "New folder" and "New card" side by side with their whole words. */
+  .cf-main .controls { flex-wrap: wrap; gap: 8px; }
+  .cf-main .controls select.field { flex: 1 1 100%; }
+  .cf-main .controls > .btn { flex: 1 1 calc(50% - 4px); white-space: nowrap; }
+}
+
+.today-strip { margin-top: 18px; }
+
+@media (pointer: coarse), (max-width: 760px) {
+  .ld-name { min-height: 40px; }
+  .outline-item { min-height: 40px; }
+  .book-toc-row { min-height: 40px; }
+  .sheet-formula { min-height: 40px; }
+  input[type='color'] { width: 44px; height: 40px; }
+  input[type='checkbox'] { width: 22px; height: 22px; }
+}
+
+@media (pointer: coarse), (max-width: 760px) {
+  .color-field input[type='color'] { width: 44px; height: 40px; }
+  .phone-sheet .ws-side { min-height: 44px; }
+}
+
+@media (max-width: 760px) {
+  .phone-sheet .sidebar { gap: 12px; padding-top: 6px; }
+  .phone-sheet .ws-drops:empty { display: none; }
+}

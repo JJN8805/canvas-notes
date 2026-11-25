@@ -6,17 +6,18 @@ import { useFeature } from '../../store/features';
 import { Icon } from '../ui/Icon';
 import { Sidebar } from './Sidebar';
 import { openNewPage } from './shared';
-import { showsNewPage, tabOf } from '../../lib/phoneView';
+import { createCount, openCreateMenu } from './createMenu';
+import { tabOf } from '../../lib/phoneView';
 import { useSelect } from '../../store/librarySelect';
 
 /**
- * The library on a phone: five tabs at the bottom, where the thumb rests (Pages, Journal, Cards, Search, More), a round "new page" button
- * over the lists of pages, and the full sidebar as a sheet that slides up from "More" (groups, tags, templates, trash, settings…).
+ * The library on a phone: five tabs at the bottom, where the thumb rests (Pages, Journal, **New** in the middle, Cards, More), and the full
+ * sidebar as a sheet that slides up from "More" (search, groups, tags, Studio, templates, trash, settings…). New is a tab, not a floating
+ * button, so it is on every screen, never covers a list, and opens the one New menu.
  */
 export function PhoneTabs({ pages, groups, filter, more, setMore }: { pages: Page[]; groups: Group[]; filter: Filter; more: boolean; setMore: (open: boolean) => void }) {
   const journalOn = useFeature('journal');
   const cardsOn = useFeature('cards');
-  const canvasOn = useFeature('canvas');
   const tab = more ? 'more' : tabOf(filter.kind);
   const selecting = useSelect((s) => s.on);
 
@@ -46,16 +47,14 @@ export function PhoneTabs({ pages, groups, filter, more, setMore }: { pages: Pag
           </div>
         </div>
       )}
-      {!more && !selecting && showsNewPage(filter.kind) && (
-        <button className="fab" aria-label={canvasOn ? 'New page' : 'Start something'} onClick={openNewPage}>
-          <Icon name="plus" size={26} />
-        </button>
-      )}
       <nav className="phone-tabs" aria-label="Sections">
         <TabButton icon="pages" label="Pages" on={tab === 'pages'} onClick={() => go({ kind: 'all' })} />
         {journalOn && <TabButton icon="book" label="Journal" on={tab === 'journal'} onClick={() => go({ kind: 'journal' })} />}
+        <button className="phone-tab phone-new" aria-label="New" aria-haspopup="menu" disabled={selecting} onClick={(e) => (setMore(false), createCount() > 1 ? openCreateMenu(e.currentTarget) : openNewPage())}>
+          <span className="phone-new-dot"><Icon name="plus" size={24} /></span>
+          <span>New</span>
+        </button>
         {cardsOn && <TabButton icon="card" label="Cards" on={tab === 'cards'} onClick={() => go({ kind: 'cards' })} />}
-        <TabButton icon="search" label="Search" on={false} onClick={() => (setMore(false), openNav('switcher'))} />
         <TabButton icon="more" label="More" on={tab === 'more'} onClick={() => setMore(!more)} />
       </nav>
     </>

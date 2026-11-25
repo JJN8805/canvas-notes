@@ -26,7 +26,7 @@ const errors = [];
 page.on('console', (m) => (m.type() === 'error' && !/esm\.sh|font/i.test(m.text()) ? errors.push(m.text().slice(0, 200)) : 0));
 page.on('pageerror', (e) => errors.push(`exception: ${e.message}`));
 
-const nav = async () => (await page.locator('.sidebar .side-section:not([aria-label]) .nav-item').allInnerTexts()).map((t) => t.replace(/\s*\d+$/, '').trim());
+const nav = async () => (await page.locator('.sidebar .side-section:not([aria-label="Favorites"]):not([aria-label="Recent"]) .nav-item').allInnerTexts()).map((t) => t.replace(/\s*\d+$/, '').trim());
 const openFeatures = async () => {
   await page.click('.side-settings');
   await page.click('[role=tab]:has-text("Features")');
@@ -35,9 +35,9 @@ const closeSettings = () => page.keyboard.press('Escape');
 
 await page.goto(URL);
 await page.waitForSelector('.sidebar');
-await page.waitForSelector('.sidebar >> text=Workspace', { timeout: 30000 });
+await page.waitForSelector('.sidebar >> text=Studio', { timeout: 30000 });
 const before = await nav();
-check('everything is on at the start', ['Workspace', 'Journal', 'All pages', 'Groups', 'Tags', 'Cards', 'Templates', 'Trash'].every((n) => before.includes(n)), before.join(', '));
+check('everything is on at the start', ['Studio', 'Journal', 'All pages', 'Groups', 'Tags', 'Cards', 'Templates', 'Trash'].every((n) => before.includes(n)), before.join(', '));
 
 /* ---- Word and Excel only ---- */
 await openFeatures();
@@ -49,8 +49,8 @@ await page.screenshot({ path: join(OUT, 'features-tab.png') });
 await closeSettings();
 await page.waitForTimeout(300);
 const only = await nav();
-check('the sidebar keeps only Workspace, All pages and Trash', JSON.stringify(only.sort()) === JSON.stringify(['All pages', 'Trash', 'Workspace']), only.join(', '));
-await page.click('.sidebar >> text=Workspace');
+check('the sidebar keeps only Studio, All pages and Trash', JSON.stringify(only.sort()) === JSON.stringify(['All pages', 'Studio', 'Trash']), only.join(', '));
+await page.click('.sidebar >> text=Studio');
 await page.waitForSelector('.office-hub');
 check('the hub offers documents and spreadsheets, not presentations', (await page.locator('.office-col').count()) === 2 && (await page.locator('.office-col[aria-label="Presentation"]').count()) === 0);
 await page.screenshot({ path: join(OUT, 'workspace-only.png') });
@@ -88,7 +88,7 @@ await page.waitForSelector('.doc-paper', { timeout: 60000 });
 await page.click('.ed-back');
 await page.waitForSelector('.sidebar');
 const after = await nav();
-check('the choice survives a reload', JSON.stringify(after.sort()) === JSON.stringify(['All pages', 'Trash', 'Workspace']), after.join(', '));
+check('the choice survives a reload', JSON.stringify(after.sort()) === JSON.stringify(['All pages', 'Studio', 'Trash']), after.join(', '));
 
 /* ---- back to everything, then one switch ---- */
 await openFeatures();
@@ -103,7 +103,7 @@ check('one switch makes it a custom mix', true);
 await closeSettings();
 await page.waitForTimeout(300);
 const mix = await nav();
-check('only the Journal went', !mix.includes('Journal') && mix.includes('Cards') && mix.includes('Workspace'), mix.join(', '));
+check('only the Journal went', !mix.includes('Journal') && mix.includes('Cards') && mix.includes('Studio'), mix.join(', '));
 
 // graph depends on links
 await openFeatures();

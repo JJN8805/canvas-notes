@@ -173,7 +173,7 @@ export function GroupsView({ summaries }: { summaries: GroupSummary[] }) {
               onChange={(e) => setQ(e.target.value)}
             />
           </label>
-          <button className="btn primary" onClick={() => void create()}>
+          <button className="btn primary keep-lbl" onClick={() => void create()}>
             <Icon name="plus" size={16} />
             New group
           </button>

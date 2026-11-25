@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { PROFILES } from '../src/lib/features';
 import { applyProfile, currentProfile, featureOn, loadFeatures, setFeature, useFeatures } from '../src/store/features';
-import { loadAddons, useAddons } from '../src/addons/store';
+import { loadAddons, setAddonEnabled, useAddons } from '../src/addons/store';
 
 /** A settings store that remembers in memory. */
 const settings = (initial: Record<string, string> = {}) => {
@@ -34,9 +34,18 @@ describe('the stored feature choice', () => {
     expect(featureOn('tags')).toBe(true);
   });
   it('a saved "Workspace off" stays off after a restart', async () => {
-    const s = settings({ 'addons.enabled': '[]' });
+    const s = settings({ 'addons.enabled': '[]', 'addons.workspaceDefaulted': '1' });
     await loadAddons(s);
     expect(useAddons.getState().enabled).toEqual([]);
+  });
+  it('a list saved before Workspace was on by default gets it once, and turning it off later sticks', async () => {
+    const s = settings({ 'addons.enabled': '["ocr","ai"]' });
+    await loadAddons(s);
+    expect(useAddons.getState().enabled).toEqual(['ocr', 'ai', 'office']);
+    expect(JSON.parse(s.data.get('addons.enabled')!)).toEqual(['ocr', 'ai', 'office']);
+    await setAddonEnabled('office', false, s);
+    await loadAddons(s);
+    expect(useAddons.getState().enabled).toEqual(['ocr', 'ai']);
   });
   it('one switch is saved, and a feature that needs another goes with it', async () => {
     const s = settings();
