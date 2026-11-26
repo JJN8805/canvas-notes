@@ -1,0 +1,12 @@
+[package]
+name = "tauri-plugin-homewidgets"
+version = "0.1.0"
+edition = "2021"
+description = "Android home screen widgets for Canvas Notes (to-do list, quick note, page)."
+links = "tauri-plugin-homewidgets"
+
+[dependencies]
+tauri = { version = "2.12" }
+
+[build-dependencies]
+tauri-plugin = { version = "2.7", features = ["build"] }

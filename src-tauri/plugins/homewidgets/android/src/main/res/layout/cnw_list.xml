@@ -1,0 +1,15 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:background="@drawable/cnw_background" android:padding="10dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:id="@+id/cnw_title" android:layout_width="0dp" android:layout_weight="1" android:layout_height="40dp"
+            android:gravity="center_vertical" android:paddingStart="6dp" android:textColor="@color/cnw_ink" android:textSize="16sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+        <TextView android:id="@+id/cnw_count" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingEnd="6dp" android:textColor="@color/cnw_soft" android:textSize="13sp" />
+        <TextView android:id="@+id/cnw_change" android:layout_width="40dp" android:layout_height="40dp" android:gravity="center" android:text="⚙" android:textColor="@color/cnw_soft" android:textSize="18sp" android:contentDescription="@string/widget_change" />
+        <TextView android:id="@+id/cnw_add" android:layout_width="44dp" android:layout_height="40dp" android:gravity="center" android:background="@drawable/cnw_button" android:text="＋" android:textColor="@color/cnw_on_accent" android:textSize="20sp" android:contentDescription="@string/widget_add" />
+    </LinearLayout>
+    <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="4dp">
+        <ListView android:id="@+id/cnw_list" android:layout_width="match_parent" android:layout_height="match_parent" android:divider="@color/cnw_rule" android:dividerHeight="1dp" />
+        <TextView android:id="@+id/cnw_empty" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:textColor="@color/cnw_soft" android:textSize="14sp" />
+    </FrameLayout>
+</LinearLayout>

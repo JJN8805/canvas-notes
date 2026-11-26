@@ -1,0 +1,3 @@
+[default]
+description = "Publish the widgets' snapshot, read and acknowledge what was done on them, and offer to add one to the home screen."
+permissions = ["allow-publish", "allow-pending", "allow-ack", "allow-status", "allow-pin"]

@@ -1,0 +1,30 @@
+<resources>
+    <string name="widget_list_name">To-do list</string>
+    <string name="widget_capture_name">Quick note</string>
+    <string name="widget_page_name">Page</string>
+    <string name="widget_list_desc">Tick things off and add new ones from the home screen.</string>
+    <string name="widget_capture_desc">Type a note without opening the app.</string>
+    <string name="widget_page_desc">Read one of your pages at a glance.</string>
+    <string name="widget_open_app_first">Open Canvas Notes once to fill this widget.</string>
+    <string name="widget_nothing_to_do">Nothing to do. Tap + to add.</string>
+    <string name="widget_capture_hint">Tap to write a note</string>
+    <string name="widget_capture_title">Quick note</string>
+    <string name="widget_add_to">Add to %1$s</string>
+    <string name="widget_save">Save</string>
+    <string name="widget_cancel">Cancel</string>
+    <string name="widget_close">Close</string>
+    <string name="widget_add">Add a to-do</string>
+    <string name="widget_change">Choose what this widget shows</string>
+    <string name="widget_type_here">Type here…</string>
+    <string name="widget_saved">Saved. It joins your notes when you next open Canvas Notes.</string>
+    <string name="widget_queue_full">Too much is waiting. Open Canvas Notes once, then try again.</string>
+    <string name="widget_page_empty">This page has no words yet.</string>
+    <string name="widget_page_missing">Tap ⚙ to choose a page.</string>
+    <string name="widget_choose_list">Which to-do list?</string>
+    <string name="widget_choose_page">Which page?</string>
+    <string name="widget_choose_empty">Open Canvas Notes once so there is something to choose.</string>
+    <plurals name="widget_waiting">
+        <item quantity="one">%d change waiting for the app</item>
+        <item quantity="other">%d changes waiting for the app</item>
+    </plurals>
+</resources>

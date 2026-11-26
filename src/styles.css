@@ -2177,3 +2177,11 @@ span.note-title { display: flex; align-items: center; overflow: hidden; white-sp
 @media (max-width: 760px) { .side-sync, .tool-sep, .sort-wrap .sort-lbl { display: none; } }
 
 @media (max-width: 760px) { .sort-wrap { display: contents; } }
+
+/* Settings → General on Android: adding home screen widgets */
+.hw-section h3 { margin: 18px 0 4px; font-size: 15px; }
+.hw-section p { margin: 0 0 10px; color: var(--graphite); font-size: 13px; }
+.hw-list { display: grid; gap: 8px; }
+.hw-add { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 8px 14px; border: 1px solid var(--rule); border-radius: 12px; background: var(--sheet); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.hw-add span { display: flex; flex-direction: column; }
+.hw-add small { color: var(--graphite); font-size: 12px; }

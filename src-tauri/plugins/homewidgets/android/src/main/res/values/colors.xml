@@ -1,0 +1,8 @@
+<resources>
+    <color name="cnw_bg">#FFFFFFFF</color>
+    <color name="cnw_ink">#FF161B22</color>
+    <color name="cnw_soft">#FF5B6573</color>
+    <color name="cnw_rule">#FFD9DEE5</color>
+    <color name="cnw_accent">#FF2B48C9</color>
+    <color name="cnw_on_accent">#FFFFFFFF</color>
+</resources>

@@ -31,6 +31,8 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         // Save dialogs for exporting pages.
         .plugin(tauri_plugin_dialog::init())
+        // Home screen widgets (Android; registers nothing elsewhere).
+        .plugin(tauri_plugin_homewidgets::init())
         .manage(sync::SyncState::default())
         .manage(widgets::Background::default())
         .manage(ai::AiState::default())

@@ -466,7 +466,7 @@ dependencies = [
 
 [[package]]
 name = "canvas-notes"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "chacha20poly1305",
  "local-ip-address",
@@ -478,6 +478,7 @@ dependencies = [
  "tauri-plugin-autostart",
  "tauri-plugin-dialog",
  "tauri-plugin-fs",
+ "tauri-plugin-homewidgets",
  "tauri-plugin-single-instance",
  "tauri-plugin-sql",
  "tiny_http",
@@ -4613,6 +4614,14 @@ dependencies = [
  "thiserror 2.0.21",
  "toml 1.1.6+spec-1.1.0",
  "url",
+]
+
+[[package]]
+name = "tauri-plugin-homewidgets"
+version = "0.1.0"
+dependencies = [
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]

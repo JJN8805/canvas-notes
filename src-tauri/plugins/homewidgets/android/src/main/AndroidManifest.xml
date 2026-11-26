@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Widget providers: only the system and this app talk to them (taps arrive through PendingIntents made here). -->
+        <receiver android:name=".ListWidget" android:exported="false" android:label="@string/widget_list_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_list_info" />
+        </receiver>
+        <receiver android:name=".CaptureWidget" android:exported="false" android:label="@string/widget_capture_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_capture_info" />
+        </receiver>
+        <receiver android:name=".PageWidget" android:exported="false" android:label="@string/widget_page_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_page_info" />
+        </receiver>
+
+        <service android:name=".ListWidgetService" android:exported="false" android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <!-- The launcher opens this to choose what a new widget shows, so it is exported; it only accepts this app's own widget ids. -->
+        <activity android:name=".ChooseActivity" android:exported="true" android:excludeFromRecents="true" android:theme="@style/CnWidgetDialog">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" /></intent-filter>
+        </activity>
+        <activity android:name=".InputActivity" android:exported="false" android:excludeFromRecents="true" android:taskAffinity="" android:theme="@style/CnWidgetDialog" android:windowSoftInputMode="stateVisible|adjustResize" />
+        <activity android:name=".OpenActivity" android:exported="false" android:excludeFromRecents="true" android:taskAffinity="" android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+    </application>
+</manifest>

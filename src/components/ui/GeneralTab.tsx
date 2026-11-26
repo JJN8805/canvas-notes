@@ -1,3 +1,4 @@
+import { HomeWidgetsSection } from './HomeWidgetsSection';
 import { useMemo } from 'react';
 import { useNotes } from '../../store/notes';
 import { useAddons } from '../../addons/store';
@@ -51,6 +52,8 @@ export function GeneralTab() {
           <div className="about-tag">Notes on a free canvas. Private, local, no account.</div>
         </div>
       </div>
+
+      <HomeWidgetsSection />
 
       <Section title="Version and build">
         <div className="kv kv-info">

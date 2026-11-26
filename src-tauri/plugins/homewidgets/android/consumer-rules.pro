@@ -1,0 +1,1 @@
+-keep class dev.jjn8805.canvasnotes.widgets.** { *; }

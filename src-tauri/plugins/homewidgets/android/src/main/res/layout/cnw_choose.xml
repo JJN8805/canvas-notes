@@ -1,0 +1,7 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp">
+    <TextView android:id="@+id/cnw_choose_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="8dp" android:textColor="?android:attr/textColorPrimary" android:textSize="18sp" android:textStyle="bold" />
+    <TextView android:id="@+id/cnw_choose_empty" android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="8dp" android:text="@string/widget_choose_empty" android:textSize="15sp" />
+    <ListView android:id="@+id/cnw_choose_list" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" />
+    <Button android:id="@+id/cnw_choose_close" style="?android:attr/borderlessButtonStyle" android:layout_width="wrap_content" android:layout_height="48dp" android:layout_gravity="end" android:text="@string/widget_close" />
+</LinearLayout>

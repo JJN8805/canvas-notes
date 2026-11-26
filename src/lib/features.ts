@@ -36,7 +36,7 @@ export const FEATURES: readonly FeatureInfo[] = [
   { id: 'space', section: 'Tools', label: '3D page view', description: 'Seeing a page’s boxes in 3D, placing them nearer or further away, and writing notes there.', needs: 'canvas' },
   { id: 'media', section: 'Tools', label: 'Pictures, audio and PDFs', description: 'Adding pictures, recordings and PDF files to a canvas page.' },
   { id: 'drawing', section: 'Tools', label: 'Drawing', description: 'The drawing layer on a page.' },
-  { id: 'widgets', section: 'Devices', label: 'Desktop widgets', description: 'Pinning pages and boxes to the desktop.' },
+  { id: 'widgets', section: 'Devices', label: 'Widgets', description: 'Pinning pages and boxes to the desktop, and home screen widgets on an Android phone.' },
   { id: 'sync', section: 'Devices', label: 'Sync with a phone', description: 'Syncing with your phone over the local network.' },
 ];
 

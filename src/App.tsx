@@ -24,6 +24,7 @@ import { useUi } from './store/ui';
 import { initSync } from './sync/controller';
 import { setupDesktopWidgets } from './widgets';
 import { startAutoArchive } from './store/autoArchive';
+import { startHomeWidgets } from './store/homeWidgets';
 import { switchWorkspace } from './store/workspaces';
 import { isCaptureShortcut, listWorkspaces, workspaceShortcut } from './lib/workspaces';
 import { quickCaptureFlow } from './components/library/workspaceMenu';
@@ -68,6 +69,11 @@ export function App() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
+  }, [status]);
+
+  // Android home screen widgets: apply what was done on them, and keep what they show up to date.
+  useEffect(() => {
+    if (status === 'ready') void startHomeWidgets();
   }, [status]);
 
   const syncOn = useFeature('sync');

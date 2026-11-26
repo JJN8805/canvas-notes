@@ -1,0 +1,5 @@
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="250dp" android:minHeight="140dp" android:minResizeWidth="140dp" android:minResizeHeight="80dp"
+    android:resizeMode="horizontal|vertical" android:widgetCategory="home_screen" android:updatePeriodMillis="0"
+    android:targetCellWidth="4" android:targetCellHeight="2"
+    android:initialLayout="@layout/cnw_page" android:previewLayout="@layout/cnw_page" android:description="@string/widget_page_desc" android:configure="dev.jjn8805.canvasnotes.widgets.ChooseActivity" android:widgetFeatures="reconfigurable" />

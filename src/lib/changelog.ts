@@ -9,6 +9,16 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    version: '0.5.0',
+    date: '2026-11-26',
+    title: 'Home screen widgets on Android',
+    items: [
+      'Three widgets for the phone’s home screen that work while Canvas Notes is closed: a to-do list (tick things off, add new ones; show everything open or one checklist), a quick note (type without opening the app) and a page (read it at a glance, tap to open).',
+      'What you do on a widget joins your notes the next time you open the app, then syncs as usual. New to-dos with no list of their own, and quick notes, go to the Inbox page.',
+      'Add them from Settings → General, or by long-pressing the home screen and choosing Widgets.',
+    ],
+  },
+  {
     version: '0.4.1',
     date: '2026-11-25',
     title: 'A calmer library toolbar',

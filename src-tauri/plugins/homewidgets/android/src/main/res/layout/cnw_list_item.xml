@@ -1,0 +1,9 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/cnw_item_row" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp"
+    android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="4dp" android:paddingEnd="4dp">
+    <TextView android:id="@+id/cnw_item_check" android:layout_width="40dp" android:layout_height="wrap_content" android:gravity="center" android:textColor="@color/cnw_accent" android:textSize="24sp" />
+    <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical" android:paddingTop="6dp" android:paddingBottom="6dp">
+        <TextView android:id="@+id/cnw_item_text" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/cnw_ink" android:textSize="15sp" android:maxLines="3" android:ellipsize="end" />
+        <TextView android:id="@+id/cnw_item_from" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/cnw_soft" android:textSize="12sp" android:maxLines="1" android:ellipsize="end" />
+    </LinearLayout>
+</LinearLayout>
